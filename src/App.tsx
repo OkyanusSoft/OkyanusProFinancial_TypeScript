@@ -24,21 +24,21 @@ const TREE: { id: string; label: string; icon: string; groups: Group[]; leaves?:
   },
   {
     id: "pur", label: "المشتريات والموردون", icon: "truck", groups: [
-      { label: "البيانات الأساسية", icon: "users", leaves: [{ id: "base.sup", label: "إدارة الموردين" }] },
+      { label: "البيانات الأساسية", icon: "users", leaves: [{ id: "base.sup", label: "إدارة الموردين" }, { id: "base.cats", label: "تصنيفات الموردين والعملاء" }] },
       { label: "الحركات", icon: "swap", leaves: [{ id: "mv.req", label: "طلب شراء" }, { id: "mv.quote", label: "عروض الأسعار" }, { id: "mv.inv", label: "فاتورة مشتريات" }, { id: "mv.credit", label: "فاتورة مشتريات آجل" }] },
       { label: "التقارير", icon: "chart", leaves: [{ id: "rep.main", label: "تقارير المشتريات" }] },
     ],
   },
   {
     id: "sal", label: "المبيعات والعملاء", icon: "tag", groups: [
-      { label: "البيانات الأساسية", icon: "users", leaves: [{ id: "base.cus", label: "إدارة العملاء" }] },
+      { label: "البيانات الأساسية", icon: "users", leaves: [{ id: "base.cus", label: "إدارة العملاء" }, { id: "base.cats", label: "تصنيفات الموردين والعملاء" }] },
       { label: "الحركات", icon: "swap", leaves: [{ id: "mv.quote", label: "عرض سعر" }, { id: "mv.inv", label: "فاتورة مبيعات" }, { id: "mv.ret", label: "فاتورة مرتجع مبيعات" }] },
       { label: "التقارير", icon: "chart", leaves: [{ id: "rep.main", label: "تقارير المبيعات" }] },
     ],
   },
   {
     id: "gl", label: "الحسابات العامة", icon: "book", groups: [
-      { label: "البيانات الأساسية", icon: "layers", leaves: [{ id: "base.periods", label: "الفترات المالية" }, { id: "base.close", label: "إقفال الفترات المالية" }, { id: "base.mid", label: "الحسابات الوسطية" }, { id: "base.cash", label: "بيانات الصناديق" }, { id: "base.cur", label: "إدارة العملات" }, { id: "base.cc", label: "دليل مراكز التكلفة" }, { id: "base.coa", label: "دليل الحسابات (5 مستويات)" }, { id: "base.ana", label: "الحسابات التحليلية" }] },
+      { label: "البيانات الأساسية", icon: "layers", leaves: [{ id: "base.periods", label: "الفترات المالية" }, { id: "base.close", label: "إقفال الفترات المالية" }, { id: "base.mid", label: "الحسابات الوسطية" }, { id: "base.cash", label: "بيانات الصناديق" }, { id: "base.banks", label: "البنوك والحسابات البنكية" }, { id: "base.cur", label: "إدارة العملات" }, { id: "base.pay", label: "شروط وطرق الدفع" }, { id: "base.cc", label: "دليل مراكز التكلفة" }, { id: "base.coa", label: "دليل الحسابات" }, { id: "base.ana", label: "الحسابات التحليلية" }] },
       { label: "الحركات", icon: "swap", leaves: [{ id: "mv.open", label: "سند قيد افتتاحي مالي" }, { id: "mv.req", label: "طلب سند قيد يومية" }, { id: "mv.je", label: "سند قيد يومية" }, { id: "mv.pv", label: "سند صرف" }, { id: "mv.rv", label: "سند قبض" }] },
       { label: "التقارير", icon: "scale", leaves: [{ id: "rep.stmt", label: "تقرير كشف حساب" }, { id: "rep.trial", label: "تقرير ميزان المراجعة" }, { id: "rep.bs", label: "تقرير ميزان العمومية" }, { id: "rep.pl", label: "تقرير الأرباح والخسائر" }] },
     ],
@@ -46,6 +46,7 @@ const TREE: { id: string; label: string; icon: string; groups: Group[]; leaves?:
   {
     id: "adm", label: "إدارة النظام", icon: "shield", groups: [], leaves: [
       { id: "users", label: "المستخدمون والصلاحيات" },
+      { id: "roles", label: "الأدوار الوظيفية" },
       { id: "settings", label: "الإعدادات العامة" },
       { id: "prefs", label: "التفضيلات" },
     ],

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart } from "../ui";
 import { Directory, DocList, type DirConf, type ColDef } from "../crud";
-import { openPrint, DocSheet, PTable } from "../print";
+import { openPrint, DocSheet, PTable, ReportSheet } from "../print";
 import type { InvDoc } from "../data";
 
 export default function Inventory() {
@@ -535,4 +535,73 @@ function ReportScreen({ kind }: { kind: string }) {
       )}
     </div>
   );
+}
+
+/* ═══════════ طباعة تقارير المخازن الخمسة ═══════════ */
+function printInvReport(app: ReturnType<typeof useApp>, kind: string, d: any) {
+  const { title, it, items, whs, moveRows, watchRows } = d;
+  const user = app.session?.user || "—";
+  const today = new Date().toLocaleDateString("en-GB");
+  const whName = (id: string) => whs.find((w: any) => w.id === id)?.name || id;
+  const itemName = (id: string) => items.find((i: any) => i.id === id)?.name || id;
+
+  if (kind === "bal") {
+    const totCost = items.reduce((s: number, i: any) => s + app.itemQty(i.id) * i.cost, 0);
+    openPrint(
+      <ReportSheet title={title} subtitle="أرصدة الأصناف في كل مخزن مع قيم التكلفة" user={user}
+        filters={[["عدد الأصناف", String(items.length)], ["عدد المخازن", String(whs.length)], ["حتى تاريخ", today]]}
+        summary={[["إجمالي قيمة المخزون بالتكلفة", app.fmtN(totCost)]]}>
+        <PTable head={["الصنف", ...whs.map((w: any) => w.name), "الإجمالي", "قيمة التكلفة"]}
+          rows={items.map((i: any) => [<span key="n"><b>{i.name}</b></span>, ...whs.map((w: any) => <span key={w.id} className="num">{i.qty[w.id] || 0}</span>), <span key="t" className="num"><b>{app.itemQty(i.id)}</b></span>, <span key="v" className="num">{app.fmtN(app.itemQty(i.id) * i.cost)}</span>])} />
+      </ReportSheet>
+    );
+    return;
+  }
+
+  if (kind === "move") {
+    openPrint(
+      <ReportSheet title={`${title} — ${it?.name || ""}`} subtitle="الحركات المخزنية مع الرصيد التراكمي" user={user}
+        filters={[["الصنف", it?.name || "—"], ["عدد الحركات", String(moveRows.length)], ["حتى تاريخ", today]]}>
+        <PTable head={["السند", "التاريخ", "النوع", "الكمية", "الرصيد"]}
+          rows={moveRows.map((r: any) => [<span key="r" className="num">{r.ref}</span>, <span key="d" className="num">{r.date}</span>, r.type, <span key="q" className="num">{r.qty > 0 ? `+${r.qty}` : r.qty}</span>, <span key="b" className="num"><b>{r.run}</b></span>])} />
+      </ReportSheet>
+    );
+    return;
+  }
+
+  if (kind === "card") {
+    openPrint(
+      <ReportSheet title={`بطاقة صنف — ${it?.name || ""}`} subtitle="الملف الكامل للصنف وأرصدته في المخازن" user={user}
+        filters={[["الكود", it?.code || "—"], ["المجموعة", it?.group || "—"], ["الوحدة", it?.unit || "—"]]}
+        summary={[["التكلفة", app.fmtN(it?.cost || 0)], ["سعر البيع", app.fmtN(it?.price || 0)], ["الرصيد الكلي", String(app.itemQty(it?.id || ""))]]}>
+        <PTable head={["المخزن", "الرصيد", "أدنى", "أقصى"]}
+          rows={whs.map((w: any) => [<b key="w">{w.name}</b>, <span key="q" className="num"><b>{it?.qty[w.id] || 0}</b></span>, <span key="mn" className="num">{it?.min}</span>, <span key="mx" className="num">{it?.max}</span>])} />
+      </ReportSheet>
+    );
+    return;
+  }
+
+  if (kind === "watch") {
+    openPrint(
+      <ReportSheet title={title} subtitle="الأصناف دون الحد الأدنى أو فوق الأقصى — إنذار مبكر" user={user}
+        filters={[["عدد الأصناف", String(watchRows.length)], ["حتى تاريخ", today]]}
+        summary={[["أصناف دون الحد", String(watchRows.filter((r: any) => r.status === "دون الحد الأدنى").length)], ["أصناف نافدة", String(watchRows.filter((r: any) => r.status === "نافد").length)]]}>
+        <PTable head={["الصنف", "الرصيد", "أدنى", "أقصى", "الحالة"]}
+          rows={watchRows.map((r: any) => [<b key="n">{r.name}</b>, <span key="q" className="num"><b>{r.total}</b></span>, <span key="mn" className="num">{r.min}</span>, <span key="mx" className="num">{r.max}</span>, <span key="s">{r.status}</span>])} />
+      </ReportSheet>
+    );
+    return;
+  }
+
+  if (kind === "count") {
+    const rows = (app.db.invDocs as any as AnyR[]).filter((dd) => dd.type === "جرد").flatMap((dd) => dd.lines.map((l: any) => ({ ref: dd.ref, date: dd.date, wh: whName(dd.warehouse), item: itemName(l.item), qty: l.qty, val: l.qty * l.cost })));
+    openPrint(
+      <ReportSheet title={title} subtitle="نتائج الجرد الفعلية وفروقاتها المقيمة مالياً" user={user}
+        filters={[["عدد الفروقات", String(rows.length)], ["حتى تاريخ", today]]}
+        summary={[["صافي قيمة الفروقات", app.fmtN(rows.reduce((s, r) => s + r.val, 0))]]}>
+        <PTable head={["السند", "التاريخ", "المخزن", "الصنف", "الفرق", "قيمة الفرق"]}
+          rows={rows.map((r, i) => [<span key="r" className="num">{r.ref}</span>, <span key="d" className="num">{r.date}</span>, r.wh, r.item, <span key="q" className="num">{r.qty > 0 ? `+${r.qty}` : r.qty}</span>, <span key="v" className="num">{app.fmtN(r.val)}</span>])} />
+      </ReportSheet>
+    );
+  }
 }

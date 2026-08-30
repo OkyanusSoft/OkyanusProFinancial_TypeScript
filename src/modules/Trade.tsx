@@ -9,6 +9,7 @@ export function Purchases() {
   const app = useApp();
   const p = app.route.path || "base.sup";
   if (p === "base.sup") return <Directory conf={supConf(app)} />;
+  if (p === "base.cats") return <Directory conf={catsConf(app)} />;
   if (p === "mv.req") return <PurchaseRequests />;
   if (p === "mv.quote") return <QuotesScreen kind="شراء" />;
   if (p === "mv.inv") return <InvoiceScreen kind="purchases" credit={false} />;
@@ -22,6 +23,7 @@ export function Sales() {
   const app = useApp();
   const p = app.route.path || "base.cus";
   if (p === "base.cus") return <Directory conf={cusConf(app)} />;
+  if (p === "base.cats") return <Directory conf={catsConf(app)} />;
   if (p === "mv.quote") return <QuotesScreen kind="بيع" />;
   if (p === "mv.inv") return <InvoiceScreen kind="sales" credit={false} />;
   if (p === "mv.ret") return <InvoiceScreen kind="returns" credit={false} />;
@@ -38,7 +40,7 @@ const supConf = (app: ReturnType<typeof useApp>): DirConf => ({
     { k: "name", label: "اسم المورد", req: true, uniq: true, span: true },
     { k: "phone", label: "الهاتف" },
     { k: "city", label: "المدينة" },
-    { k: "category", label: "التصنيف", type: "select", opts: ["أدوية", "مستلزمات", "أجهزة", "تحاليل", "خدمات"].map((v) => ({ v, l: v })) },
+    { k: "category", label: "التصنيف", type: "select", opts: app.db.partnerCats.filter((c: any) => c.scope !== "عملاء").map((c: any) => ({ v: c.name, l: c.name })) },
     { k: "creditDays", label: "مدة الائتمان (أيام)", type: "number" },
     { k: "account", label: "حساب الربط المحاسبي", type: "select", req: true, opts: app.accounts.filter((a) => a.posting && a.code.startsWith("2111")).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` })) },
   ],
@@ -60,7 +62,7 @@ const cusConf = (app: ReturnType<typeof useApp>): DirConf => ({
     { k: "name", label: "اسم العميل", req: true, uniq: true, span: true },
     { k: "phone", label: "الهاتف" },
     { k: "city", label: "المدينة" },
-    { k: "category", label: "التصنيف", type: "select", opts: ["مستشفيات", "صيدليات", "مجمعات", "منظمات", "أفراد"].map((v) => ({ v, l: v })) },
+    { k: "category", label: "التصنيف", type: "select", opts: app.db.partnerCats.filter((c: any) => c.scope !== "موردون").map((c: any) => ({ v: c.name, l: c.name })) },
     { k: "creditLimit", label: "حد الائتمان", type: "number", req: true, hint: "أقصى رصيد مدين مسموح لهذا العميل" },
     { k: "account", label: "حساب الربط المحاسبي", type: "select", req: true, opts: app.accounts.filter((a) => a.posting && a.code.startsWith("1121")).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` })) },
   ],
@@ -78,6 +80,25 @@ const cusConf = (app: ReturnType<typeof useApp>): DirConf => ({
       },
     },
     { k: "account", label: "حساب الربط", num: true, render: (r) => <span className="font-num" dir="ltr">{r.account}</span> },
+  ],
+});
+
+const catsConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "partnerCats", title: "تصنيفات الموردين والعملاء", icon: "layers", prefix: "PC", importKey: "partnerCats",
+  desc: "تصنيفات موحّدة تُستخدم في بطاقات الموردين والعملاء لتسهيل الفرز والتقارير التحليلية",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم التصنيف", req: true, uniq: true },
+    { k: "scope", label: "النطاق", type: "select", req: true, opts: [{ v: "موردون", l: "موردون" }, { v: "عملاء", l: "عملاء" }, { v: "مشترك", l: "مشترك (الطرفان)" }] },
+    { k: "note", label: "ملاحظة", span: true },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "التصنيف", render: (r) => <b>{r.name}</b> },
+    { k: "scope", label: "النطاق", render: (r) => <span className={`chip ${r.scope === "موردون" ? "bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]" : r.scope === "عملاء" ? "bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]" : "bg-[color-mix(in_srgb,var(--mute)_14%,transparent)] text-[var(--soft)]"}`}>{r.scope}</span> },
+    { k: "suppliers", label: "موردون", num: true, render: (r, a) => <span className="font-num">{a.db.suppliers.filter((s: any) => s.category === r.name).length}</span> },
+    { k: "customers", label: "عملاء", num: true, render: (r, a) => <span className="font-num">{a.db.customers.filter((s: any) => s.category === r.name).length}</span> },
+    { k: "note", label: "ملاحظة", render: (r) => <span className="text-[0.74rem] text-mute font-bold">{r.note}</span> },
   ],
 });
 

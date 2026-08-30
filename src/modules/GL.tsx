@@ -14,6 +14,8 @@ export default function GL() {
   if (p === "base.cash") return <Directory conf={cashConf(app)} />;
   if (p === "base.cur") return <CurrenciesScreen />;
   if (p === "base.cc") return <Directory conf={ccConf(app)} />;
+  if (p === "base.banks") return <Directory conf={banksConf(app)} />;
+  if (p === "base.pay") return <Directory conf={payConf(app)} />;
   if (p === "base.coa") return <CoaScreen />;
   if (p === "base.ana") return <AnalyticalScreen />;
   if (p.startsWith("mv.")) return <JEScreen kind={p.slice(3)} />;
@@ -57,6 +59,48 @@ const ccConf = (app: ReturnType<typeof useApp>): DirConf => ({
     { k: "name", label: "المركز", render: (r, a) => <span className={r.parent ? "ps-5 font-bold" : "font-display font-bold"}>{r.parent && "└ "}{r.name}{!r.parent && <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] ms-2">رئيسي</span>}</span> },
     { k: "manager", label: "المسؤول" },
     { k: "kids", label: "مراكز فرعية", num: true, render: (r, a) => <span className="font-num">{a.db.costCenters.filter((c) => c.parent === r.id).length}</span> },
+  ],
+});
+
+const banksConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "banks", title: "البنوك والحسابات البنكية", icon: "bld", prefix: "BK", importKey: "banks",
+  desc: "الحسابات البنكية للشركة بعملة كل حساب وربطها بدليل الحسابات (النقدية والبنوك)",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم البنك", req: true, uniq: true },
+    { k: "branch", label: "الفرع", req: true },
+    { k: "iban", label: "رقم الآيبان (IBAN)", req: true },
+    { k: "swift", label: "رمز السويفت (SWIFT)" },
+    { k: "currency", label: "العملة", type: "select", req: true, opts: app.db.currencies.map((c: any) => ({ v: c.id, l: `${c.id} — ${c.name}` })) },
+    { k: "account", label: "حساب الربط في الدليل", type: "select", req: true, opts: app.accounts.filter((a) => a.posting && a.code.startsWith("1112")).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` })) },
+    { k: "balance", label: "الرصيد الافتتاحي", type: "number", req: true },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "البنك", render: (r) => <div><b>{r.name}</b><div className="text-[0.62rem] text-mute font-bold">{r.branch}</div></div> },
+    { k: "iban", label: "الآيبان", render: (r) => <span className="font-num text-[0.7rem]" dir="ltr">{r.iban}</span> },
+    { k: "currency", label: "العملة", render: (r) => <span className="chip bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)] font-num">{r.currency}</span> },
+    { k: "account", label: "الربط", num: true, render: (r) => <span className="font-num" dir="ltr">{r.account}</span> },
+    { k: "balance", label: "الرصيد", num: true, render: (r, a) => <b className="font-num">{a.fmtN(r.balance)}</b> },
+  ],
+});
+
+const payConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "payTerms", title: "شروط وطرق الدفع", icon: "wallet", prefix: "PT", importKey: "payTerms",
+  desc: "شروط الدفع الآجل (عدد الأيام) وطرق الدفع المتاحة للفواتير والسندات",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "الاسم", req: true, uniq: true },
+    { k: "kind", label: "النوع", type: "select", req: true, opts: [{ v: "شرط دفع", l: "شرط دفع (آجل)" }, { v: "طريقة دفع", l: "طريقة دفع" }] },
+    { k: "days", label: "عدد أيام الاستحقاق", type: "number", hint: "0 للدفع الفوري وطرق الدفع" },
+    { k: "note", label: "ملاحظة", span: true },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "الاسم", render: (r) => <b>{r.name}</b> },
+    { k: "kind", label: "النوع", render: (r) => <span className={`chip ${r.kind === "شرط دفع" ? "bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-[var(--warn)]" : "bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]"}`}>{r.kind}</span> },
+    { k: "days", label: "الأيام", num: true, render: (r, a) => <span className="font-num font-bold">{r.days} يوم</span> },
+    { k: "note", label: "ملاحظة", render: (r) => <span className="text-[0.74rem] text-mute font-bold">{r.note}</span> },
   ],
 });
 
@@ -282,6 +326,7 @@ function CoaScreen() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-2"><I n="check" size={13} /> متوازن: {app.fmtN(totalDr)} = {app.fmtN(totalCr)}</span>
+          <button className="btn btn-soft" onClick={() => printCoa(app)} title="طباعة دليل الحسابات"><I n="print" size={16} /> طباعة الدليل</button>
           <button className="btn btn-brand" onClick={() => setShowAdd(true)}><I n="plus" size={16} /> إضافة حساب</button>
         </div>
       </div>
@@ -300,6 +345,26 @@ function CoaScreen() {
   );
 }
 function FragmentRow({ children }: { children: React.ReactNode }) { return <>{children}</>; }
+
+function printCoa(app: ReturnType<typeof useApp>) {
+  const user = app.session?.user || "—";
+  const today = new Date().toLocaleDateString("en-GB");
+  const typeTone = (t: string) => (t === "أصول" ? "var(--brand)" : t === "إيرادات" ? "var(--good)" : t === "مصروفات" ? "var(--warn)" : t === "خصوم" ? "var(--bad)" : "var(--accent)");
+  const rows = app.accounts.map((a) => ([
+    <span key="c" className="num" dir="ltr">{a.code}</span>,
+    <span key="n" style={{ paddingInlineStart: (a.level - 1) * 14, fontWeight: a.level <= 2 ? 700 : 400 }}>{a.name}</span>,
+    <span key="l" className="num">{a.level}</span>,
+    <span key="t" style={{ color: typeTone(a.type) }}>{a.type}</span>,
+    <span key="p">{a.posting ? "ترحيلي" : "عنواني"}</span>,
+  ]));
+  openPrint(
+    <ReportSheet title="دليل الحسابات" subtitle="التسلسل الهرمي الكامل للحسابات — أصول، خصوم، حقوق ملكية، إيرادات، مصروفات" user={user}
+      filters={[["عدد الحسابات", String(app.accounts.length)], ["حسابات ترحيلية", String(app.accounts.filter((a) => a.posting).length)], ["حتى تاريخ", today]]}
+      summary={[["عدد المستويات", "5 مستويات"], ["الحسابات التحليلية", String(app.accounts.filter((a) => a.analytical).length)]]}>
+      <PTable head={["الكود", "اسم الحساب", "المستوى", "التصنيف", "الطبيعة"]} rows={rows} />
+    </ReportSheet>
+  );
+}
 
 /* ═══════════ إضافة حساب — ترقيم تلقائي حسب آخر رقم في المستوى ═══════════ */
 function AddAccountModal({ open, onClose }: { open: boolean; onClose: () => void }) {

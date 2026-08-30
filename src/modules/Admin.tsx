@@ -2,23 +2,44 @@ import { useState } from "react";
 import { useApp } from "../store";
 import { I, Chip } from "../ui";
 import { Directory, type DirConf } from "../crud";
-import { PERM_MODULES, PERM_ACTIONS, ROLES, SIDEBAR_BGS, SYSTEM } from "../data";
+import { PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, SYSTEM } from "../data";
 import { LOGIN_BGS } from "./Login";
 
 export default function Admin() {
   const app = useApp();
   const p = app.route.path || "users";
   if (p === "users") return <UsersScreen />;
+  if (p === "roles") return <Directory conf={rolesConf(app)} />;
   if (p === "settings") return <SettingsScreen />;
   if (p === "prefs") return <PrefsScreen />;
   return <UsersScreen />;
 }
 
+/* ═══════════ الأدوار الوظيفية ═══════════ */
+const rolesConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "roles", title: "الأدوار الوظيفية", icon: "shield", prefix: "RL", importKey: "roles",
+  desc: "الأدوار المتاحة في النظام — تُسند للمستخدمين وتُربط بمصفوفة الصلاحيات الدقيقة",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم الدور", req: true, uniq: true },
+    { k: "level", label: "المستوى (1=أعلى صلاحية)", type: "number", req: true, hint: "1 للإدارة العليا، 4 للأدوار المقيدة" },
+    { k: "desc", label: "الوصف والمسؤوليات", span: true, req: true },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "الدور", render: (r) => <span className="chip bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)]">{r.name}</span> },
+    { k: "level", label: "المستوى", num: true, render: (r) => <span className="w-7 h-7 rounded-lg grid place-items-center font-num font-bold mx-auto" style={{ background: `color-mix(in srgb, var(--accent) ${10 + Number(r.level) * 6}%, transparent)`, color: "var(--accent)" }}>{r.level}</span> },
+    { k: "desc", label: "الوصف", render: (r) => <span className="text-[0.76rem] font-bold text-soft">{r.desc}</span> },
+    { k: "users", label: "المستخدمون", num: true, render: (r, a) => <span className="font-num font-bold">{a.db.users.filter((u: any) => u.role === r.name).length}</span> },
+  ],
+});
+
 /* ═══════════ المستخدمون والصلاحيات ═══════════ */
 function UsersScreen() {
   const app = useApp();
   const [tab, setTab] = useState("list");
-  const [role, setRole] = useState(ROLES[0]);
+  const roleNames = (app.db.roles as any[]).map((r) => r.name);
+  const [role, setRole] = useState(roleNames[0] || "مدير النظام");
 
   const usersConf: DirConf = {
     coll: "users", title: "المستخدمون والصلاحيات", icon: "users", prefix: "U", importKey: "users",
@@ -27,7 +48,7 @@ function UsersScreen() {
       { k: "code", label: "الكود", req: true, uniq: true },
       { k: "name", label: "الاسم الكامل", req: true },
       { k: "username", label: "اسم المستخدم", req: true, uniq: true, hint: "يُستخدم في تسجيل الدخول" },
-      { k: "role", label: "الدور الوظيفي", type: "select", req: true, opts: ROLES.map((r) => ({ v: r, l: r })) },
+      { k: "role", label: "الدور الوظيفي", type: "select", req: true, opts: roleNames.map((r) => ({ v: r, l: r })) },
       { k: "branch", label: "الفرع", type: "select", req: true, opts: app.db.branches.map((b: any) => ({ v: b.id, l: b.name })) },
       { k: "active", label: "الحالة", type: "select", opts: [{ v: true, l: "نشط" }, { v: false, l: "موقوف" }] },
     ],
@@ -55,7 +76,7 @@ function UsersScreen() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <p className="text-[0.82rem] font-bold text-soft flex items-center gap-2"><I n="shield" size={17} className="text-[var(--brand)]" /> صلاحيات دقيقة على مستوى الشاشة والزر والتقرير — انقر أي خلية للتبديل</p>
             <select className="select !w-64" value={role} onChange={(e) => setRole(e.target.value)}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              {roleNames.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="card overflow-hidden"><div className="overflow-x-auto">

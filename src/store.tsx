@@ -3,7 +3,7 @@ import {
   ACCOUNTS, ANALYTICALS, UNITS, GROUPS, WAREHOUSES, ITEMS, SUPPLIERS, CUSTOMERS, CASHBOXES,
   COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
-  SYSTEM, type AnyR, type InvDoc, type Invoice, type Journal, type Account,
+  SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, type AnyR, type InvDoc, type Invoice, type Journal, type Account,
 } from "./data";
 export type { AnyR } from "./data";
 
@@ -49,7 +49,8 @@ export interface Notif { id: number; title: string; body: string; time: string; 
 
 export type CollKey = "units" | "groups" | "warehouses" | "items" | "suppliers" | "customers" | "cashboxes" |
   "costCenters" | "branches" | "departments" | "users" | "currencies" | "periods" | "analyticals" |
-  "requests" | "quotes" | "sales" | "purchases" | "returns" | "invDocs" | "journals";
+  "requests" | "quotes" | "sales" | "purchases" | "returns" | "invDocs" | "journals" |
+  "banks" | "payTerms" | "partnerCats" | "roles";
 
 export interface Settings {
   vat: number; discMax: number; round: number; autoNum: boolean; blockOverCredit: boolean;
@@ -118,6 +119,7 @@ const initDb: Record<CollKey, AnyR[]> = {
   units: UNITS, groups: GROUPS, warehouses: WAREHOUSES, items: ITEMS, suppliers: SUPPLIERS,
   customers: CUSTOMERS, cashboxes: CASHBOXES, costCenters: COST_CENTERS, branches: BRANCHES,
   departments: DEPARTMENTS, users: USERS, currencies: CURRENCIES, periods: PERIODS,
+  banks: BANKS, payTerms: PAYTERMS, partnerCats: PARTNER_CATS, roles: ROLES_DIR,
   analyticals: ANALYTICALS, requests: REQUESTS, quotes: QUOTES,
   sales: SALES as any, purchases: PURCHASES as any, returns: RETURNS as any,
   invDocs: INV_DOCS as any, journals: JOURNALS as any,
