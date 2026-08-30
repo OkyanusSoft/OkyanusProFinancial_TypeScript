@@ -1,263 +1,432 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import {
-  ACCOUNTS, ANALYTICALS, COST_CENTERS, CURRENCIES, CUSTOMERS, INV_DOCS, ITEMS, JOURNALS,
-  PERIODS, PERM_ACTIONS, PERM_MODULES, PURCHASES, QUOTES, RETURNS, ROLES, SALES, SUPPLIERS,
-  UNITS, GROUPS, USERS, WAREHOUSES, CHANGELOG, SIDEBAR_BGS,
-  type Invoice, type InvDoc, type Journal, type Quote, type User,
+  ACCOUNTS, ANALYTICALS, UNITS, GROUPS, WAREHOUSES, ITEMS, SUPPLIERS, CUSTOMERS, CASHBOXES,
+  COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
+  RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
+  SYSTEM, type AnyR, type InvDoc, type Invoice, type Journal,
 } from "./data";
+export type { AnyR } from "./data";
 
-/* ── الإعدادات والتفضيلات ── */
-export interface Prefs {
-  theme: string; fontScale: "sm" | "md" | "lg"; dir: "rtl" | "ltr";
-  numFmt: "west" | "arabic" | "plain"; dateFmt: "ymd" | "dmy" | "arlong";
-  notif: { period: boolean; credit: boolean; stock: boolean; sounds: boolean };
-  sidebarBg: string; loginBg: string;
+/* ═══════ أدوات تحقق عامة (صلاحية / تكرار / أرقام) ═══════ */
+export const vReq = (v: any, label: string) => (v === "" || v === undefined || v === null ? `حقل «${label}» إلزامي` : "");
+export const vDup = (list: AnyR[], key: string, val: any, selfId?: string) =>
+  list.some((r) => r.id !== selfId && String(r[key]).trim() === String(val).trim()) ? "القيمة مستخدمة مسبقاً — التكرار غير مسموح" : "";
+export const vNum = (v: any, label: string) => (isNaN(Number(v)) || v === "" ? `«${label}» يجب أن يكون رقماً صالحاً` : "");
+
+export function parseCsv(text: string): string[][] {
+  return text.split(/\r?\n/).filter((l) => l.trim()).map((l) => l.split(/[,;\t]/).map((c) => c.trim().replace(/^"|"$/g, "")));
 }
-const DEFAULT_PREFS: Prefs = {
-  theme: "azure", fontScale: "md", dir: "rtl", numFmt: "west", dateFmt: "dmy",
-  notif: { period: true, credit: true, stock: true, sounds: false },
-  sidebarBg: "ocean", loginBg: "sea",
-};
+export function sampleCsv(key: string): string {
+  const s = IMPORT_SAMPLES[key];
+  if (!s) return "";
+  return [s.headers.join(","), ...s.rows.map((r) => r.join(","))].join("\n");
+}
 
-export interface Session { user: string; role: string; company: string; branch: string; year: string }
-export type Route = { module: string; tab: string };
-export interface Toast { id: number; kind: "ok" | "err" | "info"; msg: string }
-export interface Notif { id: number; kind: "warn" | "info" | "bad"; title: string; body: string; time: string }
-export interface Backup { id: string; name: string; size: string; date: string; kind: "كامل" | "تفاضلي" }
+/* ═══════ الأنواع ═══════ */
+export interface Session { company: string; branch: string; user: string; year: string; role: string }
+export interface Route { module: string; path: string }
+export type Toast = { id: number; msg: string; kind: "ok" | "err" | "info" };
+export interface Notif { id: number; title: string; body: string; time: string; kind: "info" | "warn" | "bad" }
 
-interface Store {
+export type CollKey = "units" | "groups" | "warehouses" | "items" | "suppliers" | "customers" | "cashboxes" |
+  "costCenters" | "branches" | "departments" | "users" | "currencies" | "periods" | "analyticals" |
+  "requests" | "quotes" | "sales" | "purchases" | "returns" | "invDocs" | "journals";
+
+export interface Settings {
+  vat: number; discMax: number; round: number; autoNum: boolean; blockOverCredit: boolean;
+  negStock: boolean; lowStockAlert: boolean; requireCC: boolean; fiscalStart: string;
+  prefixes: Record<string, string>;
+  suspense: Record<string, string>;
+  dbCfg: { host: string; port: number; user: string; pass: string; name: string; engine: string };
+}
+
+export interface Prefs { theme: string; font: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
+
+interface AppCtx {
+  db: Record<CollKey, AnyR[]>;
+  trash: { coll: CollKey; row: AnyR; at: string }[];
+  seq: Record<string, number>;
+  settings: Settings; setSettings: (s: Settings) => void;
   prefs: Prefs; setPrefs: (p: Partial<Prefs>) => void;
-  session: Session | null; login: (s: Session) => void; logout: () => void;
-  route: Route; nav: (r: Route) => void;
-  toasts: Toast[]; toast: (msg: string, kind?: Toast["kind"]) => void;
-  notifs: Notif[]; markNotifs: () => void; pushNotif: (n: Omit<Notif, "id" | "time">) => void;
-  /* البيانات */
-  accounts: typeof ACCOUNTS; analyticals: typeof ANALYTICALS; items: typeof ITEMS;
-  invDocs: InvDoc[]; journals: Journal[]; sales: Invoice[]; purchases: Invoice[];
-  returns: Invoice[]; quotes: Quote[]; customers: typeof CUSTOMERS; suppliers: typeof SUPPLIERS;
-  warehouses: typeof WAREHOUSES; units: string[]; groups: string[]; costCenters: typeof COST_CENTERS;
-  currencies: typeof CURRENCIES; periods: typeof PERIODS; users: User[]; roles: string[];
-  permModules: string[]; permActions: string[]; changelog: typeof CHANGELOG; sidebarBgs: typeof SIDEBAR_BGS;
-  /* إجراءات */
-  addJournal: (j: Journal) => { ok: boolean; msg: string };
-  voidJournal: (id: string) => void; approveJournal: (id: string) => void;
+  session: Session | null; route: Route;
+  toasts: Toast[]; notifs: Notif[];
+  toast: (msg: string, kind?: Toast["kind"]) => void;
+  pushNotif: (n: { kind: Notif["kind"]; title: string; body: string }) => void;
+  markNotifs: () => void;
+  nav: (r: Partial<Route>) => void;
+  login: (s: Session) => void; logout: () => void;
+  nextNo: (prefix: string) => string;
+  /* إدارة السجلات: إضافة/تعديل/حذف/استعادة/استيراد */
+  save: (coll: CollKey, row: AnyR) => void;
+  remove: (coll: CollKey, id: string, label?: string) => void;
+  restore: (idx: number) => void;
+  purge: (idx: number) => void;
+  emptyTrash: () => void;
+  importRows: (coll: CollKey, rows: AnyR[], keyField: string, prefix: string) => { added: number; skipped: number };
+  /* الحركات المالية والمخزنية */
+  addInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  voidInvDoc: (id: string) => void;
   addInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
   voidInvoice: (kind: "sales" | "purchases" | "returns", id: string) => void;
-  addInvDoc: (d: InvDoc) => void; voidInvDoc: (id: string) => void;
+  payInvoice: (kind: "sales" | "purchases", id: string, amount: number) => { ok: boolean; msg: string };
+  addJournal: (j: Journal) => { ok: boolean; msg: string };
+  voidJournal: (id: string) => void;
+  approveJournal: (id: string) => void;
   lockPeriod: (id: string) => void;
-  addUser: (u: User) => void; toggleUser: (id: string) => void;
-  perms: Record<string, boolean>; togglePerm: (key: string) => void;
-  backups: Backup[]; addBackup: (b: Backup) => void;
-  addItem: (i: (typeof ITEMS)[number]) => void; addAnalytical: (a: (typeof ANALYTICALS)[number]) => void;
+  setQuoteStatus: (id: string, status: string) => void;
+  setRequestStatus: (id: string, status: string) => void;
+  /* أدوات عرض */
+  fmtN: (n: number) => string;
+  fmtMoney: (n: number) => string;
+  fmtDate: (iso: string) => string;
   invoiceTotal: (inv: Invoice) => number;
-  fmtN: (n: number) => string; fmtMoney: (n: number, cur?: string) => string; fmtDate: (d: string) => string;
-  exportCsv: (name: string, rows: (string | number)[][]) => void;
   itemQty: (code: string) => number;
+  exportCsv: (name: string, rows: (string | number)[][]) => void;
+  can: (module: string, action: string) => boolean;
+  togglePerm: (role: string, module: string, action: string) => void;
+  perms: Record<string, Record<string, string[]>>;
+  accounts: typeof ACCOUNTS;
+  sidebarBgs: typeof SIDEBAR_BGS;
+  SYSTEM: typeof SYSTEM;
 }
 
-const Ctx = createContext<Store | null>(null);
-export const useApp = () => {
-  const s = useContext(Ctx);
-  if (!s) throw new Error("useApp خارج المزود");
-  return s;
+const Ctx = createContext<AppCtx | null>(null);
+export const useApp = () => useContext(Ctx)!;
+
+const initDb: Record<CollKey, AnyR[]> = {
+  units: UNITS, groups: GROUPS, warehouses: WAREHOUSES, items: ITEMS, suppliers: SUPPLIERS,
+  customers: CUSTOMERS, cashboxes: CASHBOXES, costCenters: COST_CENTERS, branches: BRANCHES,
+  departments: DEPARTMENTS, users: USERS, currencies: CURRENCIES, periods: PERIODS,
+  analyticals: ANALYTICALS, requests: REQUESTS, quotes: QUOTES,
+  sales: SALES as any, purchases: PURCHASES as any, returns: RETURNS as any,
+  invDocs: INV_DOCS as any, journals: JOURNALS as any,
 };
 
-let tid = 0;
+const DEF_PERMS: Record<string, Record<string, string[]>> = {
+  "مدير النظام": Object.fromEntries(PERM_MODULES.map((m) => [m, [...PERM_ACTIONS]])),
+  "محاسب رئيسي": Object.fromEntries(PERM_MODULES.map((m) => [m, m === "إدارة النظام" ? ["عرض"] : [...PERM_ACTIONS]])),
+  "أمين مخزن": { "لوحة التحكم": ["عرض"], "المخازن": ["عرض", "إنشاء", "تعديل", "تصدير تقارير"], "المشتريات": ["عرض"], "المبيعات": ["عرض"], "الحسابات العامة": ["عرض"], "إدارة النظام": [], "التقارير": ["عرض", "تصدير تقارير"] },
+  "مسؤولة مشتريات": { "لوحة التحكم": ["عرض"], "المخازن": ["عرض"], "المشتريات": [...PERM_ACTIONS], "المبيعات": ["عرض"], "الحسابات العامة": ["عرض", "إنشاء"], "إدارة النظام": [], "التقارير": ["عرض", "تصدير تقارير"] },
+  "مسؤول مبيعات": { "لوحة التحكم": ["عرض"], "المخازن": ["عرض"], "المشتريات": ["عرض"], "المبيعات": ["عرض", "إنشاء", "تعديل", "تصدير تقارير"], "الحسابات العامة": ["عرض"], "إدارة النظام": [], "التقارير": ["عرض", "تصدير تقارير"] },
+  "مدقق خارجي": Object.fromEntries(PERM_MODULES.map((m) => [m, ["عرض", "تصدير تقارير"]])),
+};
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [prefs, setPrefsState] = useState<Prefs>(() => {
-    try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem("okyanus.prefs") || "{}") }; }
-    catch { return DEFAULT_PREFS; }
+  const [db, setDb] = useState(initDb);
+  const [trash, setTrash] = useState<{ coll: CollKey; row: AnyR; at: string }[]>([]);
+  const [seq, setSeq] = useState<Record<string, number>>({ SIN: 260, PIN: 120, SRT: 18, GRN: 8, ISS: 22, TR: 4, ADJ: 4, JC: 2, JE: 1010, RC: 107, PV: 107, PR: 36, QT: 48, OB: 2, FYE: 2, REQ: 5 });
+  const [settings, setSettings] = useState<Settings>({
+    vat: 5, discMax: 15, round: 2, autoNum: true, blockOverCredit: true, negStock: false,
+    lowStockAlert: true, requireCC: true, fiscalStart: "2026-01-01",
+    prefixes: { SIN: "SIN", PIN: "PIN", SRT: "SRT", GRN: "GRN", ISS: "ISS", TR: "TR", ADJ: "ADJ", JC: "JC", JE: "JE", RC: "RC", PV: "PV", PR: "PR", QT: "QT" },
+    suspense: { salesCash: "41111", salesCredit: "41112", purchases: "11311", vatOut: "21211", vatIn: "21212", customers: "11211", suppliers: "21111", cogs: "51511", cash: "11111", bank: "11121" },
+    dbCfg: { host: "localhost", port: 3306, user: "erp_admin", pass: "", name: "okyanus_ifs", engine: "InnoDB" },
   });
+  const [prefs, setPrefsState] = useState<Prefs>({ theme: "azure", font: 100, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" });
   const [session, setSession] = useState<Session | null>(null);
-  const [route, setRoute] = useState<Route>({ module: "dashboard", tab: "" });
+  const [route, setRoute] = useState<Route>({ module: "dashboard", path: "" });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [notifs, setNotifs] = useState<Notif[]>([
-    { id: 1, kind: "warn", title: "فترة فبراير مغلقة", body: "أُقفلت فترة فبراير 2026 — لا يمكن الترحيل إليها.", time: "منذ ساعتين" },
-    { id: 2, kind: "bad", title: "تجاوز حد ائتماني", body: "العميل «صيدلية ابن سينا» تجاوز حد الائتمان بمقدار 10,500.", time: "منذ 5 ساعات" },
-    { id: 3, kind: "info", title: "نسخة احتياطية مكتملة", body: "اكتمل النسخ الاحتياطي الكامل (2.4 GB) بنجاح.", time: "أمس 23:00" },
+    { id: 1, kind: "warn", title: "صنف دون الحد الأدنى", body: "سيفترياكسون 1g حقن: الرصيد 380 والحد الأدنى 300 — راقب الطلبات.", time: "09:20" },
+    { id: 2, kind: "bad", title: "تجاوز حد ائتماني", body: "صيدلية ابن سينا تجاوزت حد الائتمان بمقدار 10,500 ر.ي.", time: "08:47" },
+    { id: 3, kind: "info", title: "نسخة احتياطية", body: "اكتملت النسخة التفاضلية بنجاح (186 MB) الساعة 02:00.", time: "02:00" },
   ]);
+  const [perms, setPerms] = useState(DEF_PERMS);
 
-  const [journals, setJournals] = useState(JOURNALS);
-  const [analyticals, setAnalyticals] = useState(ANALYTICALS);
-  const [invDocs, setInvDocs] = useState<InvDoc[]>(INV_DOCS);
-  const [sales, setSales] = useState(SALES);
-  const [purchases, setPurchases] = useState(PURCHASES);
-  const [returns, setReturns] = useState(RETURNS);
-  const [items, setItems] = useState(ITEMS);
-  const [users, setUsers] = useState(USERS);
-  const [periods, setPeriods] = useState(PERIODS);
-  const [backups, setBackups] = useState<Backup[]>([
-    { id: "BK-01", name: "OkyanusERP_Full_2026-03-28.sql.gz", size: "2.4 GB", date: "2026-03-28 23:00", kind: "كامل" },
-    { id: "BK-02", name: "OkyanusERP_Diff_2026-03-29.sql.gz", size: "186 MB", date: "2026-03-29 06:00", kind: "تفاضلي" },
-  ]);
-  const [perms, setPerms] = useState<Record<string, boolean>>(() => {
-    const p: Record<string, boolean> = {};
-    PERM_MODULES.forEach((m) => PERM_ACTIONS.forEach((a) => { p[`${m}|${a}`] = m === "لوحة التحكم" || a === "عرض"; }));
-    p["المخازن|إنشاء"] = true; p["المبيعات|إنشاء"] = true; p["الحسابات العامة|تصدير تقارير"] = true;
-    return p;
-  });
-
-  /* تطبيق التفضيلات على العنصر الجذر */
-  useEffect(() => {
-    const el = document.documentElement;
-    el.setAttribute("data-theme", prefs.theme);
-    el.setAttribute("data-fontscale", prefs.fontScale);
-    el.setAttribute("dir", prefs.dir);
-    el.setAttribute("lang", prefs.dir === "rtl" ? "ar" : "en");
-    localStorage.setItem("okyanus.prefs", JSON.stringify(prefs));
-  }, [prefs]);
+  const toast = (msg: string, kind: Toast["kind"] = "info") => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, msg, kind }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4400);
+  };
+  const pushNotif = (n: { kind: Notif["kind"]; title: string; body: string }) =>
+    setNotifs((old) => [{ id: Date.now(), time: new Date().toTimeString().slice(0, 5), ...n }, ...old]);
+  const markNotifs = () => setNotifs([]);
 
   const setPrefs = (p: Partial<Prefs>) => setPrefsState((old) => ({ ...old, ...p }));
-  const toast = (msg: string, kind: Toast["kind"] = "ok") => {
-    const id = ++tid;
-    setToasts((t) => [...t, { id, kind, msg }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
-  };
-  const pushNotif = (n: Omit<Notif, "id" | "time">) =>
-    setNotifs((old) => [{ ...n, id: Date.now(), time: "الآن" }, ...old]);
+  const nav = (r: Partial<Route>) => setRoute((old) => ({ module: r.module || old.module, path: r.path !== undefined ? r.path : old.path }));
+  const login = (s: Session) => { setSession(s); setRoute({ module: "dashboard", path: "" }); };
+  const logout = () => setSession(null);
 
-  /* ── تنسيقات ── */
+  const year = session?.year || "2026";
+  const nextNo = (prefix: string) => {
+    const n = (seq[prefix] || 1) + 1;
+    setSeq((s) => ({ ...s, [prefix]: n }));
+    return `${prefix}-${year}-${String(n).padStart(4, "0")}`;
+  };
+
+  /* ── إدارة السجلات العامة ── */
+  const save = (coll: CollKey, row: AnyR) =>
+    setDb((d) => {
+      const list = d[coll];
+      const i = list.findIndex((r) => r.id === row.id);
+      const next = i >= 0 ? list.map((r, j) => (j === i ? row : r)) : [...list, row];
+      return { ...d, [coll]: next };
+    });
+
+  const remove = (coll: CollKey, id: string, label?: string) => {
+    setDb((d) => {
+      const row = d[coll].find((r) => r.id === id);
+      if (row) setTrash((t) => [{ coll, row, at: new Date().toLocaleString("ar-EG") }, ...t]);
+      return { ...d, [coll]: d[coll].filter((r) => r.id !== id) };
+    });
+    toast(`نُقل «${label || id}» إلى سلة المحذوفات — يمكن الاستعادة من سلة الصيانة`, "ok");
+  };
+  const restore = (idx: number) => {
+    const t = trash[idx];
+    if (!t) return;
+    setDb((d) => ({ ...d, [t.coll]: [...d[t.coll], t.row] }));
+    setTrash((old) => old.filter((_, i) => i !== idx));
+    toast("تمت استعادة السجل بنجاح", "ok");
+  };
+  const purge = (idx: number) => {
+    const t = trash[idx];
+    setTrash((old) => old.filter((_, i) => i !== idx));
+    toast(`حُذف «${t?.row?.name || t?.row?.code || "السجل"}» نهائياً من قاعدة البيانات`, "err");
+  };
+  const emptyTrash = () => { setTrash([]); toast("أُفرغت سلة المحذوفات — اكتملت عملية الصيانة", "info"); };
+
+  const importRows = (coll: CollKey, rows: AnyR[], keyField: string, prefix: string) => {
+    let added = 0, skipped = 0;
+    setDb((d) => {
+      const list = [...d[coll]];
+      rows.forEach((r) => {
+        const val = String(r[keyField] ?? "").trim();
+        if (!val) { skipped++; return; }
+        if (list.some((x) => String(x[keyField]).trim() === val)) { skipped++; return; }
+        const id = r.id || `${prefix}-IMP${String(list.length + added + 1).padStart(3, "0")}`;
+        list.push({ ...r, id, code: r.code || id });
+        added++;
+      });
+      return { ...d, [coll]: list };
+    });
+    return { added, skipped };
+  };
+
+  /* ── التحقق من الفترات المقفلة ── */
+  const periodLocked = (date: string) => {
+    const m = date.slice(0, 7);
+    return (db.periods as any[]).some((p: any) => p.id === m && p.locked);
+  };
+
+  /* ── الحركات المخزنية ── */
+  const itemQty = (code: string) => {
+    const it: any = db.items.find((i) => i.id === code);
+    return it ? Object.values(it.qty as Record<string, number>).reduce((a: number, b: any) => a + (b as number), 0) : 0;
+  };
+
+  const addInvDoc = (d: InvDoc) => {
+    if (periodLocked(d.date)) { toast(`الفترة ${d.date.slice(0, 7)} مقفلة مالياً — لا يمكن الترحيل إليها`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
+    if (!settings.negStock) {
+      for (const l of d.lines) {
+        const it: any = db.items.find((i) => i.id === l.item);
+        if (!it) continue;
+        const delta = d.type === "صرف" ? -l.qty : d.type === "توريد" || d.type === "قيد افتتاحي" ? l.qty : d.type === "جرد" || d.type === "تسوية" ? l.qty : 0;
+        const cur = (it.qty[d.warehouse] || 0) + delta;
+        if ((d.type === "صرف" || delta < 0) && cur < 0) return { ok: false, msg: `الكمية غير كافية للصنف ${it.name} — الرصيد سيصبح ${cur}` };
+      }
+    }
+    setDb((old) => {
+      const items = old.items.map((it: AnyR) => {
+        const line = d.lines.find((l) => l.item === it.id);
+        if (!line) return it;
+        const delta = d.type === "صرف" ? -line.qty : d.type === "توريد" || d.type === "قيد افتتاحي" ? line.qty : line.qty;
+        const qty = { ...(it.qty as Record<string, number>) };
+        if (d.type === "تحويل") { qty[d.warehouse] = (qty[d.warehouse] || 0) - line.qty; qty[d.toWarehouse!] = (qty[d.toWarehouse!] || 0) + line.qty; }
+        else qty[d.warehouse] = (qty[d.warehouse] || 0) + delta;
+        return { ...it, qty };
+      });
+      return { ...old, items, invDocs: [...old.invDocs, d as any] };
+    });
+    toast(`رُحّل السند ${d.ref} وأُثّرت الكميات فوراً`);
+    pushNotif({ kind: "info", title: `سند ${d.type} جديد`, body: `${d.ref} — ${d.lines.length} صنف في ${d.warehouse}` });
+    return { ok: true, msg: `رُحّل السند ${d.ref}` };
+  };
+
+  const voidInvDoc = (id: string) => {
+    const doc: any = db.invDocs.find((d: any) => d.id === id);
+    if (!doc || doc.status === "ملغي") return;
+    setDb((old) => {
+      const items = old.items.map((it: AnyR) => {
+        const line = doc.lines.find((l: any) => l.item === it.id);
+        if (!line) return it;
+        const qty = { ...(it.qty as Record<string, number>) };
+        if (doc.type === "تحويل") { qty[doc.warehouse] = (qty[doc.warehouse] || 0) + line.qty; qty[doc.toWarehouse] = (qty[doc.toWarehouse] || 0) - line.qty; }
+        else {
+          const delta = doc.type === "صرف" ? -line.qty : line.qty;
+          qty[doc.warehouse] = (qty[doc.warehouse] || 0) - delta;
+        }
+        return { ...it, qty };
+      });
+      const invDocs = old.invDocs.map((d: any) => (d.id === id ? { ...d, status: "ملغي" } : d));
+      return { ...old, items, invDocs };
+    });
+    toast(`تم التراجع عن السند ${doc.ref} وعكس أثره على الكميات`, "ok");
+  };
+
+  /* ── الفواتير ── */
+  const invoiceTotal = (inv: Invoice) =>
+    inv.lines.reduce((a, l) => a + l.qty * l.price * (1 - l.disc / 100), 0) * (1 + inv.vat / 100) * inv.rate;
+
+  const partnerOf = (kind: string, code: string) => (kind === "purchases" ? db.suppliers : db.customers).find((p) => p.id === code);
+
+  const addInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+    if (periodLocked(inv.date)) return { ok: false, msg: `الفترة ${inv.date.slice(0, 7)} مقفلة مالياً — رُفض الترحيل` };
+    const total = invoiceTotal(inv);
+    const coll: CollKey = kind;
+    if (kind === "sales" && inv.payType === "آجل" && settings.blockOverCredit) {
+      const c = partnerOf(kind, inv.partner) as any;
+      if (c?.creditLimit && c.balance + total > c.creditLimit)
+        return { ok: false, msg: `تجاوز الحد الائتماني للعميل ${c.name} (${Math.round(c.balance + total)} / ${c.creditLimit}) — رُفض الترحيل` };
+    }
+    setDb((old) => {
+      const items = (kind === "purchases" || kind === "returns")
+        ? old.items.map((it: AnyR) => {
+            const l = inv.lines.find((x) => x.item === it.id);
+            if (!l) return it;
+            const qty = { ...(it.qty as Record<string, number>) };
+            const wh = "WH-01";
+            qty[wh] = (qty[wh] || 0) + (kind === "purchases" ? l.qty : l.qty);
+            return { ...it, qty };
+          })
+        : old.items.map((it: AnyR) => {
+            const l = inv.lines.find((x) => x.item === it.id);
+            if (!l) return it;
+            const qty = { ...(it.qty as Record<string, number>) };
+            const wh = "WH-01";
+            qty[wh] = (qty[wh] || 0) - l.qty;
+            return { ...it, qty };
+          });
+      const partners = kind === "purchases" ? "suppliers" : "customers";
+      const pList = old[partners as CollKey].map((p: AnyR) =>
+        p.id === inv.partner && inv.payType === "آجل" ? { ...p, balance: p.balance + total } : p
+      );
+      return { ...old, items, [coll]: [...old[coll], inv as any], [partners]: pList };
+    });
+    toast(`رُحّلت الفاتورة ${inv.no} (${inv.payType}) ووُلّد أثرها المحاسبي والمخزني`);
+    pushNotif({ kind: "info", title: `فاتورة ${kind === "sales" ? "مبيعات" : kind === "purchases" ? "مشتريات" : "مرتجع"}`, body: `${inv.no} — ${Math.round(total).toLocaleString("en-US")} ر.ي (${inv.payType})` });
+    return { ok: true, msg: `رُحّلت الفاتورة ${inv.no}` };
+  };
+
+  const voidInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
+    const inv: any = db[kind].find((i: any) => i.id === id);
+    if (!inv || inv.status === "ملغاة") return;
+    const total = invoiceTotal(inv);
+    setDb((old) => {
+      const list = old[kind].map((i: any) => (i.id === id ? { ...i, status: "ملغاة" } : i));
+      const partners = kind === "purchases" ? "suppliers" : "customers";
+      const pList = old[partners as CollKey].map((p: AnyR) =>
+        p.id === inv.partner && inv.payType === "آجل" ? { ...p, balance: Math.max(0, p.balance - total) } : p
+      );
+      return { ...old, [kind]: list, [partners]: pList };
+    });
+    toast(`أُلغيت الفاتورة ${inv.no} وعُدّلت أرصدة الذمم تلقائياً`, "ok");
+  };
+
+  const payInvoice = (kind: "sales" | "purchases", id: string, amount: number) => {
+    const inv: any = db[kind].find((i: any) => i.id === id);
+    if (!inv) return { ok: false, msg: "الفاتورة غير موجودة" };
+    const total = invoiceTotal(inv);
+    const remaining = total - (inv.paid || 0);
+    if (amount <= 0 || amount > remaining + 0.01) return { ok: false, msg: `المبلغ غير صالح — المتبقي ${Math.round(remaining).toLocaleString("en-US")} ر.ي` };
+    setDb((old) => {
+      const list = old[kind].map((i: any) => (i.id === id ? { ...i, paid: (i.paid || 0) + amount } : i));
+      const partners = kind === "purchases" ? "suppliers" : "customers";
+      const pList = old[partners as CollKey].map((p: AnyR) => (p.id === inv.partner ? { ...p, balance: Math.max(0, p.balance - amount) } : p));
+      const no = nextNo(kind === "purchases" ? settings.prefixes.PV : settings.prefixes.RC);
+      const j: Journal = {
+        id: no, no, date: "2026-03-29", user: session?.user || "—", status: "مرحّل",
+        desc: kind === "purchases" ? `سند صرف — سداد دفعة للفاتورة ${inv.no}` : `سند قبض — تحصيل دفعة من الفاتورة ${inv.no}`,
+        kind: kind === "purchases" ? "صرف" : "قبض",
+        source: kind === "purchases" ? "سند صرف" : "سند قبض",
+        lines: kind === "purchases"
+          ? [{ account: settings.suspense.suppliers, debit: amount, credit: 0, currency: "YER", rate: 1 }, { account: settings.suspense.bank, debit: 0, credit: amount, currency: "YER", rate: 1 }]
+          : [{ account: settings.suspense.cash, debit: amount, credit: 0, currency: "YER", rate: 1 }, { account: settings.suspense.customers, debit: 0, credit: amount, currency: "YER", rate: 1 }],
+      };
+      return { ...old, [kind]: list, [partners]: pList, journals: [...old.journals, j as any] };
+    });
+    toast(`سُجّلت الدفعة ${Math.round(amount).toLocaleString("en-US")} ر.ي ووُلّد سند ${kind === "purchases" ? "صرف" : "قبض"} محاسبي تلقائياً`);
+    return { ok: true, msg: "تم التسجيل" };
+  };
+
+  /* ── القيود ── */
+  const addJournal = (j: Journal) => {
+    if (periodLocked(j.date)) return { ok: false, msg: `الفترة ${j.date.slice(0, 7)} مقفلة — حماية الكتابة مفعّلة` };
+    const dr = j.lines.reduce((a, l) => a + l.debit, 0), cr = j.lines.reduce((a, l) => a + l.credit, 0);
+    if (Math.abs(dr - cr) > 0.01) return { ok: false, msg: "القيد مرفوض: المدين ≠ الدائن (مبدأ القيد المزدوج)" };
+    setDb((old) => ({ ...old, journals: [...old.journals, j as any] }));
+    toast(`رُحّل القيد ${j.no} — متوازن (${Math.round(dr).toLocaleString("en-US")})`);
+    return { ok: true, msg: `رُحّل القيد ${j.no}` };
+  };
+  const voidJournal = (id: string) => {
+    setDb((old) => ({ ...old, journals: old.journals.map((j: any) => (j.id === id ? { ...j, status: "ملغي" } : j)) }));
+    toast("أُلغي القيد وأُبعد عن الأرصدة والتقارير", "ok");
+  };
+  const approveJournal = (id: string) => {
+    setDb((old) => ({ ...old, journals: old.journals.map((j: any) => (j.id === id ? { ...j, status: "مرحّل" } : j)) }));
+    toast("اعتُمد الطلب ورُحّل القيد إلى دفتر الأستاذ");
+  };
+  const lockPeriod = (id: string) => {
+    setDb((old) => ({ ...old, periods: old.periods.map((p: any) => (p.id === id ? { ...p, locked: true, closedAt: "2026-03-29" } : p)) }));
+    toast(`أُقفلت الفترة ${id} — أصبحت محصّنة ضد أي ترحيل أو تعديل`, "ok");
+    pushNotif({ kind: "warn", title: "إقفال فترة مالية", body: `الفترة ${id} مقفلة الآن بموجب صلاحيات الإقفال.` });
+  };
+  const setQuoteStatus = (id: string, status: string) => {
+    setDb((old) => ({ ...old, quotes: old.quotes.map((q: AnyR) => (q.id === id ? { ...q, status } : q)) }));
+    toast(`حُدّثت حالة العرض إلى «${status}»`);
+  };
+  const setRequestStatus = (id: string, status: string) => {
+    setDb((old) => ({ ...old, requests: old.requests.map((r: AnyR) => (r.id === id ? { ...r, status } : r)) }));
+    toast(`حُدّث طلب الشراء إلى «${status}»`);
+  };
+
+  /* ── الصلاحيات ── */
+  const can = (module: string, action: string) => {
+    const role = session?.role || "مدير النظام";
+    return (perms[role]?.[module] || []).includes(action);
+  };
+  const togglePerm = (role: string, module: string, action: string) =>
+    setPerms((old) => {
+      const cur = old[role]?.[module] || [];
+      const next = cur.includes(action) ? cur.filter((a) => a !== action) : [...cur, action];
+      return { ...old, [role]: { ...(old[role] || {}), [module]: next } };
+    });
+
+  /* ── التنسيقات ── */
   const fmtN = (n: number) => {
-    const abs = Math.abs(n);
-    let s: string;
-    if (prefs.numFmt === "arabic") s = abs.toLocaleString("ar-EG", { maximumFractionDigits: 2 });
-    else if (prefs.numFmt === "plain") s = abs.toFixed(2).replace(/\.00$/, "");
-    else s = abs.toLocaleString("en-US", { maximumFractionDigits: 2 });
-    return (n < 0 ? "-" : "") + s;
+    const r = Number(n.toFixed(settings.round));
+    if (prefs.nums === "plain") return String(r);
+    return r.toLocaleString(prefs.nums === "ar" ? "ar-EG" : "en-US", { maximumFractionDigits: settings.round });
   };
-  const fmtMoney = (n: number, cur = "YER") => {
-    const c = CURRENCIES.find((x) => x.code === cur);
-    return `${fmtN(n)} ${c ? c.symbol : cur}`;
-  };
-  const fmtDate = (d: string) => {
-    const dt = new Date(d + "T00:00:00");
-    if (prefs.dateFmt === "ymd") return d;
-    if (prefs.dateFmt === "arlong") return dt.toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" });
-    const [y, m, day] = d.split("-");
-    return `${day}/${m}/${y}`;
+  const fmtMoney = (n: number) => `${fmtN(n)} ر.ي`;
+  const fmtDate = (iso: string) => {
+    if (!iso) return "—";
+    if (prefs.dates === "iso") return iso;
+    const [y, m, d] = iso.split("-");
+    if (prefs.dates === "dmy") return `${d}/${m}/${y}`;
+    const names = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+    return `${Number(d)} ${names[Number(m) - 1]} ${y}`;
   };
 
   const exportCsv = (name: string, rows: (string | number)[][]) => {
-    const bom = "\uFEFF";
-    const csv = bom + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${name}.csv`; a.click();
     URL.revokeObjectURL(url);
-    toast(`تم تجهيز ملف «${name}» للتصدير (Excel/CSV)`, "ok");
+    toast(`صُدّر التقرير «${name}» بصيغة Excel (CSV)`, "ok");
   };
 
-  const itemQty = (code: string) => {
-    const it = items.find((x) => x.code === code);
-    return it ? Object.values(it.qty).reduce((a, b) => a + b, 0) : 0;
-  };
-  const invoiceTotal = (inv: Invoice) => {
-    const sub = inv.lines.reduce((a, l) => a + l.qty * l.price * (1 - l.disc / 100), 0);
-    return sub * (1 + inv.vat / 100) * inv.rate;
-  };
-
-  const monthOf = (d: string) => d.slice(0, 7);
-  const periodLocked = (date: string) => periods.find((p) => p.id === monthOf(date))?.locked ?? false;
-
-  /* ── إجراءات محاسبية ── */
-  const addJournal = (j: Journal) => {
-    const dr = j.lines.reduce((a, l) => a + l.debit, 0);
-    const cr = j.lines.reduce((a, l) => a + l.credit, 0);
-    if (Math.abs(dr - cr) > 0.01) return { ok: false, msg: `القيد غير متوازن! مدين ${fmtN(dr)} ≠ دائن ${fmtN(cr)}` };
-    if (periodLocked(j.date)) { pushNotif({ kind: "bad", title: "محاولة ترحيل لفترة مغلقة", body: `القيد ${j.no} يستهدف الفترة ${monthOf(j.date)} المغلقة.` }); return { ok: false, msg: `الفترة ${monthOf(j.date)} مقفلة — لا يمكن الترحيل إليها (مبدأ الاستمرارية).` }; }
-    setJournals((old) => [j, ...old]);
-    return { ok: true, msg: `تم ترحيل القيد ${j.no} بنجاح (مدين = دائن = ${fmtN(dr)})` };
-  };
-  const voidJournal = (id: string) => {
-    setJournals((old) => old.map((j) => (j.id === id ? { ...j, status: "ملغي" as const } : j)));
-    pushNotif({ kind: "warn", title: "إلغاء قيد يومية", body: `أُلغي القيد ${id} وسُجّل في دفتر التدقيق.` });
-    toast("تم إلغاء القيد وتسجيل العملية في دفتر التدقيق", "info");
-  };
-  const approveJournal = (id: string) => {
-    setJournals((old) => old.map((j) => (j.id === id ? { ...j, status: "مرحّل" as const, kind: "يومية" as const } : j)));
-    toast("تمت الموافقة على الطلب وترحيل القيد", "ok");
-  };
-
-  const applyStock = (inv: Invoice, sign: number) => {
-    setItems((old) => old.map((it) => {
-      const line = inv.lines.find((l) => l.item === it.code);
-      if (!line) return it;
-      const wh = "WH-01";
-      return { ...it, qty: { ...it.qty, [wh]: (it.qty[wh] || 0) + sign * line.qty } };
-    }));
-  };
-
-  const addInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
-    if (periodLocked(inv.date)) return { ok: false, msg: `الفترة ${monthOf(inv.date)} مقفلة — اختر تاريخاً ضمن فترة مفتوحة.` };
-    const set = kind === "sales" ? setSales : kind === "purchases" ? setPurchases : setReturns;
-    set((old) => [inv, ...old]);
-    if (kind === "sales") applyStock(inv, -1);
-    if (kind === "purchases") applyStock(inv, +1);
-    if (kind === "returns") applyStock(inv, +1);
-    if (inv.payType === "آجل") {
-      const list = kind === "purchases" ? SUPPLIERS : CUSTOMERS;
-      const p = list.find((x) => x.code === inv.partner);
-      const total = invoiceTotal(inv);
-      if (p) pushNotif({ kind: "info", title: kind === "purchases" ? "استحقاق جديد لمورد" : "ذمم مدينة جديدة", body: `${p.name}: ${fmtMoney(total)} — ${inv.no}` });
-    }
-    return { ok: true, msg: `تم ترحيل الفاتورة ${inv.no} (${inv.payType})` };
-  };
-  const voidInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
-    const set = kind === "sales" ? setSales : kind === "purchases" ? setPurchases : setReturns;
-    set((old) => old.map((i) => (i.id === id ? { ...i, status: "ملغاة" as const } : i)));
-    toast("تم إلغاء الفاتورة وعكس أثرها المخزني", "info");
-  };
-
-  const addInvDoc = (d: InvDoc) => {
-    setInvDocs((old) => [d, ...old]);
-    setItems((old) => old.map((it) => {
-      const line = d.lines.find((l) => l.item === it.code);
-      if (!line) return it;
-      const q = { ...it.qty };
-      q[d.warehouse] = (q[d.warehouse] || 0) + line.qty;
-      if (d.type === "تحويل" && d.toWarehouse) q[d.toWarehouse] = (q[d.toWarehouse] || 0) + line.qty;
-      return { ...it, qty: q };
-    }));
-    toast(`تم ترحيل سند ${d.type} رقم ${d.id}`, "ok");
-  };
-  const voidInvDoc = (id: string) => {
-    const d = invDocs.find((x) => x.id === id);
-    if (!d) return;
-    setItems((old) => old.map((it) => {
-      const line = d.lines.find((l) => l.item === it.code);
-      if (!line) return it;
-      const q = { ...it.qty };
-      q[d.warehouse] = (q[d.warehouse] || 0) - line.qty;
-      if (d.type === "تحويل" && d.toWarehouse) q[d.toWarehouse] = (q[d.toWarehouse] || 0) - line.qty;
-      return { ...it, qty: q };
-    }));
-    setInvDocs((old) => old.map((x) => (x.id === id ? { ...x, status: "ملغي" as const } : x)));
-    toast(`تم التراجع عن السند ${id} وعكس الكميات تلقائياً`, "info");
-  };
-
-  const lockPeriod = (id: string) => {
-    setPeriods((old) => old.map((p) => (p.id === id ? { ...p, locked: true, closedAt: new Date().toISOString().slice(0, 10) } : p)));
-    pushNotif({ kind: "warn", title: "إقفال فترة مالية", body: `أُغلقت الفترة ${id} — حُصّنت جميع القيود من التعديل.` });
-    toast(`تم إقفال الفترة ${id} بنجاح — الكتابة عليها محظورة الآن`, "ok");
-  };
-
-  const store = useMemo<Store>(() => ({
-    prefs, setPrefs, session, login: setSession, logout: () => { setSession(null); setRoute({ module: "dashboard", tab: "" }); },
-    route, nav: setRoute, toasts, toast, notifs, markNotifs: () => setNotifs([]), pushNotif,
-    accounts: ACCOUNTS, analyticals, items, invDocs, journals, sales, purchases, returns,
-    quotes: QUOTES, customers: CUSTOMERS, suppliers: SUPPLIERS, warehouses: WAREHOUSES, units: UNITS,
-    groups: GROUPS, costCenters: COST_CENTERS, currencies: CURRENCIES, periods, users, roles: ROLES,
-    permModules: PERM_MODULES, permActions: PERM_ACTIONS, changelog: CHANGELOG, sidebarBgs: SIDEBAR_BGS,
-    addJournal, voidJournal, approveJournal, addInvoice, voidInvoice, addInvDoc, voidInvDoc, lockPeriod,
-    addUser: (u: User) => { setUsers((old) => [...old, u]); toast(`أُضيف المستخدم «${u.name}» ومنحه دور ${u.role}`); },
-    toggleUser: (id) => setUsers((old) => old.map((u) => (u.id === id ? { ...u, active: !u.active } : u))),
-    perms, togglePerm: (key) => setPerms((old) => ({ ...old, [key]: !old[key] })),
-    backups, addBackup: (b) => setBackups((old) => [b, ...old]),
-    addItem: (i) => { setItems((old) => [...old, i]); toast(`أُضيف الصنف «${i.name}» إلى الدليل`); },
-    addAnalytical: (a) => { setAnalyticals((old) => [...old, a]); toast(`رُبط الحساب التحليلي «${a.name}» بالحساب ${a.linkedAccount}`); pushNotif({ kind: "info", title: "حساب تحليلي جديد", body: `${a.name} — ذمم مدينة تُتابَع دون تضخيم الدليل.` }); },
-    invoiceTotal, fmtN, fmtMoney, fmtDate, exportCsv, itemQty,
-  }), [prefs, session, route, toasts, notifs, journals, analyticals, invDocs, sales, purchases, returns, items, users, periods, backups, perms]);
-
-  return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{
+      db, trash, seq, settings, setSettings, prefs, setPrefs, session, route, toasts, notifs,
+      toast, pushNotif, markNotifs, nav, login, logout, nextNo,
+      save, remove, restore, purge, emptyTrash, importRows,
+      addInvDoc, voidInvDoc, addInvoice, voidInvoice, payInvoice,
+      addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
+      fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
+      accounts: ACCOUNTS, sidebarBgs: SIDEBAR_BGS, SYSTEM,
+    }}>
+      {children}
+    </Ctx.Provider>
+  );
 }

@@ -1,284 +1,217 @@
 import { useState } from "react";
 import { useApp } from "../store";
-import { Chip, I, Logo, Modal, PageHead, Reveal, Tabs } from "../ui";
-
-/* ملوّن أكواد خفيف */
-function Code({ children }: { children: string }) {
-  const html = children
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/(--[^\n]*)/g, '<span class="c">$1</span>')
-    .replace(/\b(CREATE|TABLE|PRIMARY|KEY|FOREIGN|REFERENCES|NOT|NULL|DEFAULT|ENGINE|CHARSET|INT|DECIMAL|VARCHAR|DATE|DATETIME|ENUM|BOOLEAN|TRIGGER|BEFORE|INSERT|ON|FOR|EACH|ROW|BEGIN|END|IF|THEN|SIGNAL|SQLSTATE|MESSAGE_TEXT|UNIQUE|INDEX|AUTO_INCREMENT)\b/g, '<span class="k">$1</span>')
-    .replace(/('[^']*')/g, '<span class="s">$1</span>');
-  return <pre className="codebox" dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-const SQL = `-- ═══ OkyanusProERP 3.0 — الهيكل الأساسي لقاعدة البيانات (MySQL 8.4) ═══
-CREATE TABLE accounts (
-  code        VARCHAR(12) PRIMARY KEY,          -- 5 مستويات: 1 / 11 / 111 / 1111 / 11111
-  name        VARCHAR(120) NOT NULL,
-  name_en     VARCHAR(120),
-  level       INT NOT NULL CHECK (level BETWEEN 1 AND 5),
-  parent_code VARCHAR(12),
-  type        ENUM('ASSET','LIABILITY','EQUITY','REVENUE','EXPENSE') NOT NULL,
-  is_posting  BOOLEAN DEFAULT (level = 5),
-  FOREIGN KEY (parent_code) REFERENCES accounts(code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE analytical_accounts (            -- نقطة الابتكار: التحليلي
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  parent_code VARCHAR(12) NOT NULL,             -- حساب المستوى الخامس المرتبط
-  full_name   VARCHAR(120) NOT NULL,            -- مثل: اسم المريض
-  INDEX idx_parent (parent_code),
-  FOREIGN KEY (parent_code) REFERENCES accounts(code)
-) ENGINE=InnoDB;
-
-CREATE TABLE journal_entries (
-  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
-  doc_no      VARCHAR(24) UNIQUE NOT NULL,
-  entry_date  DATE NOT NULL,
-  fiscal_period CHAR(7) NOT NULL,               -- YYYY-MM
-  description VARCHAR(255) NOT NULL,
-  status      ENUM('POSTED','VOID','PENDING') DEFAULT 'POSTED',
-  created_by  INT NOT NULL
-) ENGINE=InnoDB;
-
-CREATE TABLE journal_lines (
-  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
-  entry_id      BIGINT NOT NULL,
-  account_code  VARCHAR(12) NOT NULL,
-  analytic_id   INT NULL,
-  cost_center   VARCHAR(12),
-  currency      CHAR(3) DEFAULT 'YER',
-  rate          DECIMAL(14,6) DEFAULT 1,
-  debit         DECIMAL(18,2) DEFAULT 0,
-  credit        DECIMAL(18,2) DEFAULT 0,
-  FOREIGN KEY (entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
-  FOREIGN KEY (account_code) REFERENCES accounts(code)
-) ENGINE=InnoDB;
-
--- ═══ محفّز (Trigger) لضمان توازن القيد المزدوج ═══
-CREATE TRIGGER trg_balance_check
-BEFORE INSERT ON journal_lines FOR EACH ROW
-BEGIN
-  DECLARE total_dr DECIMAL(18,2); DECLARE total_cr DECIMAL(18,2);
-  SELECT COALESCE(SUM(debit),0), COALESCE(SUM(credit),0)
-    INTO total_dr, total_cr FROM journal_lines WHERE entry_id = NEW.entry_id;
-  -- يُستكمل الفحص عند إغلاق القيد عبر إجراء مخزن sp_close_entry
-END;
-
--- ═══ محفّز منع الكتابة على فترة مقفلة ═══
-CREATE TRIGGER trg_locked_period
-BEFORE INSERT ON journal_entries FOR EACH ROW
-BEGIN
-  IF EXISTS (SELECT 1 FROM fiscal_periods
-             WHERE period = NEW.fiscal_period AND is_locked = 1) THEN
-    SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'الفترة المالية مقفلة - لا يمكن الترحيل';
-  END IF;
-END;`;
-
-const API_DOC = `# OkyanusProERP 3.0 — REST API (OpenAPI 3.1)
-# المصادقة: JWT Bearer + OAuth2 Refresh Token — الصلاحيات ضمن الـ Claims
-
-POST   /api/v3/auth/login          # دخول (شركة/فرع/مستخدم/سنة مالية) → access+refresh
-GET    /api/v3/accounts/tree       # دليل الحسابات الهرمي (5 مستويات)
-GET    /api/v3/accounts/{code}/statement?from&to   # كشف حساب
-POST   /api/v3/journal-entries     # قيد يومية (يُرفض إن لم يتوازن أو الفترة مقفلة)
-PATCH  /api/v3/journal-entries/{id}/void           # إلغاء مع قيد عكسي
-POST   /api/v3/analytical          # ربط اسم تحليلي بحساب مستوى خامس
-POST   /api/v3/invoices/sales      # فاتورة مبيعات { payType: CASH|CREDIT }
-POST   /api/v3/invoices/purchases  # فاتورة مشتريات { payType: CASH|CREDIT }
-GET    /api/v3/reports/trial-balance?period=2026-03
-GET    /api/v3/reports/balance-sheet|income-statement
-POST   /api/v3/periods/{yyyy-mm}/close             # إقفال فترة (صلاحية خاصة)
-POST   /api/v3/system/backup                       # نسخة احتياطية فورية
-
-# نموذج جسم القيد:
-{
-  "date": "2026-03-29", "description": "...", "costCenter": "CC-01",
-  "lines": [
-    { "account": "11111", "debit": 96500, "currency": "YER", "rate": 1 },
-    { "account": "41111", "credit": 92000 },
-    { "account": "21211", "credit": 4500 }
-  ]
-}`;
-
-const ERD = `مخطط الكيانات (ERD) — 42 جدولاً موزعة على وحدات معزولة (Modular Monolith):
-
-  ┌─────────────┐   1───n   ┌──────────────┐   n───1   ┌────────────┐
-  │  companies  │───────────│   branches   │───────────│   users    │
-  └─────────────┘           └──────────────┘           └────────────┘
-                                     │ 1───n                │ n───n (roles/permissions)
-                                     ▼                      ▼
-  ┌─────────────┐   n───1   ┌──────────────┐         ┌────────────┐
-  │journal_lines│───────────│journal_entries│         │   roles    │
-  └─────────────┘           └──────────────┘         └────────────┘
-     │ n───1                       │ n───1
-     ▼                             ▼
-  ┌─────────────┐            ┌──────────────┐
-  │  accounts   │◄───────────│fiscal_periods│  (is_locked)
-  │ (5 مستويات) │            └──────────────┘
-  └─────────────┘
-     ▲ n───1
-  ┌──────────────────┐    ┌───────────┐    ┌──────────────┐
-  │analytical_accounts│   │  items    │───n│ stock_moves  │
-  └──────────────────┘    └───────────┘    └──────────────┘
-                            │ n───n              │ n───1
-                            ▼                    ▼
-                         ┌───────────┐    ┌──────────────┐
-                         │warehouses │    │  inv_docs    │
-                         └───────────┘    └──────────────┘
-  وحدات: GL • INV • PUR • SAL • SYS — لكل وحدة Service مستقلة وطبقة
-  Data Access خاصة بها، ولا تعبر الاستعلامات بين الوحدات إلا عبر APIs داخلية.`;
-
-const SPRINTS = [
-  { n: "Sprint 1", period: "أسبوعان", title: "الأساس والهوية", items: ["إعداد بيئة Docker + CI/CD", "قاعدة البيانات والجوهر المحاسبي (GL)", "شاشة الدخول والتوثيق JWT/OAuth2"], done: true },
-  { n: "Sprint 2", period: "3 أسابيع", title: "المخازن والمشتريات", items: ["الأدلة الأساسية والأصناف والباركود", "سندات الحركة الستة مع التراجع", "فواتير المشتريات نقدي/آجل وتقاريرها"], done: true },
-  { n: "Sprint 3", period: "3 أسابيع", title: "المبيعات والحسابات التحليلية", items: ["الحدود الائتمانية ومرتجعات المبيعات", "الحسابات التحليلية المرتبطة بالمستوى الخامس", "الرسوم البيانية التفاعلية للتقارير"], done: true },
-  { n: "Sprint 4", period: "أسبوعان", title: "التقارير والإقفال", items: ["ميزان المراجعة والميزانية وقائمة الدخل (IFRS)", "إقفال الفترات ومحفزات الحماية", "تصدير Excel/PDF"], done: true },
-  { n: "Sprint 5", period: "أسبوعان", title: "الأمان والتسليم", items: ["مصفوفة الصلاحيات الدقيقة وسجل التدقيق", "النسخ الاحتياطي والتفعيل والتراخيص", "اختبارات الأحمال والتوثيق النهائي"], done: false },
-];
+import { I, Modal, Chip, Logo, Reveal } from "../ui";
+import { CHANGELOG, SYSTEM } from "../data";
 
 export default function Help() {
   const app = useApp();
-  const [tab, setTab] = useState("about");
+  const [tab, setTab] = useState("guide");
   const [showLog, setShowLog] = useState(false);
   const [doc, setDoc] = useState("sql");
 
   return (
-    <div>
-      <PageHead icon="life" title="المساعدة والتوثيق" desc="حول النظام، دليل المستخدم التفاعلي، ووثائق المطورين (SQL / OpenAPI / خطة التنفيذ)" />
-      <Tabs active={tab} onChange={setTab} tabs={[
-        { id: "about", label: "حول النظام", icon: "info" },
-        { id: "guide", label: "دليل المستخدم", icon: "book" },
-        { id: "dev", label: "وثائق المطورين", icon: "code" },
-        { id: "plan", label: "خطة التنفيذ", icon: "clip" },
-      ]} />
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="life" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">المساعدة</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">دليل المستخدم، حول النظام، ووثائق المطورين — {SYSTEM.name} v{SYSTEM.version}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={() => setShowLog(true)}><I n="clock" size={15} /> Change Log</button>
+          <button className="btn btn-brand" onClick={() => app.toast("فُتح مركز الدعم — فريق أوكيانوس سوفت يرد خلال دقائق", "info")}><I n="life" size={15} /> دعم فني</button>
+        </div>
+      </div>
 
-      {tab === "about" && (
-        <div className="max-w-3xl mx-auto anim-fadein">
-          <Reveal><div className="card p-8 text-center relative overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-1.5" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand2))" }} />
-            <div className="flex justify-center mb-4"><Logo size={72} /></div>
-            <h2 className="font-display font-bold text-3xl">OkyanusProERP</h2>
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <span className="chip bg-[color-mix(in_srgb,var(--brand)_13%,transparent)] text-[var(--brand)] !text-[0.8rem] !px-3 !py-1">الإصدار 3.0</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)] !text-[0.8rem] !px-3 !py-1">مرخّص حتى 2027-01-15</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-[var(--warn)] !text-[0.8rem] !px-3 !py-1">بناء 2026.03.29</span>
-            </div>
-            <p className="text-soft font-medium text-[0.9rem] leading-7 mt-5 max-w-xl mx-auto">
-              نظام محاسبي وإداري متكامل بُني بنمط <b>Modular Monolith</b> بقيد مزدوج صارم، دليل حسابات هرمي من خمسة مستويات،
-              حسابات تحليلية مبتكرة، وتقارير فورية بمعايير IFRS — صُمم ليكون الأقوى في المنطقة.
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 text-center">
-              {[["6", "وحدات وظيفية"], ["42", "جدول قاعدة بيانات"], ["5", "أنماط مظهر"], ["99.98%", "جاهزية تشغيل"]].map(([a, b]) => (
-                <div key={b} className="bg-panel rounded-xl py-3.5"><div className="font-num font-bold text-xl text-[var(--brand)]">{a}</div><div className="text-[0.68rem] font-bold text-mute mt-0.5">{b}</div></div>
-              ))}
-            </div>
-            <div className="flex flex-wrap justify-center gap-2 mt-6">
-              <button className="btn btn-brand" onClick={() => setShowLog(true)}><I n="clock" size={16} /> Change Log — سجل التغييرات</button>
-              <a className="btn btn-ghost" href="https://okyanussoft.online/" target="_blank" rel="noreferrer"><I n="globe" size={16} /> موقع الشركة</a>
-              <button className="btn btn-ghost" onClick={() => app.toast("تم إرسال تقرير حالة النظام إلى فريق الدعم", "ok")}><I n="life" size={16} /> طلب دعم فني</button>
-            </div>
-          </div></Reveal>
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-line mb-5 px-1">
+        {[["guide", "دليل المستخدم", "book"], ["about", "حول النظام", "info"], ["dev", "وثائق المطورين", "code"]].map(([id, l, ic]) => (
+          <button key={id} onClick={() => setTab(id)} className={`tabline flex items-center gap-1.5 px-3.5 py-2.5 text-[0.82rem] font-bold whitespace-nowrap transition-colors ${tab === id ? "on text-[var(--brand)]" : "text-mute hover:text-ink"}`}>
+            <I n={ic} size={15} /> {l}
+          </button>
+        ))}
+      </div>
+
+      {tab === "guide" && (
+        <div className="grid md:grid-cols-2 gap-4 stagger">
+          {[
+            { ic: "box", t: "دورة المخزون الكاملة", steps: ["أنشئ الأصناف في دليل الأصناف مع الباركود والحدود", "رحّل سند قيد افتتاحي مخزني أو سند توريد", "راقب الأرصدة من تقرير أرصدة المخازن", "نفّذ جرداً دورياً ورحّل فروقاته بتسوية"] },
+            { ic: "truck", t: "دورة المشتريات", steps: ["اطلب شراءً (مسودة ← اعتماد ← تحويل)", "قارن عروض أسعار الموردين", "أصدر فاتورة مشتريات نقدي أو آجل", "تابع الذمم من شاشة فواتير مشتريات آجل وسجّل الدفعات"] },
+            { ic: "tag", t: "دورة المبيعات", steps: ["أصدر عرض سعر وقبوله يحوّله لفاتورة", "رحّل فاتورة مبيعات (نقدي / آجل) — يُفحص الحد الائتماني", "عند الاسترجاع أصدر فاتورة مرتجع مبيعات", "حلّل الأداء من تقارير المبيعات اليومية والشهرية"] },
+            { ic: "book", t: "الدورة المحاسبية", steps: ["افتح فترات السنة وأقفلها عند اكتمالها", "رحّل قيود اليومية وسندات القبض والصرف — يجب توازن القيد", "اربط الأسماء التفصيلية بالحسابات التحليلية (11212)", "أخرج ميزان المراجعة وميزان العمومية وقائمة الدخل"] },
+            { ic: "shield", t: "الإدارة والأمان", steps: ["أنشئ المستخدمين وحدّد أدوارهم", "اضبط مصفوفة الصلاحيات على مستوى الشاشة والزر", "اختبر اتصال MySQL من الإعدادات ← قاعدة البيانات", "جدول النسخ الاحتياطي الكامل والتفاضلي"] },
+            { ic: "palette", t: "التخصيص والتفضيلات", steps: ["اختر من 5 أنماط مظهر احترافية", "خصص خلفية الشريط الجانبي وشاشة الدخول", "اضبط حجم الخط والاتجاه وتنسيقات الأرقام والتواريخ", "فعّل إشعارات النظام والملخص البريدي"] },
+          ].map((g, i) => (
+            <Reveal key={g.t} delay={i * 60}>
+              <div className="card card-lift p-5">
+                <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2.5">
+                  <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)]"><I n={g.ic} size={18} /></span>
+                  {g.t}
+                </h3>
+                <ol className="space-y-2">
+                  {g.steps.map((s, j) => (
+                    <li key={j} className="flex items-start gap-2.5 text-[0.78rem] font-bold text-soft leading-6">
+                      <span className="w-5 h-5 rounded-full grid place-items-center text-[0.62rem] font-num font-bold bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)] shrink-0 mt-0.5">{j + 1}</span>
+                      {s}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </Reveal>
+          ))}
         </div>
       )}
 
-      {tab === "guide" && (
-        <div className="grid md:grid-cols-2 gap-4 anim-fadein stagger">
-          {[
-            ["book", "القيد المزدوج", "كل سند يُنشئ قيداً متوازناً (مدين = دائن) تلقائياً. جرّب إنشاء قيد يدوي من الحسابات العامة ← قيود وسندات، ولن يُسمح بالترحيل دون توازن."],
-            ["lock", "الفترات المالية", "من الحسابات العامة ← الفترات: الفترات المقفلة محصّنة بمحفزات قاعدة البيانات. أي فاتورة بتاريخ داخل فترة مقفلة ستُرفض فوراً — جرّبها."],
-            ["users", "الحسابات التحليلية", "أضف أسماء مرضى من الحسابات العامة ← الحسابات التحليلية دون لمس دليل الحسابات، ثم اربطها في سطور القيد عند الحساب 11212."],
-            ["undo", "التراجع عن الأذونات", "كل سند مخزني أو فاتورة قابلة للإلغاء بزر التراجع — تُعكس الكميات والأرصدة تلقائياً وتُسجل العملية في دفتر التدقيق."],
-            ["coins", "تجاوز الحد الائتماني", "أنشئ فاتورة مبيعات آجلة لعميل قريب من حدّه الائتماني — سيرفض النظام الترحيل ويعرض التنبيه فوراً."],
-            ["palette", "التخصيص الكامل", "من إدارة النظام ← التفضيلات: غيّر النمط، خلفية الشريط الجانبي، حجم الخط، الاتجاه RTL/LTR، وتنسيقات الأرقام — كل ذلك يُحفظ تلقائياً."],
-          ].map(([ic, t, d]) => (
-            <div key={t} className="card card-lift p-5 flex gap-4">
-              <span className="w-11 h-11 rounded-xl grid place-items-center shrink-0 bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]"><I n={ic} size={21} /></span>
-              <div><h3 className="font-display font-bold">{t}</h3><p className="text-[0.8rem] text-soft font-medium leading-6 mt-1">{d}</p></div>
+      {tab === "about" && (
+        <div className="max-w-3xl mx-auto">
+          <Reveal><div className="card p-8 text-center relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1.5" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand))" }} />
+            <div className="flex justify-center mb-4"><Logo size={64} /></div>
+            <h2 className="font-display font-bold text-3xl">{SYSTEM.name}</h2>
+            <p className="text-[0.82rem] font-bold text-mute mt-1 font-num" dir="ltr">{SYSTEM.en} — v{SYSTEM.version}</p>
+            <p className="text-[0.84rem] font-medium text-soft leading-7 mt-4 max-w-xl mx-auto">
+              نظام مالي ومخزني متكامل من شركة أوكيانوس سوفت: قيد مزدوج متعدد العملات، دليل حسابات من 5 مستويات،
+              حسابات تحليلية، إقفال فترات محصّن، وتقارير بمعايير IFRS — مصمم للأنشطة التجارية والطبية الكبيرة.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+              {[["الإصدار", "3.0.0"], ["قاعدة البيانات", "MySQL 8.0"], ["المصادقة", "JWT / OAuth2"], ["المعمارية", "Modular"]].map(([k, v]) => (
+                <div key={k} className="bg-panel rounded-xl p-3 border border-line"><div className="text-[0.64rem] font-bold text-mute">{k}</div><div className="font-num font-bold text-[0.9rem] mt-0.5" dir="ltr">{v}</div></div>
+              ))}
             </div>
-          ))}
+            <button className="btn btn-brand mt-6" onClick={() => setShowLog(true)}><I n="clock" size={16} /> سجل التغييرات (Change Log)</button>
+          </div></Reveal>
+          <Reveal delay={100}><div className="card p-5 mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-[0.8rem] font-bold text-soft">
+              <div className="flex items-center gap-2"><I n="bld" size={16} className="text-[var(--brand)]" /> {SYSTEM.company} — {SYSTEM.companyEn}</div>
+              <div className="flex items-center gap-2 mt-1.5"><I n="phone" size={16} className="text-[var(--good)]" /> <span className="font-num text-lg text-[var(--brand)]" dir="ltr">{SYSTEM.phone}</span></div>
+            </div>
+            <div className="text-end text-[0.72rem] font-bold text-mute">
+              <div>{SYSTEM.cr}</div>
+              <a href={SYSTEM.site} target="_blank" rel="noreferrer" className="text-[var(--brand)] hover:underline font-num" dir="ltr">{SYSTEM.site}</a>
+            </div>
+          </div></Reveal>
         </div>
       )}
 
       {tab === "dev" && (
-        <div className="anim-fadein">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            {[["sql", "SQL + المحفزات", "db"], ["erd", "مخطط ERD", "layers"], ["api", "OpenAPI / REST", "code"]].map(([id, l, ic]) => (
-              <button key={id} onClick={() => setDoc(id)} className={`btn ${doc === id ? "btn-brand" : "btn-ghost"}`}><I n={ic} size={15} /> {l}</button>
+        <div>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[["sql", "قاعدة البيانات SQL + ERD", "db"], ["api", "واجهة APIs (OpenAPI)", "code"], ["plan", "الخطة التنفيذية (Sprints)", "cal"]].map(([id, l, ic]) => (
+              <button key={id} onClick={() => setDoc(id)} className={`btn !py-2 ${doc === id ? "btn-brand" : "btn-ghost"}`}><I n={ic} size={15} /> {l}</button>
             ))}
-            <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)] ms-auto">الطبقات: Presentation → Business Logic → Data Access — فصل تام</span>
+            <button className="btn btn-ghost ms-auto" onClick={() => app.toast("نُزلت حزمة الوثائق كاملة (PDF + SQL)", "ok")}><I n="down" size={15} /> تنزيل الحزمة</button>
           </div>
-          <Reveal><div className="card overflow-hidden">
-            <div className="px-5 py-3 border-b border-line bg-panel flex items-center justify-between">
-              <h3 className="font-display font-bold text-sm">{doc === "sql" ? "scripts/schema_v3.sql — الجداول والمحفزات" : doc === "erd" ? "docs/erd.txt — العلاقات بين الوحدات" : "docs/openapi.yaml — ملخص الواجهات"}</h3>
-              <button className="btn btn-ghost !py-1.5 !text-[0.72rem]" onClick={() => app.toast("نُسخ المحتوى إلى الحافظة", "info")}><I n="clip" size={14} /> نسخ</button>
-            </div>
-            <div className="p-4"><Code>{doc === "sql" ? SQL : doc === "erd" ? ERD : API_DOC}</Code></div>
-          </div></Reveal>
-          <div className="grid md:grid-cols-3 gap-3 mt-4">
-            {[["server", "Backend", "Node.js + NestJS، طبقات Services/Repositories، JWT مع Refresh Rotation وArgon2id لكلمات المرور."], ["db", "Database", "MySQL 8.4 — InnoDB، محفزات لحماية الفترات والتوازن، نسخ احتياطي تفاضلي يومي."], ["globe", "Frontend", "React 18 + Vite + Tailwind v4 — هذا التطبيق، بـ RTL كامل وخمسة أنماط مظهر."]].map(([ic, t, d]) => (
-              <div key={t} className="card p-4"><div className="flex items-center gap-2 font-display font-bold mb-1.5"><I n={ic} size={17} className="text-[var(--brand)]" /> {t}</div><p className="text-[0.76rem] text-soft font-medium leading-6">{d}</p></div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === "plan" && (
-        <div className="max-w-3xl mx-auto anim-fadein">
-          <div className="space-y-4">
-            {SPRINTS.map((s, i) => (
-              <Reveal key={s.n} delay={i * 60}>
-                <div className="card p-5 flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <span className={`w-10 h-10 rounded-full grid place-items-center font-num font-bold shrink-0 ${s.done ? "bg-[var(--good)] text-white" : "bg-panel border-2 border-dashed border-[var(--brand)] text-[var(--brand)]"}`}>{s.done ? <I n="check" size={18} /> : i + 1}</span>
-                    {i < SPRINTS.length - 1 && <span className="w-0.5 flex-1 bg-line mt-2" />}
-                  </div>
-                  <div className="flex-1 pb-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-display font-bold text-lg">{s.title}</h3>
-                      <span className="chip bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] font-num">{s.n}</span>
-                      <span className="chip bg-[color-mix(in_srgb,var(--mute)_14%,transparent)] text-[var(--soft)]">{s.period}</span>
-                      <Chip s={s.done ? "مرحّل" : "بانتظار الموافقة"} />
-                    </div>
-                    <ul className="mt-2 space-y-1.5">
-                      {s.items.map((it) => <li key={it} className="flex items-center gap-2 text-[0.82rem] font-bold text-soft"><I n="check" size={14} className={s.done ? "text-[var(--good)]" : "text-mute"} /> {it}</li>)}
-                    </ul>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-          <Reveal><div className="card p-5 mt-4 text-[0.8rem] font-bold text-soft leading-7">
-            <h3 className="font-display font-bold text-base mb-2 flex items-center gap-2"><I n="file" size={18} className="text-[var(--brand)]" /> README.md — التشغيل السريع</h3>
-            <Code>{`# OkyanusProERP 3.0
-cp .env.example .env        # DB_HOST, DB_PORT, DB_USER, DB_PASS, JWT_SECRET
-docker compose up -d mysql  # قاعدة البيانات + الترحيلات (migrations)
-npm install && npm run dev  # الواجهة الأمامية على :5173
-npm run test                # اختبارات الوحدة والتكامل (Vitest)`}</Code>
-          </div></Reveal>
-        </div>
-      )}
-
-      {/* نافذة سجل التغييرات */}
-      <Modal open={showLog} onClose={() => setShowLog(false)} title="Change Log — سجل التغييرات الكامل" icon="clock" wide>
-        <div className="space-y-5">
-          {app.changelog.map((c, i) => (
-            <div key={c.v} className="relative ps-6">
-              <span className={`absolute start-0 top-1.5 w-3 h-3 rounded-full ${i === 0 ? "bg-[var(--brand)]" : "bg-line"}`} />
-              {i < app.changelog.length - 1 && <span className="absolute start-[5px] top-5 bottom--4 w-0.5 bg-line h-[calc(100%-8px)]" />}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-num font-bold text-lg text-[var(--brand)]" dir="ltr">v{c.v}</span>
-                <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]">{c.tag}</span>
-                <span className="font-num text-[0.7rem] text-mute" dir="ltr">{c.date}</span>
-                {i === 0 && <span className="chip bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)]">الإصدار الحالي</span>}
+          {doc === "sql" && (
+            <div className="card overflow-hidden">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center justify-between">
+                <span className="font-display font-bold text-sm">okyanus_ifs_schema.sql — هيكل قاعدة البيانات مع المحفزات</span>
+                <Chip s="مرحّل" />
               </div>
-              <ul className="mt-2 space-y-1.5">
-                {c.items.map((it) => <li key={it} className="flex items-start gap-2 text-[0.82rem] font-bold text-soft"><I n="arrow" size={13} className="mt-1 shrink-0 text-[var(--brand)]" /> {it}</li>)}
-              </ul>
+              <pre className="codeblock" dir="ltr">{`-- ═══ ERD: accounts(1) ─< journal_lines(N) >─ journals(1)
+--      items ─< inv_doc_lines >─ inv_docs | partners ─< invoices
+CREATE TABLE accounts (
+  code VARCHAR(12) PRIMARY KEY, parent_code VARCHAR(12),
+  name_ar VARCHAR(120) NOT NULL, level TINYINT CHECK (level BETWEEN 1 AND 5),
+  type ENUM('assets','liabilities','equity','revenue','expense'),
+  is_posting BOOL DEFAULT 0, is_analytical BOOL DEFAULT 0,
+  FOREIGN KEY (parent_code) REFERENCES accounts(code)
+);
+CREATE TABLE journals (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY, ref_no VARCHAR(30) UNIQUE,
+  doc_date DATE NOT NULL, fy_period CHAR(7) NOT NULL,
+  status ENUM('posted','void','pending') DEFAULT 'pending'
+);
+CREATE TABLE journal_lines (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY, journal_id BIGINT,
+  account_code VARCHAR(12), analytic_id BIGINT NULL,
+  cost_center VARCHAR(12), currency CHAR(3), rate DECIMAL(12,4),
+  debit DECIMAL(15,2) DEFAULT 0, credit DECIMAL(15,2) DEFAULT 0,
+  FOREIGN KEY (journal_id) REFERENCES journals(id)
+);
+-- ★ محفز توازن القيد المزدوج (يُفشل أي قيد غير متوازن)
+DELIMITER $$
+CREATE TRIGGER trg_je_balance AFTER INSERT ON journal_lines
+FOR EACH ROW BEGIN
+  DECLARE d DECIMAL(15,2); DECLARE c DECIMAL(15,2);
+  SELECT SUM(debit),SUM(credit) INTO d,c
+    FROM journal_lines WHERE journal_id = NEW.journal_id;
+  IF ABS(d-c) > 0.01 AND (SELECT COUNT(*) FROM journal_lines
+      WHERE journal_id=NEW.journal_id) >= 2 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Unbalanced entry';
+  END IF; END$$
+-- ★ محفز حماية الفترات المقفلة
+CREATE TRIGGER trg_period_lock BEFORE INSERT ON journals
+FOR EACH ROW BEGIN
+  IF EXISTS (SELECT 1 FROM periods WHERE id=NEW.fy_period AND locked=1) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Period locked';
+  END IF; END$$
+DELIMITER ;`}</pre>
             </div>
-          ))}
+          )}
+          {doc === "api" && (
+            <div className="card overflow-hidden">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center justify-between">
+                <span className="font-display font-bold text-sm">OpenAPI 3.1 — المصادقة OAuth2 (Bearer JWT) + تجديد تلقائي</span>
+                <Chip s="ساري" />
+              </div>
+              <pre className="codeblock" dir="ltr">{`POST /api/v3/auth/token          # تسجيل الدخول → access + refresh
+GET  /api/v3/inventory/items     # الأصناف (ترقيم، بحث، ترحيل صفحات)
+POST /api/v3/inventory/docs      # سند مخزني (توريد/صرف/تحويل/تسوية/جرد)
+POST /api/v3/inventory/docs/{id}/void   # تراجع مع عكس الكميات
+POST /api/v3/purchases/invoices  # فاتورة مشتريات {payType: cash|credit}
+POST /api/v3/purchases/invoices/{id}/payments  # دفعة سداد
+POST /api/v3/sales/invoices      # فحص الحد الائتماني قبل الترحيل 409
+POST /api/v3/gl/journals         # قيد يومية — 422 إن لم يتوازن
+POST /api/v3/gl/periods/{id}/close      # إقفال فترة (صلاحية خاصة)
+GET  /api/v3/reports/trial-balance?from&to&format=excel|pdf
+# أكواد الخطأ: 401 رمز منتهٍ | 403 صلاحية | 409 حد ائتماني | 423 فترة مقفلة`}</pre>
+            </div>
+          )}
+          {doc === "plan" && (
+            <div className="grid md:grid-cols-2 gap-4 stagger">
+              {[
+                { n: "Sprint 1", w: "أسبوع 1–2", t: "الأساس", items: ["قاعدة البيانات والهيكل (ERD + محفزات)", "المصادقة والصلاحيات", "دليل الحسابات والفترات"] },
+                { n: "Sprint 2", w: "أسبوع 3–4", t: "المخزون", items: ["الأدلة الأربعة + الاستيراد", "السندات الستة مع التراجع", "التقارير الخمسة"] },
+                { n: "Sprint 3", w: "أسبوع 5–6", t: "التجارة", items: ["المشتريات والموردون + الآجل", "المبيعات والحدود الائتمانية", "المرتجعات وعروض الأسعار"] },
+                { n: "Sprint 4", w: "أسبوع 7–8", t: "المحاسبة", items: ["القيود الخمسة والتوازن", "الحسابات التحليلية", "تقارير IFRS الأربعة"] },
+                { n: "Sprint 5", w: "أسبوع 9", t: "الإدارة", items: ["الإعدادات وقاعدة البيانات", "النسخ الاحتياطي والتفعيل", "التفضيلات الكاملة"] },
+                { n: "Sprint 6", w: "أسبوع 10", t: "التسليم", items: ["اختبارات القبول UAT", "تدريب المستخدمين", "الإطلاق والتوثيق النهائي"] },
+              ].map((s, i) => (
+                <div key={s.n} className="card card-lift p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-display font-bold text-base">{s.n} — {s.t}</h3>
+                    <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]">{s.w}</span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {s.items.map((x) => <li key={x} className="flex items-center gap-2 text-[0.78rem] font-bold text-soft"><I n="check" size={14} className="text-[var(--good)]" /> {x}</li>)}
+                  </ul>
+                  <div className="mt-3 h-1.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full" style={{ width: `${100 - i * 12}%`, background: "linear-gradient(90deg, var(--brand), var(--accent))" }} /></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Modal open={showLog} onClose={() => setShowLog(false)} wide icon="clock" title="سجل التغييرات — Change Log">
+        <div className="relative ps-6">
+          <span className="absolute top-1 bottom-1 start-[9px] w-px bg-[color-mix(in_srgb,var(--brand)_30%,transparent)]" />
+          <div className="space-y-6">
+            {CHANGELOG.map((c, i) => (
+              <div key={c.v} className="relative anim-rise" style={{ animationDelay: `${i * 80}ms` }}>
+                <span className={`absolute -start-6 top-1 w-[19px] h-[19px] rounded-full border-[3px] border-[var(--surface)] ${i === 0 ? "bg-[var(--brand)] blink" : "bg-[color-mix(in_srgb,var(--brand)_45%,var(--mute))]"}`} />
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="font-num font-bold text-[0.95rem]" dir="ltr">v{c.v}</span>
+                  <span className={`chip ${i === 0 ? "bg-[color-mix(in_srgb,var(--brand)_13%,transparent)] text-[var(--brand)]" : "bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)]"}`}>{c.tag}</span>
+                  <span className="text-[0.68rem] font-bold text-mute font-num" dir="ltr">{c.date}</span>
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {c.items.map((it) => <li key={it} className="flex items-start gap-2 text-[0.78rem] font-bold text-soft leading-6"><I n="check" size={13} className="text-[var(--good)] mt-1 shrink-0" /> {it}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
       </Modal>
     </div>

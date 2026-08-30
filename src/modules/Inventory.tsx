@@ -1,284 +1,506 @@
 import { useMemo, useState } from "react";
-import { useApp } from "../store";
-import { Barcode, Chip, Empty, I, Modal, PageHead, Tabs, Reveal } from "../ui";
+import { useApp, type AnyR } from "../store";
+import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart } from "../ui";
+import { Directory, DocList, type DirConf, type ColDef } from "../crud";
 import type { InvDoc } from "../data";
-
-const TABS = [
-  { id: "base", label: "البيانات الأساسية", icon: "layers" },
-  { id: "moves", label: "الحركات والمستندات", icon: "swap" },
-  { id: "reports", label: "التقارير", icon: "chart" },
-];
 
 export default function Inventory() {
   const app = useApp();
-  const [tab, setTab] = useState(app.route.tab || "base");
-  const [base, setBase] = useState("items");
-  const [q, setQ] = useState("");
-  const [docType, setDocType] = useState<string>("الكل");
-  const [showNew, setShowNew] = useState(false);
-  const [showItem, setShowItem] = useState(false);
-  const [newDoc, setNewDoc] = useState({ type: "توريد" as InvDoc["type"], warehouse: "WH-01", toWarehouse: "WH-02", date: "2026-03-29", item: "IT-1001", qty: 50 });
-  const [newItem, setNewItem] = useState({ name: "", group: "مسكنات وخافضات حرارة", unit: "علبة", cost: 1000, price: 1400, min: 50, max: 500, qty: 0 });
+  const p = app.route.path || "base.units";
+  if (p === "base.units") return <Directory conf={unitsConf(app)} />;
+  if (p === "base.wh") return <Directory conf={whConf(app)} />;
+  if (p === "base.groups") return <Directory conf={groupsConf(app)} />;
+  if (p === "base.items") return <Directory conf={itemsConf(app)} />;
+  if (p.startsWith("mv.")) return <MoveScreen kind={p.slice(3)} />;
+  if (p.startsWith("rep.")) return <ReportScreen kind={p.slice(4)} />;
+  return <Directory conf={unitsConf(app)} />;
+}
 
-  const totalQty = (it: (typeof app.items)[number]) => Object.values(it.qty).reduce((a, b) => a + b, 0);
-  const filteredItems = app.items.filter((i) => !q || i.name.includes(q) || i.code.includes(q) || i.barcode.includes(q));
-  const filteredDocs = app.invDocs.filter((d) => docType === "الكل" || d.type === docType);
+/* ═══════════ تكوينات الأدلة ═══════════ */
+const unitsConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "units", title: "الوحدات", icon: "scale", prefix: "UN", importKey: "units",
+  desc: "وحدات القياس المعتمدة في النظام — تُستخدم في دليل الأصناف والسندات",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true, placeholder: "UN-08" },
+    { k: "name", label: "الاسم", req: true, uniq: true, placeholder: "مثال: دستة" },
+    { k: "symbol", label: "الرمز المختصر", req: true },
+    { k: "active", label: "الحالة", type: "select", opts: [{ v: true, l: "نشطة" }, { v: false, l: "موقوفة" }] },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "اسم الوحدة", render: (r) => <b>{r.name}</b> },
+    { k: "symbol", label: "الرمز" },
+    { k: "usage", label: "مرات الاستخدام", num: true, render: (r) => <span className="font-num">{app.db.items.filter((i) => i.unit === r.id).length} صنف</span> },
+    { k: "active", label: "الحالة", render: (r) => <Chip s={r.active === false ? "ملغي" : "مرحّل"} /> },
+  ],
+});
 
-  const createDoc = () => {
-    const id = `${newDoc.type === "توريد" ? "GRN" : newDoc.type === "صرف" ? "ISS" : newDoc.type === "تحويل" ? "TR" : newDoc.type === "جرد" ? "JC" : "ADJ"}-2026-${String(app.invDocs.length + 100).padStart(4, "0")}`;
-    app.addInvDoc({ id, type: newDoc.type, date: newDoc.date, ref: id, warehouse: newDoc.warehouse, toWarehouse: newDoc.type === "تحويل" ? newDoc.toWarehouse : undefined, user: app.session?.user || "—", status: "مرحّل", lines: [{ item: newDoc.item, qty: newDoc.qty, cost: app.items.find((i) => i.code === newDoc.item)?.cost || 0 }] });
-    setShowNew(false);
-  };
+const whConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "warehouses", title: "دليل المخازن", icon: "bld", prefix: "WH", importKey: "warehouses",
+  desc: "المخازن والمستودعات وأمناء العهدة — كل حركة مخزنية تُرحّل إلى مخزن محدد",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم المخزن", req: true, uniq: true },
+    { k: "keeper", label: "أمين المخزن", req: true },
+    { k: "location", label: "الموقع" },
+    { k: "capacity", label: "السعة التخزينية" },
+    { k: "active", label: "الحالة", type: "select", opts: [{ v: true, l: "نشط" }, { v: false, l: "موقوف" }] },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "المخزن", render: (r) => <b>{r.name}</b> },
+    { k: "keeper", label: "الأمين" },
+    { k: "location", label: "الموقع" },
+    { k: "capacity", label: "السعة" },
+    { k: "stock", label: "الرصيد الحالي", num: true, render: (r, a) => <b className="font-num">{a.fmtN(a.db.items.reduce((s, i) => s + ((i.qty as any)[r.id] || 0), 0))}</b> },
+    { k: "active", label: "الحالة", render: (r) => <Chip s={r.active === false ? "ملغي" : "مرحّل"} /> },
+  ],
+});
 
-  const createItem = () => {
-    if (!newItem.name.trim()) { app.toast("اسم الصنف مطلوب", "err"); return; }
-    app.addItem({ code: `IT-${1000 + app.items.length + 1}`, name: newItem.name, group: newItem.group, unit: newItem.unit, barcode: `621000${1000 + app.items.length + 1}`, cost: +newItem.cost, price: +newItem.price, min: +newItem.min, max: +newItem.max, qty: { "WH-01": +newItem.qty } });
-    setShowItem(false);
+const groupsConf = (_app?: ReturnType<typeof useApp>): DirConf => ({
+  coll: "groups", title: "دليل المجموعات", icon: "layers", prefix: "GR", importKey: "groups",
+  desc: "تصنيف الأصناف إلى مجموعات لتحليل التقارير ومراقبة المخزون",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم المجموعة", req: true, uniq: true },
+    { k: "note", label: "ملاحظات", span: true },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "المجموعة", render: (r) => <b>{r.name}</b> },
+    { k: "note", label: "ملاحظات" },
+  ],
+});
+
+const itemsConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "items", title: "دليل الأصناف", icon: "box", prefix: "IT", importKey: "items",
+  desc: "الأصناف مع الباركود والحدود الدنيا والعليا — أساس كل حركة مخزنية ومالية",
+  fields: [
+    { k: "code", label: "كود الصنف", req: true, uniq: true },
+    { k: "name", label: "اسم الصنف", req: true, span: true },
+    { k: "group", label: "المجموعة", type: "select", req: true, opts: app.db.groups.map((g) => ({ v: g.id, l: g.name })) },
+    { k: "unit", label: "الوحدة", type: "select", req: true, opts: app.db.units.map((u) => ({ v: u.id, l: u.name })) },
+    { k: "barcode", label: "الباركود", hint: "يُولّد تلقائياً إن تُرك فارغاً", placeholder: "6210001011" },
+    { k: "cost", label: "التكلفة", type: "number", req: true },
+    { k: "price", label: "سعر البيع", type: "number", req: true },
+    { k: "min", label: "الحد الأدنى", type: "number", req: true },
+    { k: "max", label: "الحد الأقصى", type: "number", req: true },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "الصنف", render: (r) => <b>{r.name}</b> },
+    { k: "group", label: "المجموعة", render: (r) => app.db.groups.find((g) => g.id === r.group)?.name || "—" },
+    { k: "barcode", label: "الباركود", render: (r) => <Barcode value={String(r.barcode || r.code)} h={22} /> },
+    { k: "cost", label: "التكلفة", num: true, render: (r, a) => <span className="font-num">{a.fmtN(r.cost)}</span> },
+    { k: "price", label: "سعر البيع", num: true, render: (r, a) => <span className="font-num font-bold text-[var(--brand)]">{a.fmtN(r.price)}</span> },
+    { k: "qty", label: "الرصيد الكلي", num: true, render: (r, a) => <b className="font-num">{a.fmtN(a.itemQty(r.id))}</b> },
+  ],
+});
+
+/* ═══════════ شاشات الحركات ═══════════ */
+const DOC_META: Record<string, { label: string; full: string; icon: string; prefix: string; desc: string; verb: string }> = {
+  open: { label: "قيد افتتاحي", full: "سند قيد افتتاحي مخزني", icon: "cal", prefix: "OB", desc: "إدخال أرصدة الأصناف عند بداية السنة أو افتتاح مخزن جديد", verb: "قيد افتتاحي" },
+  grn: { label: "توريد", full: "سند توريد مخزني", icon: "down", prefix: "GRN", desc: "إضافة كميات واردة إلى المخزن (مشتريات، إرجاع من عميل، إنتاج)", verb: "توريد" },
+  iss: { label: "صرف", full: "سند صرف مخزني", icon: "wallet", prefix: "ISS", desc: "صرف كميات من المخزن (مبيعات، استهلاك داخلي) مع منع السالب", verb: "صرف" },
+  tr: { label: "تحويل", full: "سند تحويل مخزني", icon: "swap", prefix: "TR", desc: "نقل أصناف بين مخزنين — يخرج من المصدر ويدخل في الوجهة تلقائياً", verb: "تحويل" },
+  adj: { label: "تسوية", full: "سند تسوية مخزنية", icon: "scale", prefix: "ADJ", desc: "تسوية فروقات بكميات موجبة أو سالبة مع ذكر السبب", verb: "تسوية" },
+  count: { label: "جرد", full: "جرد مخزني", icon: "clip", prefix: "JC", desc: "جرد فعلي: تُدخل الكميات المعدودة ويُحتسب الفرق عن النظام تلقائياً", verb: "جرد" },
+};
+
+function MoveScreen({ kind }: { kind: string }) {
+  const app = useApp();
+  const meta = DOC_META[kind];
+  const [show, setShow] = useState(false);
+  const [view, setView] = useState<AnyR | null>(null);
+  const docs = (app.db.invDocs as any as AnyR[]).filter((d) => d.type === meta.label).reverse();
+
+  const whName = (id: string) => app.db.warehouses.find((w) => w.id === id)?.name || id;
+  const itemName = (id: string) => app.db.items.find((i) => i.id === id)?.name || id;
+
+  const cols: ColDef[] = [
+    { k: "ref", label: "رقم السند", render: (d) => <span className="font-num font-bold" dir="ltr">{d.ref}</span> },
+    { k: "date", label: "التاريخ", num: true, render: (d, a) => a.fmtDate(d.date) },
+    { k: "warehouse", label: kind === "tr" ? "من مخزن → إلى" : "المخزن", render: (d) => <b>{whName(d.warehouse)}{kind === "tr" && <span className="text-[var(--brand)]"> ← {whName(d.toWarehouse)}</span>}</b> },
+    { k: "lines", label: "الأصناف", num: true, render: (d) => <span className="font-num">{d.lines.length}</span> },
+    { k: "value", label: "القيمة بالتكلفة", num: true, render: (d, a) => <b className="font-num">{a.fmtN(d.lines.reduce((s: number, l: any) => s + l.qty * l.cost, 0))}</b> },
+    { k: "user", label: "المستخدم" },
+    { k: "status", label: "الحالة", render: (d) => <Chip s={d.status} /> },
+  ];
+
+  return (
+    <>
+      <DocList docs={docs} title={meta.full} desc={meta.desc} icon={meta.icon} cols={cols}
+        onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} />
+
+      {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
+
+      <Modal open={!!view} onClose={() => setView(null)} wide icon={meta.icon} title={`تفاصيل السند ${view?.ref || ""}`}>
+        {view && (
+          <>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num" dir="ltr">{view.ref}</span>
+              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)]">{view.type}</span>
+              <Chip s={view.status} />
+              <span className="text-[0.74rem] font-bold text-mute flex items-center gap-1"><I n="cal" size={13} /> {app.fmtDate(view.date)} • {view.user}</span>
+            </div>
+            <table className="tbl mb-3">
+              <thead><tr><th>الصنف</th><th>الكمية</th><th>التكلفة</th><th>الإجمالي</th></tr></thead>
+              <tbody>
+                {view.lines.map((l: any, i: number) => (
+                  <tr key={i}>
+                    <td className="font-bold">{itemName(l.item)}</td>
+                    <td className={`font-num font-bold ${l.qty < 0 ? "text-[var(--bad)]" : "text-[var(--good)]"}`}>{l.qty > 0 ? "+" : ""}{l.qty}</td>
+                    <td className="font-num">{app.fmtN(l.cost)}</td>
+                    <td className="font-num font-bold">{app.fmtN(l.qty * l.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {view.note && <p className="text-[0.78rem] font-bold text-soft bg-panel rounded-lg p-3 border border-line">ملاحظة: {view.note}</p>}
+            {view.status !== "ملغي" && (
+              <div className="flex justify-end mt-4">
+                <button className="btn btn-danger" onClick={() => { app.voidInvDoc(view.id); setView(null); }}><I n="undo" size={15} /> التراجع عن السند وعكس الكميات</button>
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
+    </>
+  );
+}
+
+function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
+  const app = useApp();
+  const meta = DOC_META[kind];
+  const [date, setDate] = useState("2026-03-29");
+  const [wh, setWh] = useState(app.db.warehouses[0]?.id || "WH-01");
+  const [toWh, setToWh] = useState(app.db.warehouses[1]?.id || "WH-02");
+  const [note, setNote] = useState("");
+  const [lines, setLines] = useState<{ item: string; qty: string; cost: string; counted?: string }[]>([{ item: app.db.items[0]?.id || "", qty: "10", cost: String(app.db.items[0]?.cost || 0) }]);
+
+  const setLine = (i: number, patch: Partial<typeof lines[0]>) => setLines((old) => old.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const totalQty = lines.reduce((a, l) => a + (+l.qty || 0), 0);
+  const totalVal = lines.reduce((a, l) => a + (+l.qty || 0) * (+l.cost || 0), 0);
+
+  const save = () => {
+    const valid = lines.filter((l) => l.item && (+l.qty || 0) !== 0);
+    if (valid.length === 0) { app.toast("أضف سطراً واحداً على الأقل بكمية غير صفرية", "err"); return; }
+    if (kind === "tr" && wh === toWh) { app.toast("مخزنا المصدر والوجهة متطابقان — اختر مخزنين مختلفين", "err"); return; }
+    const ref = app.nextNo(app.settings.prefixes[meta.prefix.toUpperCase()] || meta.prefix);
+    const finalLines = valid.map((l) => {
+      const it: any = app.db.items.find((i) => i.id === l.item);
+      let qty = +l.qty;
+      if (kind === "count") qty = +l.qty - ((it?.qty[wh] || 0)); // الفرق عن النظام
+      return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
+    });
+    if (kind === "count" && finalLines.every((l) => l.qty === 0)) { app.toast("لا توجد فروقات جرد — الكميات المعدودة مطابقة للنظام ✓", "ok"); onClose(); return; }
+    const res = app.addInvDoc({ id: ref, type: meta.label, date, ref, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined, user: app.session?.user || "—", status: "مرحّل", lines: finalLines, note } as InvDoc);
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) onClose();
   };
 
   return (
-    <div>
-      <PageHead icon="box" title="وحدة المخازن والمستودعات" desc="الأدلة الأساسية، سندات الحركة الستة، وتقارير الرقابة المخزنية">
-        <button className="btn btn-ghost" onClick={() => app.exportCsv("ارصدة_المخازن", [["الكود", "الصنف", "الرصيد", "الحد الأدنى", "قيمة التكلفة"], ...app.items.map((i) => [i.code, i.name, totalQty(i), i.min, totalQty(i) * i.cost])])}><I n="xlsx" size={16} /> Excel</button>
-        <button className="btn btn-ghost" onClick={() => app.toast("جارٍ تجهيز ملف PDF للطباعة…", "info")}><I n="pdf" size={16} /> PDF</button>
-        <button className="btn btn-brand" onClick={() => setShowItem(true)}><I n="plus" size={16} /> صنف جديد</button>
-      </PageHead>
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+    <Modal open onClose={onClose} wide icon={meta.icon} title={`إنشاء ${meta.full} — رقم يُولّد تلقائياً`}>
+      <div className="grid md:grid-cols-4 gap-3 mb-4">
+        <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>
+          <input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        <label className="block"><span className="text-[0.74rem] font-bold text-soft">{kind === "tr" ? "من مخزن" : "المخزن"}</span>
+          <select className="select mt-1" value={wh} onChange={(e) => setWh(e.target.value)}>
+            {app.db.warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select></label>
+        {kind === "tr" && (
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">إلى مخزن</span>
+            <select className="select mt-1" value={toWh} onChange={(e) => setToWh(e.target.value)}>
+              {app.db.warehouses.filter((w) => w.id !== wh).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select></label>
+        )}
+        <label className={`block ${kind === "tr" ? "" : "md:col-span-2"}`}><span className="text-[0.74rem] font-bold text-soft">ملاحظة / السبب</span>
+          <input className="input mt-1" value={note} onChange={(e) => setNote(e.target.value)} placeholder="سبب الحركة…" /></label>
+      </div>
 
-      {tab === "base" && (
-        <div className="anim-fadein">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            {[["items", "دليل الأصناف", "box"], ["wh", "دليل المخازن", "bld"], ["groups", "دليل المجموعات", "layers"], ["units", "الوحدات", "scale"]].map(([id, l, ic]) => (
-              <button key={id} onClick={() => setBase(id)} className={`btn !py-2 ${base === id ? "btn-brand" : "btn-ghost"}`}><I n={ic} size={15} /> {l}</button>
-            ))}
-            <div className="relative ms-auto w-64 max-w-full">
-              <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
-              <input className="input !ps-9" placeholder="بحث بالكود أو الاسم أو الباركود…" value={q} onChange={(e) => setQ(e.target.value)} />
-            </div>
+      <div className="rounded-xl border border-line overflow-hidden mb-3">
+        <table className="tbl">
+          <thead><tr><th>الصنف</th><th>{kind === "count" ? "الرصيد بالنظام" : ""}</th><th>{kind === "count" ? "الكمية المعدودة" : "الكمية"}</th><th>التكلفة</th><th>{kind === "count" ? "الفرق" : "الإجمالي"}</th><th></th></tr></thead>
+          <tbody>
+            {lines.map((l, i) => {
+              const it: any = app.db.items.find((x) => x.id === l.item);
+              const sys = it?.qty[wh] || 0;
+              const diff = (+l.qty || 0) - sys;
+              return (
+                <tr key={i}>
+                  <td>
+                    <select className="select !py-1.5 !text-[0.78rem]" value={l.item}
+                      onChange={(e) => { const ni: any = app.db.items.find((x) => x.id === e.target.value); setLine(i, { item: e.target.value, cost: String(ni?.cost || 0), qty: kind === "count" ? String(ni?.qty[wh] || 0) : l.qty }); }}>
+                      {app.db.items.map((it2) => <option key={it2.id} value={it2.id}>{it2.name}</option>)}
+                    </select>
+                  </td>
+                  {kind === "count" && <td className="font-num text-mute">{app.fmtN(sys)}</td>}
+                  <td><input type="number" className="input !py-1.5 !w-28 font-num" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} /></td>
+                  <td><input type="number" className="input !py-1.5 !w-28 font-num" value={l.cost} onChange={(e) => setLine(i, { cost: e.target.value })} /></td>
+                  <td className="font-num font-bold">
+                    {kind === "count"
+                      ? <span className={diff === 0 ? "text-mute" : diff < 0 ? "text-[var(--bad)]" : "text-[var(--good)]"}>{diff > 0 ? "+" : ""}{diff}</span>
+                      : app.fmtN((+l.qty || 0) * (+l.cost || 0))}
+                  </td>
+                  <td><button className="text-mute hover:text-[var(--bad)] transition-colors" onClick={() => lines.length > 1 && setLines(lines.filter((_, j) => j !== i))} aria-label="حذف"><I n="trash" size={15} /></button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <button className="w-full py-2.5 text-[0.78rem] font-bold text-[var(--brand)] hover:bg-[color-mix(in_srgb,var(--brand)_6%,transparent)] transition-colors flex items-center justify-center gap-1.5 border-t border-line"
+          onClick={() => setLines([...lines, { item: app.db.items[0]?.id || "", qty: "1", cost: String(app.db.items[0]?.cost || 0) }])}>
+          <I n="plus" size={14} /> إضافة سطر صنف
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))] border border-line">
+        <span className="text-[0.78rem] font-bold text-soft">عدد الأسطر: <b className="font-num">{lines.length}</b> • إجمالي الكميات: <b className="font-num">{app.fmtN(totalQty)}</b></span>
+        <span className="font-num font-bold text-lg text-[var(--brand)]">{app.fmtN(totalVal)} <span className="text-[0.7rem] text-mute">ر.ي (بالتكلفة)</span></span>
+      </div>
+      <div className="flex justify-end gap-2 mt-5">
+        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-brand" onClick={save}><I n="check" size={16} /> ترحيل {meta.verb} وتحديث الكميات</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ═══════════ التقارير الخمسة ═══════════ */
+function ReportScreen({ kind }: { kind: string }) {
+  const app = useApp();
+  const items = app.db.items;
+  const whs = app.db.warehouses;
+  const [selItem, setSelItem] = useState(items[0]?.id || "");
+  const [selWh, setSelWh] = useState("all");
+
+  const title = { bal: "تقرير أرصدة المخازن", move: "تقرير حركة الأصناف", card: "بطاقة صنف", watch: "مراقبة المخزون", count: "تقرير جرد المخزون" }[kind] || "";
+  const desc = {
+    bal: "أرصدة كل صنف في كل مخزن مع إجماليات القيم بالتكلفة وبسعر البيع",
+    move: "كل الحركات المخزنية على صنف محدد مع الرصيد التراكمي",
+    card: "الملف الكامل لصنف: بياناته، باركود، حدوده، وأرصدته في المخازن",
+    watch: "الأصناف دون الحد الأدنى أو فوق الأقصى أو الراكدة — إنذار مبكر",
+    count: "نتائج الجرد الفعلية وفروقاتها المقيمة مالياً",
+  }[kind] || "";
+  const icon = { bal: "bld", move: "pulse", card: "receipt", watch: "eye", count: "clip" }[kind] || "chart";
+
+  const moveRows = useMemo(() => {
+    const rows: { ref: string; date: string; type: string; qty: number; run: number }[] = [];
+    let run = 0;
+    (app.db.invDocs as any as AnyR[]).filter((d) => d.status === "مرحّل").forEach((d) => {
+      d.lines.forEach((l: any) => {
+        if (l.item === selItem && (selWh === "all" || d.warehouse === selWh || d.toWarehouse === selWh)) {
+          run += l.qty;
+          rows.push({ ref: d.ref, date: d.date, type: d.type, qty: l.qty, run });
+        }
+      });
+    });
+    return rows;
+  }, [app.db.invDocs, selItem, selWh]);
+
+  const it: any = items.find((i) => i.id === selItem);
+
+  const watchRows = items.map((i: any) => {
+    const total = app.itemQty(i.id);
+    const status = total === 0 ? "نافد" : total < i.min ? "دون الحد الأدنى" : total > i.max ? "فوق الحد الأعلى" : "سليم";
+    return { ...i, total, status };
+  });
+
+  const exportReport = () => {
+    if (kind === "bal") app.exportCsv("ارصدة_المخازن", [["الصنف", ...whs.map((w) => w.name), "الإجمالي", "قيمة التكلفة"], ...items.map((i: any) => [i.name, ...whs.map((w) => i.qty[w.id] || 0), app.itemQty(i.id), app.itemQty(i.id) * i.cost])]);
+    else if (kind === "move") app.exportCsv(`حركة_الصنف_${it?.name || ""}`, [["السند", "التاريخ", "النوع", "الكمية", "الرصيد"], ...moveRows.map((r) => [r.ref, r.date, r.type, r.qty, r.run])]);
+    else if (kind === "watch") app.exportCsv("مراقبة_المخزون", [["الصنف", "الرصيد", "أدنى", "أقصى", "الحالة"], ...watchRows.map((r) => [r.name, r.total, r.min, r.max, r.status])]);
+    else if (kind === "count") app.exportCsv("الجرد", [["السند", "التاريخ", "الصنف", "الفرق", "قيمة الفرق"], ...(app.db.invDocs as any as AnyR[]).filter((d) => d.type === "جرد").flatMap((d) => d.lines.map((l: any) => [d.ref, d.date, items.find((i) => i.id === l.item)?.name || "", l.qty, l.qty * l.cost]))]);
+    else app.toast("تقرير PDF جاهز في قائمة الطباعة", "info");
+  };
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n={icon} size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">{title}</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">{desc}</p>
           </div>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={exportReport}><I n="xlsx" size={15} /> تصدير Excel</button>
+          <button className="btn btn-ghost" onClick={() => { app.toast("أُرسل التقرير إلى قائمة الطباعة PDF", "info"); }}><I n="pdf" size={15} /> PDF</button>
+        </div>
+      </div>
 
-          {base === "items" && (
-            <Reveal><div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="tbl min-w-[880px]">
-                  <thead><tr><th>الكود</th><th>الصنف</th><th>المجموعة</th><th>الوحدة</th><th>الباركود</th><th>التكلفة</th><th>سعر البيع</th><th>الرصيد الكلي</th><th>الحدود</th><th>الحالة</th></tr></thead>
-                  <tbody>
-                    {filteredItems.map((i) => { const t = totalQty(i); const low = t < i.min; return (
-                      <tr key={i.code}>
-                        <td className="font-num" dir="ltr">{i.code}</td>
-                        <td className="font-bold">{i.name}</td>
-                        <td><span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{i.group}</span></td>
-                        <td>{i.unit}</td>
-                        <td><Barcode value={i.barcode} h={26} /><div className="font-num text-[0.62rem] text-mute" dir="ltr">{i.barcode}</div></td>
-                        <td className="font-num">{app.fmtN(i.cost)}</td>
-                        <td className="font-num font-bold">{app.fmtN(i.price)}</td>
-                        <td className="font-num font-bold" style={{ color: low ? "var(--bad)" : "var(--ink)" }}>{app.fmtN(t)}</td>
-                        <td className="font-num text-mute" dir="ltr">{i.min} – {i.max}</td>
-                        <td>{low ? <span className="chip bg-[color-mix(in_srgb,var(--bad)_13%,transparent)] text-[var(--bad)]"><I n="alert" size={11} /> دون الحد</span> : <span className="chip bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)]"><I n="check" size={11} /> سليم</span>}</td>
-                      </tr>); })}
-                  </tbody>
-                </table>
-              </div>
-              {filteredItems.length === 0 && <Empty msg="لا توجد أصناف مطابقة لبحثك" />}
-            </div></Reveal>
-          )}
-
-          {base === "wh" && (
-            <div className="grid md:grid-cols-3 gap-4 stagger">
-              {app.warehouses.map((w, idx) => (
-                <div key={w.code} className="card card-lift p-5 relative overflow-hidden">
-                  <div className="absolute top-0 start-0 w-full h-1.5" style={{ background: `linear-gradient(90deg, var(--brand), var(--accent))` }} />
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-11 h-11 rounded-xl grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]"><I n="bld" size={22} /></span>
-                    <div><div className="font-display font-bold">{w.name}</div><div className="font-num text-[0.68rem] text-mute" dir="ltr">{w.code}</div></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[0.76rem]">
-                    <div className="bg-panel rounded-lg p-2.5"><div className="text-mute font-bold text-[0.66rem]">أمين المخزن</div><div className="font-bold mt-0.5">{w.keeper}</div></div>
-                    <div className="bg-panel rounded-lg p-2.5"><div className="text-mute font-bold text-[0.66rem]">السعة</div><div className="font-num font-bold mt-0.5" dir="ltr">{w.capacity}</div></div>
-                    <div className="bg-panel rounded-lg p-2.5"><div className="text-mute font-bold text-[0.66rem]">أصناف نشطة</div><div className="font-num font-bold mt-0.5">{app.items.filter((i) => (i.qty[w.code] || 0) > 0).length}</div></div>
-                    <div className="bg-panel rounded-lg p-2.5"><div className="text-mute font-bold text-[0.66rem]">وحدات مخزنة</div><div className="font-num font-bold mt-0.5">{app.fmtN(app.items.reduce((a, i) => a + (i.qty[w.code] || 0), 0))}</div></div>
-                  </div>
-                  <div className="mt-3 h-1.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full" style={{ width: `${40 + idx * 22}%`, background: "linear-gradient(90deg, var(--brand), var(--accent))" }} /></div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {base === "groups" && (
-            <Reveal><div className="card p-5">
-              <div className="grid md:grid-cols-3 gap-3">
-                {app.groups.map((g) => {
-                  const gi = app.items.filter((i) => i.group === g);
-                  const val = gi.reduce((a, i) => a + totalQty(i) * i.cost, 0);
-                  return (
-                    <div key={g} className="p-4 rounded-xl border border-line bg-panel hover:border-[var(--brand)] transition-colors cursor-default group">
-                      <div className="flex items-center justify-between">
-                        <span className="font-display font-bold group-hover:text-[var(--brand)] transition-colors">{g}</span>
-                        <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)] font-num">{gi.length} صنف</span>
-                      </div>
-                      <div className="mt-2 font-num text-sm font-bold">{app.fmtMoney(val)}</div>
-                      <div className="text-[0.68rem] text-mute font-bold">قيمة مخزون المجموعة بالتكلفة</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div></Reveal>
-          )}
-
-          {base === "units" && (
-            <Reveal><div className="card p-5">
-              <div className="flex flex-wrap gap-3">
-                {app.units.map((u, i) => (
-                  <div key={u} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-line bg-panel card-lift cursor-default">
-                    <span className="w-9 h-9 rounded-lg grid place-items-center font-display font-bold text-sm" style={{ background: `color-mix(in srgb, var(--brand) ${10 + i * 3}%, transparent)`, color: "var(--brand)" }}>{u.slice(0, 2)}</span>
-                    <div><div className="font-bold text-sm">{u}</div><div className="font-num text-[0.64rem] text-mute" dir="ltr">UNIT-0{i + 1}</div></div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-[0.74rem] text-mute font-bold flex items-center gap-1.5"><I n="info" size={14} /> الوحدات مرتبطة بالأصناف عبر جدول items.unit وتُستخدم في التحويل بين وحدات الصرف والتوريد.</p>
-            </div></Reveal>
+      {(kind === "move" || kind === "card") && (
+        <div className="flex flex-wrap gap-2.5 mb-4">
+          <select className="select !w-80" value={selItem} onChange={(e) => setSelItem(e.target.value)}>
+            {items.map((i: any) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          {kind === "move" && (
+            <select className="select !w-56" value={selWh} onChange={(e) => setSelWh(e.target.value)}>
+              <option value="all">كل المخازن</option>
+              {whs.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
           )}
         </div>
       )}
 
-      {tab === "moves" && (
-        <div className="anim-fadein">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            {["الكل", "افتتاحي", "توريد", "صرف", "تحويل", "تسوية", "جرد"].map((t) => (
-              <button key={t} onClick={() => setDocType(t)} className={`btn !py-1.5 !px-3 !text-[0.76rem] ${docType === t ? "btn-brand" : "btn-ghost"}`}>{t}</button>
-            ))}
-            <button className="btn btn-brand ms-auto" onClick={() => setShowNew(true)}><I n="plus" size={15} /> سند جديد</button>
-          </div>
-          <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
-            <table className="tbl min-w-[860px]">
-              <thead><tr><th>رقم السند</th><th>النوع</th><th>التاريخ</th><th>المخزن</th><th>الأصناف</th><th>القيمة</th><th>بواسطة</th><th>الحالة</th><th>إجراء</th></tr></thead>
+      {kind === "bal" && (
+        <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
+          <table className="tbl min-w-[820px]">
+            <thead><tr><th>الصنف</th>{whs.map((w) => <th key={w.id}>{w.name.split("—")[0]}</th>)}<th>الإجمالي</th><th>قيمة التكلفة</th><th>قيمة البيع</th></tr></thead>
+            <tbody>
+              {items.map((i: any) => {
+                const total = app.itemQty(i.id);
+                return (
+                  <tr key={i.id}>
+                    <td className="font-bold">{i.name}</td>
+                    {whs.map((w) => <td key={w.id} className="font-num">{i.qty[w.id] ? app.fmtN(i.qty[w.id]) : <span className="text-mute">—</span>}</td>)}
+                    <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(total)}</td>
+                    <td className="font-num">{app.fmtN(total * i.cost)}</td>
+                    <td className="font-num text-[var(--good)]">{app.fmtN(total * i.price)}</td>
+                  </tr>
+                );
+              })}
+              <tr className="!bg-[color-mix(in_srgb,var(--brand)_7%,transparent)]">
+                <td className="font-display font-bold">الإجمالي الكلي</td>
+                {whs.map((w) => <td key={w.id} className="font-num font-bold">{app.fmtN(items.reduce((s, i: any) => s + (i.qty[w.id] || 0), 0))}</td>)}
+                <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(items.reduce((s, i: any) => s + app.itemQty(i.id), 0))}</td>
+                <td className="font-num font-bold">{app.fmtN(items.reduce((s, i: any) => s + app.itemQty(i.id) * i.cost, 0))}</td>
+                <td className="font-num font-bold text-[var(--good)]">{app.fmtN(items.reduce((s, i: any) => s + app.itemQty(i.id) * i.price, 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div></div></Reveal>
+      )}
+
+      {kind === "move" && (
+        <Reveal><div className="card overflow-hidden">
+          {moveRows.length === 0 ? <Empty msg="لا توجد حركات على هذا الصنف ضمن الفلتر المحدد" /> : (
+            <table className="tbl">
+              <thead><tr><th>السند</th><th>التاريخ</th><th>نوع الحركة</th><th>الكمية</th><th>الرصيد التراكمي</th></tr></thead>
               <tbody>
-                {filteredDocs.map((d) => (
-                  <tr key={d.id}>
-                    <td className="font-num font-bold" dir="ltr">{d.id}</td>
-                    <td><span className={`chip ${d.type === "توريد" ? "bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)]" : d.type === "صرف" ? "bg-[color-mix(in_srgb,var(--bad)_13%,transparent)] text-[var(--bad)]" : "bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]"}`}>{d.type}</span></td>
-                    <td className="font-num">{app.fmtDate(d.date)}</td>
-                    <td className="font-bold text-[0.78rem]">{app.warehouses.find((w) => w.code === d.warehouse)?.name.split("—")[0]}{d.toWarehouse && <span className="text-mute"> ← {app.warehouses.find((w) => w.code === d.toWarehouse)?.name.split("—")[0]}</span>}</td>
-                    <td className="font-num text-center">{d.lines.length}</td>
-                    <td className="font-num font-bold">{app.fmtN(d.lines.reduce((a, l) => a + l.qty * l.cost, 0))}</td>
-                    <td className="text-[0.78rem]">{d.user}</td>
-                    <td><Chip s={d.status} /></td>
-                    <td>
-                      <div className="flex gap-1">
-                        <button className="btn btn-ghost !p-1.5" title="عرض" onClick={() => app.toast(`السند ${d.id}: ${d.lines.map((l) => `${app.items.find((i) => i.code === l.item)?.name} × ${l.qty}`).join("، ")}`, "info")}><I n="eye" size={14} /></button>
-                        {d.status === "مرحّل" && <button className="btn btn-danger !p-1.5" title="تراجع عن الإذن" onClick={() => app.voidInvDoc(d.id)}><I n="undo" size={14} /></button>}
-                      </div>
-                    </td>
+                {moveRows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="font-num font-bold" dir="ltr">{r.ref}</td>
+                    <td className="font-num">{app.fmtDate(r.date)}</td>
+                    <td><Chip s={r.type === "توريد" || r.type === "قيد افتتاحي" ? "مرحّل" : r.type === "صرف" ? "ملغي" : "بانتظار الموافقة"} /> <span className="text-[0.74rem] font-bold">{r.type}</span></td>
+                    <td className={`font-num font-bold ${r.qty >= 0 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{r.qty > 0 ? "+" : ""}{app.fmtN(r.qty)}</td>
+                    <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(r.run)}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+        </div></Reveal>
+      )}
+
+      {kind === "card" && it && (
+        <div className="grid lg:grid-cols-3 gap-4 stagger">
+          <div className="card p-5 lg:col-span-1">
+            <div className="flex items-center justify-between mb-4">
+              <span className="chip bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] font-num" dir="ltr">{it.code}</span>
+              <Chip s={app.itemQty(it.id) < it.min ? "بانتظار الموافقة" : "مرحّل"} />
+            </div>
+            <h3 className="font-display font-bold text-xl leading-7">{it.name}</h3>
+            <div className="mt-4 flex justify-center py-4 bg-panel rounded-xl border border-line">
+              <div className="text-center">
+                <Barcode value={String(it.barcode || it.code)} h={44} />
+                <div className="font-num text-[0.72rem] font-bold mt-2" dir="ltr">{it.barcode || it.code}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mt-4 text-[0.78rem] font-bold">
+              <div className="bg-panel rounded-lg p-2.5"><span className="text-mute block text-[0.64rem]">المجموعة</span>{app.db.groups.find((g) => g.id === it.group)?.name || "—"}</div>
+              <div className="bg-panel rounded-lg p-2.5"><span className="text-mute block text-[0.64rem]">الوحدة</span>{app.db.units.find((u) => u.id === it.unit)?.name || "—"}</div>
+              <div className="bg-panel rounded-lg p-2.5"><span className="text-mute block text-[0.64rem]">التكلفة</span><span className="font-num">{app.fmtN(it.cost)}</span></div>
+              <div className="bg-panel rounded-lg p-2.5"><span className="text-mute block text-[0.64rem]">سعر البيع</span><span className="font-num text-[var(--brand)]">{app.fmtN(it.price)}</span></div>
+              <div className="bg-panel rounded-lg p-2.5"><span className="text-mute block text-[0.64rem]">حد إعادة الطلب</span><span className="font-num text-[var(--warn)]">{app.fmtN(it.min)}</span></div>
+              <div className="bg-panel rounded-lg p-2.5"><span className="text-mute block text-[0.64rem]">السعة القصوى</span><span className="font-num">{app.fmtN(it.max)}</span></div>
+            </div>
+          </div>
+          <div className="card p-5 lg:col-span-2">
+            <h3 className="font-display font-bold text-base mb-4">توزيع الرصيد على المخازن — الإجمالي <span className="font-num text-[var(--brand)]">{app.fmtN(app.itemQty(it.id))}</span></h3>
+            <BarChart height={170} data={whs.map((w) => ({ label: w.name.split("—")[0].replace("مخزن ", ""), value: it.qty[w.id] || 0 }))} />
+            <div className="mt-4 space-y-2">
+              {whs.map((w) => {
+                const v = it.qty[w.id] || 0;
+                const pct = Math.min(100, (v / (it.max || 1)) * 100);
+                return (
+                  <div key={w.id}>
+                    <div className="flex justify-between text-[0.74rem] font-bold mb-1"><span>{w.name}</span><span className="font-num text-mute">{app.fmtN(v)} ({Math.round(pct)}% من السعة)</span></div>
+                    <div className="h-2.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--brand), var(--accent))" }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {kind === "watch" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { l: "أصناف سليمة", v: watchRows.filter((r) => r.status === "سليم").length, c: "var(--good)", ic: "check" },
+              { l: "دون الحد الأدنى", v: watchRows.filter((r) => r.status === "دون الحد الأدنى").length, c: "var(--warn)", ic: "alert" },
+              { l: "فوق الحد الأعلى", v: watchRows.filter((r) => r.status === "فوق الحد الأعلى").length, c: "var(--brand)", ic: "layers" },
+              { l: "أرصدة نافدة", v: watchRows.filter((r) => r.status === "نافد").length, c: "var(--bad)", ic: "x" },
+            ].map((s, i) => (
+              <Reveal key={s.l} delay={i * 70}><div className="card card-lift p-4 flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: `color-mix(in srgb, ${s.c} 12%, transparent)`, color: s.c }}><I n={s.ic} size={19} /></span>
+                <div><div className="font-num font-bold text-xl" style={{ color: s.c }}>{s.v}</div><div className="text-[0.7rem] font-bold text-mute">{s.l}</div></div>
+              </div></Reveal>
+            ))}
+          </div>
+          <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
+            <table className="tbl min-w-[760px]">
+              <thead><tr><th>الصنف</th><th>الرصيد</th><th>أدنى</th><th>أقصى</th><th>المؤشر</th><th>الحالة</th><th>الإجراء المقترح</th></tr></thead>
+              <tbody>
+                {watchRows.map((r: any) => {
+                  const pct = Math.min(100, (r.total / (r.max || 1)) * 100);
+                  const tone = r.status === "سليم" ? "var(--good)" : r.status === "نافد" ? "var(--bad)" : r.status === "دون الحد الأدنى" ? "var(--warn)" : "var(--brand)";
+                  return (
+                    <tr key={r.id}>
+                      <td className="font-bold">{r.name}</td>
+                      <td className="font-num font-bold">{app.fmtN(r.total)}</td>
+                      <td className="font-num text-mute">{app.fmtN(r.min)}</td>
+                      <td className="font-num text-mute">{app.fmtN(r.max)}</td>
+                      <td style={{ width: 160 }}><div className="h-2 rounded-full bg-panel overflow-hidden relative">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} />
+                        <span className="absolute top-[-3px] h-3.5 w-0.5 bg-[var(--warn)]" style={{ insetInlineStart: `${Math.min(100, (r.min / (r.max || 1)) * 100)}%` }} title="حد إعادة الطلب" />
+                      </div></td>
+                      <td><span className="chip" style={{ background: `color-mix(in srgb, ${tone} 13%, transparent)`, color: tone }}>{r.status}</span></td>
+                      <td className="text-[0.74rem] font-bold text-soft">{r.status === "دون الحد الأدنى" || r.status === "نافد" ? "إنشاء طلب شراء عاجل" : r.status === "فوق الحد الأعلى" ? "إيقاف الشراء / تحويل لمخزن آخر" : "لا إجراء مطلوب"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div></div></Reveal>
         </div>
       )}
 
-      {tab === "reports" && <InvReports />}
-
-      {/* سند جديد */}
-      <Modal open={showNew} onClose={() => setShowNew(false)} title="إنشاء سند مخزني جديد" icon="swap">
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">نوع السند</span>
-            <select className="select mt-1" value={newDoc.type} onChange={(e) => setNewDoc({ ...newDoc, type: e.target.value as InvDoc["type"] })}>
-              {["توريد", "صرف", "تحويل", "تسوية", "جرد", "افتتاحي"].map((t) => <option key={t}>{t}</option>)}
-            </select></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>
-            <input type="date" className="input mt-1 font-num" value={newDoc.date} onChange={(e) => setNewDoc({ ...newDoc, date: e.target.value })} /></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">المخزن {newDoc.type === "تحويل" ? "(من)" : ""}</span>
-            <select className="select mt-1" value={newDoc.warehouse} onChange={(e) => setNewDoc({ ...newDoc, warehouse: e.target.value })}>
-              {app.warehouses.map((w) => <option key={w.code} value={w.code}>{w.name}</option>)}
-            </select></label>
-          {newDoc.type === "تحويل" ? (
-            <label className="block"><span className="text-[0.74rem] font-bold text-soft">إلى مخزن</span>
-              <select className="select mt-1" value={newDoc.toWarehouse} onChange={(e) => setNewDoc({ ...newDoc, toWarehouse: e.target.value })}>
-                {app.warehouses.filter((w) => w.code !== newDoc.warehouse).map((w) => <option key={w.code} value={w.code}>{w.name}</option>)}
-              </select></label>
-          ) : (
-            <label className="block"><span className="text-[0.74rem] font-bold text-soft">الكمية</span>
-              <input type="number" className="input mt-1 font-num" value={newDoc.qty} onChange={(e) => setNewDoc({ ...newDoc, qty: +e.target.value })} /></label>
-          )}
-          <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">الصنف</span>
-            <select className="select mt-1" value={newDoc.item} onChange={(e) => setNewDoc({ ...newDoc, item: e.target.value })}>
-              {app.items.map((i) => <option key={i.code} value={i.code}>{i.code} — {i.name}</option>)}
-            </select></label>
-          {newDoc.type === "تحويل" && (
-            <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">الكمية المحوّلة</span>
-              <input type="number" className="input mt-1 font-num" value={newDoc.qty} onChange={(e) => setNewDoc({ ...newDoc, qty: +e.target.value })} /></label>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button className="btn btn-ghost" onClick={() => setShowNew(false)}>إلغاء</button>
-          <button className="btn btn-brand" onClick={createDoc}><I n="check" size={15} /> ترحيل السند</button>
-        </div>
-      </Modal>
-
-      {/* صنف جديد */}
-      <Modal open={showItem} onClose={() => setShowItem(false)} title="إضافة صنف إلى الدليل" icon="box">
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">اسم الصنف</span><input className="input mt-1" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} placeholder="مثال: إيبوبروفين 400mg" /></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">المجموعة</span><select className="select mt-1" value={newItem.group} onChange={(e) => setNewItem({ ...newItem, group: e.target.value })}>{app.groups.map((g) => <option key={g}>{g}</option>)}</select></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">الوحدة</span><select className="select mt-1" value={newItem.unit} onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}>{app.units.map((u) => <option key={u}>{u}</option>)}</select></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">التكلفة</span><input type="number" className="input mt-1 font-num" value={newItem.cost} onChange={(e) => setNewItem({ ...newItem, cost: +e.target.value })} /></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">سعر البيع</span><input type="number" className="input mt-1 font-num" value={newItem.price} onChange={(e) => setNewItem({ ...newItem, price: +e.target.value })} /></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">الحد الأدنى</span><input type="number" className="input mt-1 font-num" value={newItem.min} onChange={(e) => setNewItem({ ...newItem, min: +e.target.value })} /></label>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">الرصيد الافتتاحي</span><input type="number" className="input mt-1 font-num" value={newItem.qty} onChange={(e) => setNewItem({ ...newItem, qty: +e.target.value })} /></label>
-        </div>
-        <div className="mt-4 p-3 rounded-lg bg-panel border border-dashed border-line text-center">
-          <span className="text-[0.7rem] font-bold text-mute block mb-2">رفع صورة الصنف (اختياري)</span>
-          <button className="btn btn-ghost !py-1.5" onClick={() => app.toast("تم إرفاق صورة الصنف بنجاح", "ok")}><I n="down" size={14} /> اختيار صورة / توليد باركود تلقائي</button>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button className="btn btn-ghost" onClick={() => setShowItem(false)}>إلغاء</button>
-          <button className="btn btn-brand" onClick={createItem}><I n="plus" size={15} /> حفظ الصنف</button>
-        </div>
-      </Modal>
-    </div>
-  );
-}
-
-function InvReports() {
-  const app = useApp();
-  const [rep, setRep] = useState("balances");
-  const totalQty = (i: (typeof app.items)[number]) => Object.values(i.qty).reduce((a, b) => a + b, 0);
-
-  const reports = useMemo(() => ({
-    balances: { title: "أرصدة المخازن", rows: [["الصنف", ...app.warehouses.map((w) => w.name.split("—")[0].trim()), "الإجمالي", "القيمة"] as (string | number)[], ...app.items.map((i) => [i.name, ...app.warehouses.map((w) => i.qty[w.code] || 0), totalQty(i), app.fmtN(totalQty(i) * i.cost)])] },
-    movements: { title: "حركة الأصناف", rows: [["السند", "النوع", "التاريخ", "الصنف", "الكمية", "القيمة"] as (string | number)[], ...app.invDocs.filter((d) => d.status === "مرحّل").flatMap((d) => d.lines.map((l) => [d.id, d.type, d.date, app.items.find((i) => i.code === l.item)?.name || l.item, l.qty, app.fmtN(l.qty * l.cost)]))] },
-    card: { title: "بطاقة صنف — باراسيتامول 500mg", rows: [["التاريخ", "السند", "وارد", "منصرف", "الرصيد"] as (string | number)[], ["2026-01-01", "OB-2026", 1240, 0, 1240], ["2026-01-28", "TR-0007", 0, 320, 920], ["2026-03-03", "SIN-2026-0234", 0, 200, 720]] },
-    watch: { title: "مراقبة المخزون", rows: [["الصنف", "الرصيد", "الحد الأدنى", "الحد الأقصى", "الحالة"] as (string | number)[], ...app.items.map((i) => [i.name, totalQty(i), i.min, i.max, totalQty(i) < i.min ? "⚠ دون الحد" : "سليم"])] },
-    count: { title: "نتائج الجرد الدوري", rows: [["المخزن", "الصنف", "الفرق", "التسوية"] as (string | number)[], ...app.invDocs.filter((d) => d.type === "جرد" && d.status === "مرحّل").flatMap((d) => d.lines.map((l) => [app.warehouses.find((w) => w.code === d.warehouse)?.name || "", app.items.find((i) => i.code === l.item)?.name || "", l.qty, app.fmtN(Math.abs(l.qty) * l.cost)]))] },
-  }), [app.items, app.invDocs, app.warehouses]);
-
-  const r = reports[rep as keyof typeof reports];
-  return (
-    <div className="anim-fadein">
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {[["balances", "أرصدة المخازن"], ["movements", "حركة الأصناف"], ["card", "بطاقة صنف"], ["watch", "مراقبة المخزون"], ["count", "جرد المخزون"]].map(([id, l]) => (
-          <button key={id} onClick={() => setRep(id)} className={`btn !py-1.5 !px-3 !text-[0.76rem] ${rep === id ? "btn-brand" : "btn-ghost"}`}>{l}</button>
-        ))}
-        <div className="ms-auto flex gap-2">
-          <button className="btn btn-ghost !py-1.5" onClick={() => app.exportCsv(r.title, r.rows as (string | number)[][])}><I n="xlsx" size={15} /> تصدير Excel</button>
-          <button className="btn btn-ghost !py-1.5" onClick={() => app.toast("تم إنشاء ملف PDF وإرساله إلى قائمة الطباعة", "info")}><I n="pdf" size={15} /> PDF</button>
-        </div>
-      </div>
-      <Reveal><div className="card overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-line flex items-center justify-between bg-panel">
-          <h3 className="font-display font-bold text-sm flex items-center gap-2"><I n="file" size={16} className="text-[var(--brand)]" /> {r.title}</h3>
-          <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num">{(r.rows.length - 1)} سجل</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="tbl min-w-[640px]">
-            <thead><tr>{(r.rows[0] as (string | number)[]).map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-            <tbody>{(r.rows.slice(1) as (string | number)[][]).map((row, i) => (
-              <tr key={i}>{row.map((c, j) => <td key={j} className={j === 0 ? "font-bold" : "font-num"}>{c}</td>)}</tr>
-            ))}</tbody>
+      {kind === "count" && (
+        <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
+          <table className="tbl min-w-[720px]">
+            <thead><tr><th>سند الجرد</th><th>التاريخ</th><th>المخزن</th><th>الصنف</th><th>فرق الجرد</th><th>قيمة الفرق</th><th>الحالة</th></tr></thead>
+            <tbody>
+              {(app.db.invDocs as any as AnyR[]).filter((d) => d.type === "جرد").map((d) =>
+                d.lines.map((l: any, i: number) => (
+                  <tr key={d.id + i}>
+                    <td className="font-num font-bold" dir="ltr">{d.ref}</td>
+                    <td className="font-num">{app.fmtDate(d.date)}</td>
+                    <td>{app.db.warehouses.find((w) => w.id === d.warehouse)?.name}</td>
+                    <td className="font-bold">{items.find((x) => x.id === l.item)?.name}</td>
+                    <td className={`font-num font-bold ${l.qty >= 0 ? "text-[var(--good)]" : "text-[var(--bad)]"}`}>{l.qty > 0 ? "+" : ""}{l.qty}</td>
+                    <td className="font-num">{app.fmtN(l.qty * l.cost)}</td>
+                    <td><Chip s={d.status} /></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </table>
-        </div>
-      </div></Reveal>
+        </div></div></Reveal>
+      )}
     </div>
   );
 }

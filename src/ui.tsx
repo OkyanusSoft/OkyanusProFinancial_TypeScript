@@ -56,6 +56,7 @@ const P: Record<string, ReactNode> = {
   server: <><rect x="3.5" y="4" width="17" height="6.5" rx="1.3" /><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.3" /><path d="M7 7.2h.4M7 16.7h.4M17 7.2h-3.5M17 16.7h-3.5" /></>,
   refresh: <><path d="M20 12a8 8 0 1 1-2.3-5.6M20 3.5V8h-4.5" /></>,
   arrow: <><path d="M4 12h15" /><path d="m13.5 6 6 6-6 6" /></>,
+  phone: <path d="M6.5 3.5h3l1.5 4.5-2 1.5a12 12 0 0 0 5.5 5.5l1.5-2 4.5 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2Z" />,
   moon: <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19" /></>,
   menu: <path d="M4 6.5h16M4 12h16M4 17.5h16" />,
@@ -82,10 +83,10 @@ export function Logo({ size = 40, light = false }: { size?: number; light?: bool
         <circle cx="37" cy="13" r="3" fill="#ffd28a" />
       </svg>
       <div className="leading-none">
-        <div className={`font-display font-bold text-lg tracking-tight ${light ? "text-white" : "text-ink"}`}>
-          Okyanus<span className="text-[var(--brand2)]">Pro</span>ERP
+        <div className={`font-display font-bold text-lg tracking-tight leading-tight ${light ? "text-white" : "text-ink"}`}>
+          النظام المالي <span className="text-[var(--brand2)]">المتكامل</span>
         </div>
-        <div className={`text-[0.62rem] font-bold mt-1 ${light ? "text-white/60" : "text-mute"}`}>أوكيانوس سوفت • الإصدار 3.0</div>
+        <div className={`text-[0.62rem] font-bold mt-1 ${light ? "text-white/60" : "text-mute"}`}>أوكيانوس سوفت — Okyanus Soft • v3.0</div>
       </div>
     </div>
   );

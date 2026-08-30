@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { I } from "../ui";
+import { SYSTEM } from "../data";
 
 export const LOGIN_BGS = [
   { id: "sea", name: "أعماق المحيط (افتراضي)", style: "linear-gradient(165deg,#041e33,#07405f 38%,#0a6b9e 72%,#0e8fc4)" },
@@ -11,156 +12,147 @@ export const LOGIN_BGS = [
 ];
 
 const COMPANIES = ["شركة أوكيانوس للتجارة والاستثمار", "مستشفى أوكيانوس التخصصي", "مجموعة المحيط الطبية"];
-const BRANCHES: Record<string, string[]> = {
-  "شركة أوكيانوس للتجارة والاستثمار": ["المركز الرئيسي — صنعاء", "فرع عدن", "فرع المكلا"],
-  "مستشفى أوكيانوس التخصصي": ["المبنى الرئيسي — حدة", "مركز الأطراف الصناعية"],
-  "مجموعة المحيط الطبية": ["الإدارة العامة", "فرع تعز"],
-};
-
-function WaveLayer({ opacity, dur, flip = false }: { opacity: number; dur: number; flip?: boolean }) {
-  const d = "M0,60 C120,20 240,100 360,60 C480,20 600,100 720,60 C840,20 960,100 1080,60 C1200,20 1320,100 1440,60 L1440,140 L0,140 Z";
-  return (
-    <svg className="absolute bottom-0 left-0 w-[200%] h-40 wave-track" style={{ animationDuration: `${dur}s`, opacity, transform: flip ? "scaleY(-1) translateY(-100%)" : undefined }} viewBox="0 0 1440 140" preserveAspectRatio="none" aria-hidden="true">
-      <path d={d} fill="currentColor" />
-    </svg>
-  );
-}
+const BRANCHES = ["المركز الرئيسي — صنعاء", "فرع عدن", "فرع المكلا"];
+const YEARS = ["2026", "2025", "2024"];
 
 export default function Login() {
-  const { login, toast, pushNotif, prefs } = useApp();
+  const { login, toast, prefs } = useApp();
   const bgStyle = LOGIN_BGS.find((b) => b.id === prefs.loginBg)?.style;
-  const [company, setCompany] = useState(COMPANIES[0]);
-  const [branch, setBranch] = useState(BRANCHES[COMPANIES[0]][0]);
-  const [user, setUser] = useState("admin");
-  const [pass, setPass] = useState("");
-  const [year, setYear] = useState("2026");
-  const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  const [f, setF] = useState({ company: COMPANIES[0], branch: BRANCHES[0], user: "admin", pass: "", year: "2026" });
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr("");
-    if (!user.trim()) return setErr("اسم المستخدم مطلوب");
-    if (pass.length < 4) return setErr("كلمة المرور يجب ألا تقل عن 4 أحرف (للتجربة: 1234)");
-    setBusy(true);
+  const submit = () => {
+    const e: Record<string, string> = {};
+    if (!f.user.trim()) e.user = "اسم المستخدم إلزامي";
+    if (!f.pass) e.pass = "كلمة السر إلزامية";
+    else if (f.pass.length < 4) e.pass = "كلمة السر قصيرة — 4 رموز على الأقل";
+    setErrs(e);
+    if (Object.keys(e).length) { toast("تعذّر الدخول — أكمل الحقول المميّزة", "err"); return; }
+    setLoading(true);
     setTimeout(() => {
-      login({ user: user === "admin" ? "م. أروى المقطري" : user, role: user === "admin" ? "مدير النظام" : "محاسب", company, branch, year });
-      toast(`مرحباً بك في ${company} — السنة المالية ${year}`, "ok");
-      pushNotif({ kind: "info", title: "جلسة جديدة", body: `تسجيل دخول ناجح من ${branch}.` });
+      login({ company: f.company, branch: f.branch, user: f.user === "admin" ? "م. أروى المقطري" : f.user, year: f.year, role: f.user === "admin" ? "مدير النظام" : "محاسب رئيسي" });
+      toast(`مرحباً بك في ${SYSTEM.name} — تم فتح السنة المالية ${f.year}`, "ok");
     }, 1100);
   };
 
+  const features = useMemo(() => [
+    ["book", "قيد مزدوج متعدد العملات"],
+    ["box", "مخازن وجرود فورية"],
+    ["scale", "تقارير IFRS جاهزة"],
+    ["shield", "صلاحيات على مستوى الزر"],
+  ], []);
+
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4 text-white" dir="rtl" style={{ background: bgStyle }}>
-      {/* حلقات السونار */}
-      <div className="absolute top-1/4 start-1/4 pointer-events-none" aria-hidden="true">
-        {[0, 0.8, 1.6].map((d) => (
-          <span key={d} className="sonar absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/25" style={{ width: 340, height: 340, animationDelay: `${d}s` }} />
+      {/* خلفية حية */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+        {[...Array(4)].map((_, i) => (
+          <span key={i} className="absolute rounded-full border border-white/[0.07] anim-ring"
+            style={{ width: `${280 + i * 160}px`, height: `${280 + i * 160}px`, top: "12%", insetInlineStart: "-6%", animationDelay: `${i * 1.4}s` }} />
         ))}
+        {[...Array(14)].map((_, i) => (
+          <span key={`p${i}`} className="absolute rounded-full bg-white/20 anim-float"
+            style={{ width: `${3 + (i % 4)}px`, height: `${3 + (i % 4)}px`, top: `${(i * 37) % 100}%`, insetInlineStart: `${(i * 53) % 100}%`, animationDelay: `${i * 0.7}s`, animationDuration: `${8 + (i % 5)}s` }} />
+        ))}
+        <svg className="absolute bottom-0 inset-x-0 w-[200%] h-40 text-white/[0.06] wave-track" style={{ animationDuration: "30s" }} viewBox="0 0 1440 120" preserveAspectRatio="none">
+          <path d="M0,60 C160,20 320,100 480,60 C640,20 800,100 960,60 C1120,20 1280,100 1440,60 L1440,120 L0,120 Z" fill="currentColor" />
+        </svg>
+        <svg className="absolute bottom-0 inset-x-0 w-[200%] h-28 text-white/[0.08] wave-track" style={{ animationDuration: "19s", animationDirection: "reverse" }} viewBox="0 0 1440 120" preserveAspectRatio="none">
+          <path d="M0,70 C180,30 340,110 520,70 C700,30 860,110 1040,70 C1220,30 1360,100 1440,70 L1440,120 L0,120 Z" fill="currentColor" />
+        </svg>
       </div>
-      {/* جسيمات عائمة */}
-      {[
-        [12, 22, 10], [78, 16, 14], [88, 60, 8], [20, 74, 12], [55, 88, 9], [66, 34, 7], [8, 48, 8], [38, 12, 6],
-      ].map(([x, y, s], i) => (
-        <span key={i} className="drift absolute rounded-full bg-cyan-100/20 pointer-events-none" style={{ left: `${x}%`, top: `${y}%`, width: s, height: s, animationDelay: `${i * 0.7}s` }} aria-hidden="true" />
-      ))}
-      {/* أمواج متحركة */}
-      <div className="absolute bottom-0 inset-x-0 text-cyan-300/15 pointer-events-none" aria-hidden="true"><WaveLayer opacity={1} dur={22} /></div>
-      <div className="absolute bottom-0 inset-x-0 text-cyan-200/20 pointer-events-none" aria-hidden="true"><WaveLayer opacity={1} dur={15} /></div>
-      <div className="absolute -bottom-2 inset-x-0 text-[#04121f]/60 pointer-events-none" aria-hidden="true"><WaveLayer opacity={1} dur={10} /></div>
 
-      <div className="relative w-full max-w-4xl grid md:grid-cols-[1.1fr_1fr] card overflow-hidden !bg-[#062338]/80 backdrop-blur-md border-cyan-200/15 shadow-[0_40px_90px_-30px_rgba(0,10,30,0.8)] anim-pop" style={{ borderRadius: 20 }}>
-        {/* اللوحة التعريفية */}
-        <div className="hidden md:flex flex-col justify-between p-9 relative overflow-hidden border-e border-cyan-200/10">
-          <div className="absolute -bottom-24 -start-24 w-72 h-72 rounded-full bg-cyan-400/10 blur-2xl pointer-events-none" aria-hidden="true" />
+      <div className="relative z-10 w-full max-w-5xl grid lg:grid-cols-[1.05fr_1fr] rounded-[22px] overflow-hidden shadow-2xl anim-rise" style={{ background: "rgba(3,20,35,0.55)", backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,0.14)" }}>
+        {/* التعريف بالنظام */}
+        <div className="p-8 md:p-10 hidden lg:flex flex-col justify-between border-e border-white/10">
           <div>
-            <svg width="58" height="58" viewBox="0 0 48 48" aria-hidden="true" className="mb-6">
-              <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.1)" />
-              <path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" />
-              <path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.85" />
-              <circle cx="37" cy="13" r="3" fill="#ffd28a" />
-            </svg>
-            <h1 className="font-display font-bold text-[1.9rem] leading-snug">
-              نظام محاسبي واحد…<br />
-              <span className="text-cyan-300">بحجم محيطٍ من البيانات</span>
-            </h1>
-            <p className="text-cyan-100/65 text-sm font-medium leading-7 mt-3">
-              قيد مزدوج دقيق، فترات مالية محصّنة، حسابات تحليلية ذكية، وخمسة أنماط مظهر — كل ذلك في OkyanusProERP 3.0.
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-3 text-center">
-            {[["6", "وحدات مترابطة"], ["5", "مستويات حسابات"], ["IFRS", "معايير دولية"]].map(([a, b]) => (
-              <div key={b} className="rounded-xl bg-white/[0.05] border border-white/10 py-3">
-                <div className="font-num font-bold text-xl text-cyan-300">{a}</div>
-                <div className="text-[0.66rem] font-bold text-cyan-100/60 mt-0.5">{b}</div>
+            <div className="flex items-center gap-3">
+              <svg width="52" height="52" viewBox="0 0 48 48" aria-hidden="true">
+                <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.12)" />
+                <path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" />
+                <path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.85" />
+                <circle cx="37" cy="13" r="3" fill="#ffd28a" />
+              </svg>
+              <div>
+                <div className="font-display font-bold text-[1.65rem] leading-tight">{SYSTEM.name}</div>
+                <div className="text-[0.7rem] font-bold text-white/60 tracking-wide">{SYSTEM.en} • v{SYSTEM.version}</div>
               </div>
-            ))}
+            </div>
+            <p className="mt-6 text-[0.9rem] leading-7 text-white/80 font-medium">
+              نظام مالي ومخزني متكامل بقيد مزدوج محكم، ودليل حسابات هرمي من خمسة مستويات،
+              وحسابات تحليلية للأنشطة الكبيرة — من سند التوريد إلى قائمة الدخل.
+            </p>
+            <div className="mt-7 grid grid-cols-2 gap-3">
+              {features.map(([ic, l], i) => (
+                <div key={l} className="flex items-center gap-2.5 rounded-xl bg-white/[0.07] border border-white/10 px-3.5 py-3 anim-rise" style={{ animationDelay: `${200 + i * 90}ms` }}>
+                  <span className="w-8 h-8 rounded-lg grid place-items-center bg-white/10 text-[#67d5ff] shrink-0"><I n={ic} size={16} /></span>
+                  <span className="text-[0.76rem] font-bold text-white/85">{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 text-[0.72rem] font-bold text-white/60 mt-8">
+            <span className="w-2 h-2 rounded-full bg-[#4ade80] blink" />
+            خادم قاعدة البيانات يعمل • آخر نسخة احتياطية 02:00 اليوم
+            <span className="ms-auto font-num flex items-center gap-1.5" dir="ltr"><I n="phone" size={13} /> {SYSTEM.phone}</span>
           </div>
         </div>
 
         {/* نموذج الدخول */}
-        <form onSubmit={submit} className="p-7 md:p-9 bg-[#f6fbff] !text-[#0b2239]" dir="rtl">
-          <div className="md:hidden mb-5"><svg width="40" height="40" viewBox="0 0 48 48"><rect width="48" height="48" rx="13" fill="#0b4f7a" /><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" /><path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg></div>
-          <h2 className="font-display font-bold text-xl">تسجيل الدخول إلى النظام</h2>
-          <p className="text-[0.78rem] text-mute font-medium mb-5">أدخل بيانات المنشأة والفرع للوصول إلى بيئة العمل</p>
+        <div className="p-7 md:p-10">
+          <div className="lg:hidden flex items-center gap-2.5 mb-6">
+            <svg width="40" height="40" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.12)" /><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" /><path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg>
+            <div><div className="font-display font-bold text-xl">{SYSTEM.name}</div><div className="text-[0.62rem] font-bold text-white/60">{SYSTEM.company} — {SYSTEM.companyEn}</div></div>
+          </div>
+          <h2 className="font-display font-bold text-2xl">تسجيل الدخول</h2>
+          <p className="text-white/60 text-[0.8rem] font-bold mt-1">ادخل بيانات منشأتك لفتح السنة المالية</p>
 
-          <div className="space-y-3.5">
-            <label className="block">
-              <span className="text-[0.74rem] font-bold text-soft flex items-center gap-1.5 mb-1"><I n="bld" size={14} /> اسم الشركة</span>
-              <select className="select" value={company} onChange={(e) => { setCompany(e.target.value); setBranch(BRANCHES[e.target.value][0]); }}>
-                {COMPANIES.map((c) => <option key={c}>{c}</option>)}
+          <div className="mt-6 space-y-3.5">
+            <div>
+              <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="bld" size={14} /> الشركة</label>
+              <select className="select !bg-white/[0.08] !border-white/15 !text-white [&>option]:text-black" value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })}>
+                {COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </label>
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-[0.74rem] font-bold text-soft flex items-center gap-1.5 mb-1"><I n="globe" size={14} /> الفرع</span>
-                <select className="select" value={branch} onChange={(e) => setBranch(e.target.value)}>
-                  {BRANCHES[company].map((b) => <option key={b}>{b}</option>)}
+              <div>
+                <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="globe" size={14} /> الفرع</label>
+                <select className="select !bg-white/[0.08] !border-white/15 !text-white [&>option]:text-black" value={f.branch} onChange={(e) => setF({ ...f, branch: e.target.value })}>
+                  {BRANCHES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-              </label>
-              <label className="block">
-                <span className="text-[0.74rem] font-bold text-soft flex items-center gap-1.5 mb-1"><I n="cal" size={14} /> السنة المالية</span>
-                <select className="select" value={year} onChange={(e) => setYear(e.target.value)}>
-                  {["2024", "2025", "2026"].map((y) => <option key={y}>{y}</option>)}
-                </select>
-              </label>
-            </div>
-            <label className="block">
-              <span className="text-[0.74rem] font-bold text-soft flex items-center gap-1.5 mb-1"><I n="user" size={14} /> اسم المستخدم</span>
-              <input className="input font-num" dir="ltr" style={{ textAlign: "left" }} value={user} onChange={(e) => setUser(e.target.value)} placeholder="admin" />
-            </label>
-            <label className="block">
-              <span className="text-[0.74rem] font-bold text-soft flex items-center gap-1.5 mb-1"><I n="lock" size={14} /> كلمة المرور</span>
-              <div className="relative">
-                <input className="input font-num" dir="ltr" style={{ textAlign: "left", paddingInlineEnd: "2.6rem" }} type={show ? "text" : "password"} value={pass} onChange={(e) => setPass(e.target.value)} placeholder="••••••" />
-                <button type="button" onClick={() => setShow(!show)} className="absolute end-2.5 top-1/2 -translate-y-1/2 text-mute hover:text-[var(--brand)] transition-colors" aria-label="إظهار كلمة المرور">
-                  <I n="eye" size={17} />
-                </button>
               </div>
-            </label>
-          </div>
-
-          {err && (
-            <div className="mt-3 flex items-center gap-2 text-[0.76rem] font-bold text-[var(--bad)] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] rounded-lg px-3 py-2 anim-pop">
-              <I n="alert" size={15} /> {err}
+              <div>
+                <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="cal" size={14} /> السنة المالية</label>
+                <select className="select !bg-white/[0.08] !border-white/15 !text-white font-num [&>option]:text-black" value={f.year} onChange={(e) => setF({ ...f, year: e.target.value })}>
+                  {YEARS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
-          )}
-
-          <button type="submit" disabled={busy} className="btn btn-brand w-full mt-5 !py-3 !text-[0.95rem]">
-            {busy ? (<><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full spin" /> جارٍ التحقق من الصلاحيات…</>) : (<><I n="key" size={17} /> دخول النظام</>)}
-          </button>
-
-          <div className="mt-4 flex items-center justify-between text-[0.7rem] font-bold text-mute">
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--good)] blink" /> خادم MySQL متصل — زمن الاستجابة 4ms</span>
-            <span className="font-num" dir="ltr">v3.0.0 build 2026.03</span>
+            <div>
+              <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="user" size={14} /> اسم المستخدم</label>
+              <input className={`input !bg-white/[0.08] !border-white/15 !text-white placeholder:text-white/35 ${errs.user ? "!border-[#ff9d9d]" : ""}`} dir="ltr" value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} placeholder="admin" />
+              {errs.user && <span className="text-[0.66rem] font-bold text-[#ff9d9d] mt-1 block">{errs.user}</span>}
+            </div>
+            <div>
+              <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="key" size={14} /> كلمة السر</label>
+              <input type="password" className={`input !bg-white/[0.08] !border-white/15 !text-white placeholder:text-white/35 ${errs.pass ? "!border-[#ff9d9d]" : ""}`} dir="ltr" value={f.pass} onChange={(e) => setF({ ...f, pass: e.target.value })} placeholder="••••••••" onKeyDown={(e) => e.key === "Enter" && submit()} />
+              {errs.pass ? <span className="text-[0.66rem] font-bold text-[#ff9d9d] mt-1 block">{errs.pass}</span>
+                : <span className="text-[0.64rem] font-bold text-white/45 mt-1 block">للتجربة: أي كلمة من 4 رموز فأكثر</span>}
+            </div>
+            <button onClick={submit} disabled={loading}
+              className="w-full py-3.5 rounded-xl font-display font-bold text-[1.02rem] text-[#03283e] transition-all hover:brightness-110 hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-70"
+              style={{ background: "linear-gradient(120deg, #67d5ff, #a5e6ff)" }}>
+              {loading ? <><span className="w-4 h-4 rounded-full border-2 border-[#03283e]/30 border-t-[#03283e] spin" /> جارٍ فتح النظام…</> : <><I n="out" size={18} className="rotate-180" /> دخول النظام</>}
+            </button>
           </div>
-        </form>
-      </div>
 
-      <div className="absolute bottom-3 inset-x-0 text-center text-[0.68rem] font-bold text-cyan-100/50 z-10">
-        جميع الحقوق محفوظة لدى شركة أوكيانوس سوفت — Okyanus Soft •{" "}
-        <a href="https://okyanussoft.online/" target="_blank" rel="noreferrer" className="text-cyan-200 hover:text-white transition-colors underline underline-offset-2">okyanussoft.online</a>
+          <div className="mt-6 pt-5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[0.66rem] font-bold text-white/50">
+            <span>{SYSTEM.company} — {SYSTEM.companyEn}</span>
+            <a href={SYSTEM.site} target="_blank" rel="noreferrer" className="text-[#67d5ff] hover:underline font-num" dir="ltr">{SYSTEM.site}</a>
+            <span className="font-num" dir="ltr">{SYSTEM.phone}</span>
+          </div>
+        </div>
       </div>
     </div>
   );

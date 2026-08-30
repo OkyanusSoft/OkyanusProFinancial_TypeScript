@@ -1,79 +1,450 @@
 import { useMemo, useState } from "react";
-import { useApp } from "../store";
-import { BarChart, Chip, Donut, Empty, I, Modal, PageHead, Tabs, Reveal, LineChart } from "../ui";
+import { useApp, type AnyR } from "../store";
+import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart } from "../ui";
+import { Directory, type DirConf } from "../crud";
 import type { Invoice } from "../data";
 
-const payToggle = (v: "نقدي" | "آجل", set: (p: "نقدي" | "آجل") => void) => (
-  <div className="flex rounded-xl border border-line overflow-hidden" role="radiogroup" aria-label="طريقة الدفع">
-    {(["نقدي", "آجل"] as const).map((p) => (
-      <button key={p} type="button" onClick={() => set(p)}
-        className={`flex-1 py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-all ${v === p ? "text-[var(--brandink)]" : "bg-surface text-mute hover:text-ink"}`}
-        style={v === p ? { background: p === "نقدي" ? "linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 70%,var(--brand)))" : "linear-gradient(135deg,var(--warn),color-mix(in srgb,var(--warn) 70%,var(--bad)))" } : undefined}>
-        <I n={p === "نقدي" ? "coins" : "clock"} size={16} /> {p}
-      </button>
-    ))}
-  </div>
-);
-
-interface BuilderState { partner: string; date: string; payType: "نقدي" | "آجل"; currency: string; item: string; qty: number; price: number; disc: number; lines: { item: string; qty: number; price: number; disc: number }[] }
-
-function InvoiceBuilder({ open, onClose, kind }: { open: boolean; onClose: () => void; kind: "sales" | "purchases" | "returns" }) {
+/* ═══════════ المشتريات والموردون ═══════════ */
+export function Purchases() {
   const app = useApp();
-  const partners = kind === "purchases" ? app.suppliers : app.customers;
-  const [s, setS] = useState<BuilderState>({ partner: partners[0]?.code || "", date: "2026-03-29", payType: "نقدي", currency: "YER", item: app.items[0]?.code || "", qty: 10, price: 0, disc: 0, lines: [] });
-  const rate = app.currencies.find((c) => c.code === s.currency)?.rate || 1;
-  const itemSel = app.items.find((i) => i.code === s.item);
-  const lineTotal = (l: { qty: number; price: number; disc: number }) => l.qty * l.price * (1 - l.disc / 100);
+  const p = app.route.path || "base.sup";
+  if (p === "base.sup") return <Directory conf={supConf(app)} />;
+  if (p === "mv.req") return <PurchaseRequests />;
+  if (p === "mv.quote") return <QuotesScreen kind="شراء" />;
+  if (p === "mv.inv") return <InvoiceScreen kind="purchases" credit={false} />;
+  if (p === "mv.credit") return <InvoiceScreen kind="purchases" credit />;
+  if (p === "rep.main") return <PurchaseReports />;
+  return <Directory conf={supConf(app)} />;
+}
+
+/* ═══════════ المبيعات والعملاء ═══════════ */
+export function Sales() {
+  const app = useApp();
+  const p = app.route.path || "base.cus";
+  if (p === "base.cus") return <Directory conf={cusConf(app)} />;
+  if (p === "mv.quote") return <QuotesScreen kind="بيع" />;
+  if (p === "mv.inv") return <InvoiceScreen kind="sales" credit={false} />;
+  if (p === "mv.ret") return <InvoiceScreen kind="returns" credit={false} />;
+  if (p === "rep.main") return <SalesReports />;
+  return <Directory conf={cusConf(app)} />;
+}
+
+/* ═══════════ تكوينات الأدلة ═══════════ */
+const supConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "suppliers", title: "إدارة الموردين", icon: "truck", prefix: "SP", importKey: "suppliers",
+  desc: "بيانات الموردين وتصنيفاتهم وحسابات الربط المحاسبي ومدد الائتمان",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم المورد", req: true, uniq: true, span: true },
+    { k: "phone", label: "الهاتف" },
+    { k: "city", label: "المدينة" },
+    { k: "category", label: "التصنيف", type: "select", opts: ["أدوية", "مستلزمات", "أجهزة", "تحاليل", "خدمات"].map((v) => ({ v, l: v })) },
+    { k: "creditDays", label: "مدة الائتمان (أيام)", type: "number" },
+    { k: "account", label: "حساب الربط المحاسبي", type: "select", req: true, opts: app.accounts.filter((a) => a.posting && a.code.startsWith("2111")).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` })) },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "المورد", render: (r) => <b>{r.name}</b> },
+    { k: "city", label: "المدينة" },
+    { k: "category", label: "التصنيف", render: (r) => <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]">{r.category}</span> },
+    { k: "balance", label: "الرصيد المستحق", num: true, render: (r, a) => <b className="font-num text-[var(--warn)]">{a.fmtN(r.balance)}</b> },
+    { k: "account", label: "حساب الربط", num: true, render: (r) => <span className="font-num" dir="ltr">{r.account}</span> },
+  ],
+});
+
+const cusConf = (app: ReturnType<typeof useApp>): DirConf => ({
+  coll: "customers", title: "إدارة العملاء", icon: "users", prefix: "CU", importKey: "customers",
+  desc: "العملاء مع حدود الائتمان — يُرفض ترحيل أي فاتورة آجلة تتجاوز الحد تلقائياً",
+  fields: [
+    { k: "code", label: "الكود", req: true, uniq: true },
+    { k: "name", label: "اسم العميل", req: true, uniq: true, span: true },
+    { k: "phone", label: "الهاتف" },
+    { k: "city", label: "المدينة" },
+    { k: "category", label: "التصنيف", type: "select", opts: ["مستشفيات", "صيدليات", "مجمعات", "منظمات", "أفراد"].map((v) => ({ v, l: v })) },
+    { k: "creditLimit", label: "حد الائتمان", type: "number", req: true, hint: "أقصى رصيد مدين مسموح لهذا العميل" },
+    { k: "account", label: "حساب الربط المحاسبي", type: "select", req: true, opts: app.accounts.filter((a) => a.posting && a.code.startsWith("1121")).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` })) },
+  ],
+  cols: [
+    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+    { k: "name", label: "العميل", render: (r) => <b>{r.name}</b> },
+    { k: "city", label: "المدينة" },
+    { k: "balance", label: "الرصيد المدين", num: true, render: (r, a) => <b className="font-num">{a.fmtN(r.balance)}</b> },
+    {
+      k: "usage", label: "استخدام الحد", render: (r) => {
+        const pct = r.creditLimit ? Math.min(100, Math.round((r.balance / r.creditLimit) * 100)) : 0;
+        const tone = pct > 100 ? "var(--bad)" : pct > 80 ? "var(--warn)" : "var(--good)";
+        return <div className="w-32"><div className="flex justify-between text-[0.62rem] font-bold mb-0.5"><span style={{ color: tone }}>{pct}%</span><span className="text-mute font-num">{r.creditLimit ? `${Math.round(r.balance).toLocaleString()}/${Math.round(r.creditLimit).toLocaleString()}` : ""}</span></div>
+          <div className="h-1.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} /></div></div>;
+      },
+    },
+    { k: "account", label: "حساب الربط", num: true, render: (r) => <span className="font-num" dir="ltr">{r.account}</span> },
+  ],
+});
+
+/* ═══════════ طلبات الشراء ═══════════ */
+function PurchaseRequests() {
+  const app = useApp();
+  const [show, setShow] = useState(false);
+  const [f, setF] = useState({ desc: "", qty: 10, est: 0, item: app.db.items[0]?.id || "" });
+  const rows = app.db.requests;
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="clip" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">طلبات الشراء</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">دورة عمل كاملة: مسودة ← اعتماد ← تحويل إلى فاتورة مشتريات</p>
+          </div>
+        </div>
+        <button className="btn btn-brand" onClick={() => setShow(true)}><I n="plus" size={16} /> طلب شراء جديد</button>
+      </div>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="tbl min-w-[820px]">
+            <thead><tr><th>رقم الطلب</th><th>التاريخ</th><th>مقدم الطلب</th><th>البيان</th><th>الكمية</th><th>القيمة التقديرية</th><th>الحالة</th><th>إجراء</th></tr></thead>
+            <tbody>
+              {rows.map((r: any) => (
+                <tr key={r.id}>
+                  <td className="font-num font-bold" dir="ltr">{r.no}</td>
+                  <td className="font-num">{app.fmtDate(r.date)}</td>
+                  <td>{r.requester}</td>
+                  <td className="font-bold">{r.desc}</td>
+                  <td className="font-num">{app.fmtN(r.qty)}</td>
+                  <td className="font-num">{app.fmtN(r.est)}</td>
+                  <td><Chip s={r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مرفوض" ? "مرفوض" : "بانتظار الموافقة"} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
+                  <td>
+                    {r.status === "مسودة" && <div className="flex gap-1">
+                      <button className="btn btn-soft !py-1 !text-[0.7rem]" onClick={() => app.setRequestStatus(r.id, "معتمد")}>اعتماد</button>
+                      <button className="btn btn-danger !py-1 !text-[0.7rem]" onClick={() => app.setRequestStatus(r.id, "مرفوض")}>رفض</button>
+                    </div>}
+                    {r.status === "معتمد" && <button className="btn btn-brand !py-1 !text-[0.7rem]" onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات مسودة`, "ok"); }}>تحويل لفاتورة</button>}
+                    {(r.status === "تم التحويل" || r.status === "مرفوض") && <span className="text-[0.72rem] text-mute font-bold">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <Modal open={show} onClose={() => setShow(false)} title="طلب شراء جديد" icon="clip">
+        <div className="space-y-3">
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">الصنف المطلوب</span>
+            <select className="select mt-1" value={f.item} onChange={(e) => { const it: any = app.db.items.find((i) => i.id === e.target.value); setF({ ...f, item: e.target.value, desc: `طلب شراء — ${it?.name || ""}`, est: (f.qty || 0) * (it?.cost || 0) }); }}>
+              {app.db.items.map((i: any) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className="text-[0.74rem] font-bold text-soft">الكمية</span><input type="number" className="input mt-1 font-num" value={f.qty} onChange={(e) => { const it: any = app.db.items.find((i) => i.id === f.item); const q = +e.target.value; setF({ ...f, qty: q, est: q * (it?.cost || 0) }); }} /></label>
+            <label className="block"><span className="text-[0.74rem] font-bold text-soft">القيمة التقديرية</span><input type="number" className="input mt-1 font-num" value={f.est} onChange={(e) => setF({ ...f, est: +e.target.value })} /></label>
+          </div>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} /></label>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
+          <button className="btn btn-brand" onClick={() => {
+            if (!f.desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
+            const no = app.nextNo(app.settings.prefixes.PR);
+            app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, status: "مسودة" });
+            app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
+          }}><I n="check" size={15} /> حفظ الطلب (مسودة)</button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ عروض الأسعار ═══════════ */
+function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
+  const app = useApp();
+  const [show, setShow] = useState(false);
+  const [f, setF] = useState({ partner: "", valid: "2026-04-30", total: 100000 });
+  const partners = kind === "بيع" ? app.db.customers : app.db.suppliers;
+  const rows = (app.db.quotes as any[]).filter((q) => q.kind === kind);
+  const isSale = kind === "بيع";
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="receipt" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">{isSale ? "عروض أسعار البيع" : "عروض أسعار الشراء"}</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">عروض {isSale ? "للعملاء قابلة للتحويل إلى فواتير مبيعات" : "من الموردين للمقارنة والاختيار"} مع تواريخ صلاحية</p>
+          </div>
+        </div>
+        <button className="btn btn-brand" onClick={() => { setF({ ...f, partner: partners[0]?.id || "" }); setShow(true); }}><I n="plus" size={16} /> عرض سعر جديد</button>
+      </div>
+      <div className="card overflow-hidden"><div className="overflow-x-auto">
+        <table className="tbl min-w-[760px]">
+          <thead><tr><th>رقم العرض</th><th>{isSale ? "العميل" : "المورد"}</th><th>التاريخ</th><th>صالح حتى</th><th>القيمة</th><th>الحالة</th><th>إجراء</th></tr></thead>
+          <tbody>
+            {rows.map((q: any) => (
+              <tr key={q.id}>
+                <td className="font-num font-bold" dir="ltr">{q.no}</td>
+                <td className="font-bold">{partners.find((p: any) => p.id === q.partner)?.name || "—"}</td>
+                <td className="font-num">{app.fmtDate(q.date)}</td>
+                <td className="font-num">{app.fmtDate(q.valid)}</td>
+                <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(q.total)}</td>
+                <td><Chip s={q.status} /></td>
+                <td>
+                  {q.status === "ساري" ? (
+                    <div className="flex gap-1">
+                      {isSale && <button className="btn btn-soft !py-1 !text-[0.7rem]" onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }}>قبول وتحويل</button>}
+                      <button className="btn btn-ghost !py-1 !text-[0.7rem]" onClick={() => app.setQuoteStatus(q.id, "مرفوض")}>رفض</button>
+                    </div>
+                  ) : <span className="text-[0.72rem] text-mute font-bold">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div></div>
+      <Modal open={show} onClose={() => setShow(false)} title={`عرض سعر ${kind} جديد`} icon="receipt">
+        <div className="space-y-3">
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">{isSale ? "العميل" : "المورد"}</span>
+            <select className="select mt-1" value={f.partner} onChange={(e) => setF({ ...f, partner: e.target.value })}>
+              {partners.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className="text-[0.74rem] font-bold text-soft">صالح حتى</span><input type="date" className="input mt-1 font-num" value={f.valid} onChange={(e) => setF({ ...f, valid: e.target.value })} /></label>
+            <label className="block"><span className="text-[0.74rem] font-bold text-soft">قيمة العرض</span><input type="number" className="input mt-1 font-num" value={f.total} onChange={(e) => setF({ ...f, total: +e.target.value })} /></label>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
+          <button className="btn btn-brand" onClick={() => {
+            if (!f.partner) { app.toast("اختر الطرف أولاً", "err"); return; }
+            const no = app.nextNo(isSale ? app.settings.prefixes.QT : "PQ");
+            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "ساري" });
+            app.toast(`أُنشئ العرض ${no} — ساري حتى ${f.valid}`, "ok"); setShow(false);
+          }}><I n="check" size={15} /> إصدار العرض</button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ شاشة الفواتير (مبيعات/مشتريات/مرتجع + الآجلة) ═══════════ */
+function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "returns"; credit?: boolean }) {
+  const app = useApp();
+  const [show, setShow] = useState(false);
+  const [view, setView] = useState<any>(null);
+  const [payFor, setPayFor] = useState<any>(null);
+  const [payAmt, setPayAmt] = useState(0);
+  const [q, setQ] = useState("");
+
+  const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
+  const all = app.db[kind] as any as Invoice[];
+  let rows = all.filter((i) => {
+    const p = partners.find((x: any) => x.id === i.partner)?.name || "";
+    return !q || i.no.includes(q) || p.includes(q);
+  });
+  if (credit) rows = rows.filter((i) => i.payType === "آجل");
+  rows = [...rows].reverse();
+
+  const TITLES: Record<string, string[]> = {
+    "sales:false": ["فواتير المبيعات", "فواتير بنمطي سداد صريحين: نقدي وآجل — مع أثر مخزني ومحاسبي فوري", "tag"],
+    "purchases:false": ["فاتورة مشتريات", "إدخال فواتير الموردين (نقدي / آجل) — تُرحّل للمخزون والذمم تلقائياً", "truck"],
+    "returns:false": ["فاتورة مرتجع مبيعات", "مرتجعات العملاء (نقدي / آجل) — تُعيد الكميات للمخزن وتخفض الذمم", "undo"],
+    "purchases:true": ["فواتير مشتريات آجل", "إدارة الذمم الدائنة للموردين: سجل الدفعات، المتبقي، والتسوية الكاملة", "wallet"],
+    "sales:true": ["فواتير مبيعات آجل", "إدارة الذمم المدينة: التحصيلات والمتبقي", "wallet"],
+    "returns:true": ["مرتجعات آجلة", "إدارة المرتجعات الآجلة", "undo"],
+  };
+  const titles = TITLES[`${kind}:${credit ? "true" : "false"}`] || ["الفواتير", "", "receipt"];
+
+  const partnerName = (code: string) => partners.find((p: any) => p.id === code)?.name || code;
+  const itemName = (code: string) => app.db.items.find((i: any) => i.id === code)?.name || code;
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n={titles[2]} size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">{titles[0]}</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">{titles[1]}</p>
+          </div>
+        </div>
+        {!credit && <button className="btn btn-brand" onClick={() => setShow(true)}><I n="plus" size={16} /> فاتورة جديدة</button>}
+      </div>
+
+      {credit && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          {[
+            { l: "إجمالي الذمم الدائنة", v: partners.reduce((s: number, p: any) => s + p.balance, 0), c: "var(--warn)", ic: "wallet" },
+            { l: "فواتير آجلة قائمة", v: rows.filter((r) => r.status === "مرحّلة").length, c: "var(--brand)", ic: "receipt" },
+            { l: "دفعات مسجلة", v: rows.reduce((s, r) => s + (r.paid || 0), 0), c: "var(--good)", ic: "check" },
+            { l: "متبقي للسداد", v: rows.filter((r) => r.status === "مرحّلة").reduce((s, r) => s + Math.max(0, app.invoiceTotal(r) - (r.paid || 0)), 0), c: "var(--bad)", ic: "clock" },
+          ].map((s, i) => (
+            <Reveal key={s.l} delay={i * 60}><div className="card card-lift p-4 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, ${s.c} 12%, transparent)`, color: s.c }}><I n={s.ic} size={19} /></span>
+              <div className="min-w-0"><div className="font-num font-bold text-lg leading-tight" style={{ color: s.c }}>{app.fmtN(s.v)}</div><div className="text-[0.66rem] font-bold text-mute truncate">{s.l}</div></div>
+            </div></Reveal>
+          ))}
+        </div>
+      )}
+
+      <div className="relative w-80 max-w-full mb-3.5">
+        <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
+        <input className="input !ps-9" placeholder="بحث برقم الفاتورة أو اسم الطرف…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+      <div className="card overflow-hidden"><div className="overflow-x-auto">
+        <table className="tbl min-w-[860px]">
+          <thead><tr><th>الرقم</th><th>التاريخ</th><th>{kind === "purchases" ? "المورد" : "العميل"}</th><th>السداد</th><th>العملة</th><th>الإجمالي</th>{credit && <th>المدفوع / المتبقي</th>}<th>الحالة</th><th>إجراء</th></tr></thead>
+          <tbody>
+            {rows.map((inv) => {
+              const total = app.invoiceTotal(inv);
+              const paid = inv.paid || 0;
+              const rem = Math.max(0, total - paid);
+              return (
+                <tr key={inv.id}>
+                  <td className="font-num font-bold" dir="ltr">{inv.no}</td>
+                  <td className="font-num">{app.fmtDate(inv.date)}</td>
+                  <td className="font-bold">{partnerName(inv.partner)}</td>
+                  <td><Chip s={inv.payType} /></td>
+                  <td className="font-num">{inv.currency}</td>
+                  <td className="font-num font-bold">{app.fmtN(total)} <span className="text-[0.62rem] text-mute">ر.ي</span></td>
+                  {credit && <td>
+                    <div className="w-36">
+                      <div className="flex justify-between text-[0.66rem] font-bold mb-0.5"><span className="font-num text-[var(--good)]">{app.fmtN(paid)}</span><span className="font-num text-[var(--bad)]">{app.fmtN(rem)}</span></div>
+                      <div className="h-1.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full bg-[var(--good)]" style={{ width: `${total ? (paid / total) * 100 : 0}%` }} /></div>
+                    </div>
+                  </td>}
+                  <td><Chip s={inv.status} />{credit && inv.status === "مرحّلة" && rem < 1 && <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] ms-1">مسددة ✓</span>}</td>
+                  <td>
+                    <div className="flex gap-1">
+                      <button className="btn btn-ghost !p-1.5" title="عرض" onClick={() => setView(inv)}><I n="eye" size={14} /></button>
+                      {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.7rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={13} /> سداد</button>}
+                      {inv.status !== "ملغاة" && !credit && <button className="btn btn-danger !p-1.5" title="إلغاء" onClick={() => app.voidInvoice(kind, inv.id)}><I n="undo" size={14} /></button>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div></div>
+
+      {show && <InvoiceBuilder kind={kind} onClose={() => setShow(false)} defaultCredit={credit} />}
+
+      <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`}>
+        {view && (
+          <>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Chip s={view.status} /><Chip s={view.payType} />
+              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{partnerName(view.partner)}</span>
+              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{view.date} • مركز: {view.costCenter}</span>
+            </div>
+            <table className="tbl mb-3">
+              <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th></tr></thead>
+              <tbody>{view.lines.map((l: any, i: number) => (
+                <tr key={i}><td className="font-bold">{itemName(l.item)}</td><td className="font-num">{l.qty}</td><td className="font-num">{app.fmtN(l.price)}</td><td className="font-num">{l.disc}%</td><td className="font-num font-bold">{app.fmtN(l.qty * l.price * (1 - l.disc / 100))}</td></tr>
+              ))}</tbody>
+            </table>
+            <div className="flex justify-between items-center rounded-xl p-4 bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))] border border-line">
+              <span className="text-[0.78rem] font-bold text-soft">ضريبة {view.vat}% مضمّنة • التكامل المحاسبي ولّد قيداً تلقائياً في دفتر الأستاذ</span>
+              <span className="font-num font-bold text-xl text-[var(--brand)]">{app.fmtN(app.invoiceTotal(view))} ر.ي</span>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`تسجيل سداد — ${payFor?.no || ""}`} icon="coins">
+        {payFor && (() => {
+          const total = app.invoiceTotal(payFor); const rem = total - (payFor.paid || 0);
+          return (
+            <>
+              <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+                <div className="bg-panel rounded-xl p-3"><div className="text-[0.64rem] font-bold text-mute">الإجمالي</div><div className="font-num font-bold">{app.fmtN(total)}</div></div>
+                <div className="bg-panel rounded-xl p-3"><div className="text-[0.64rem] font-bold text-mute">المدفوع</div><div className="font-num font-bold text-[var(--good)]">{app.fmtN(payFor.paid || 0)}</div></div>
+                <div className="bg-panel rounded-xl p-3"><div className="text-[0.64rem] font-bold text-mute">المتبقي</div><div className="font-num font-bold text-[var(--bad)]">{app.fmtN(rem)}</div></div>
+              </div>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">مبلغ الدفعة</span>
+                <input type="number" className="input mt-1 font-num" value={payAmt} onChange={(e) => setPayAmt(+e.target.value)} /></label>
+              <div className="flex gap-2 mt-2">
+                <button className="btn btn-ghost !py-1.5 !text-[0.72rem]" onClick={() => setPayAmt(Math.round(rem / 2))}>نصف المبلغ</button>
+                <button className="btn btn-ghost !py-1.5 !text-[0.72rem]" onClick={() => setPayAmt(Math.round(rem))}>كامل المتبقي</button>
+              </div>
+              <div className="flex justify-end gap-2 mt-5">
+                <button className="btn btn-ghost" onClick={() => setPayFor(null)}>إلغاء</button>
+                <button className="btn btn-brand" onClick={() => {
+                  const res = app.payInvoice(kind as "sales" | "purchases", payFor.id, payAmt);
+                  app.toast(res.msg, res.ok ? "ok" : "err");
+                  if (res.ok) setPayFor(null);
+                }}><I n="check" size={15} /> تسجيل الدفعة وتوليد السند</button>
+              </div>
+            </>
+          );
+        })()}
+      </Modal>
+    </div>
+  );
+}
+
+/* ═══════════ منشئ الفواتير مع مفتاح نقدي/آجل ═══════════ */
+function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean }) {
+  const app = useApp();
+  const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
+  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, lines: [] as { item: string; qty: number; price: number; disc: number }[] });
+  const rate = (app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1;
+  const it: any = app.db.items.find((i: any) => i.id === s.item);
+  const lineTotal = (l: any) => l.qty * l.price * (1 - l.disc / 100);
   const sub = s.lines.reduce((a, l) => a + lineTotal(l), 0);
-  const total = sub * 1.05;
+  const total = sub * (1 + app.settings.vat / 100);
+  const vatV = sub * (app.settings.vat / 100);
+  const cust: any = app.db.customers.find((c: any) => c.id === s.partner);
+  const willExceed = kind === "sales" && s.payType === "آجل" && cust?.creditLimit && cust.balance + total * rate > cust.creditLimit;
 
   const addLine = () => {
     if (s.qty <= 0) { app.toast("الكمية يجب أن تكون أكبر من صفر", "err"); return; }
-    setS({ ...s, lines: [...s.lines, { item: s.item, qty: s.qty, price: s.price || (kind === "purchases" ? itemSel?.cost || 0 : itemSel?.price || 0), disc: s.disc }], qty: 10, disc: 0 });
+    setS({ ...s, lines: [...s.lines, { item: s.item, qty: s.qty, price: s.price || (kind === "purchases" ? it?.cost || 0 : it?.price || 0), disc: s.disc }], qty: 10, disc: 0 });
   };
   const save = () => {
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
-    if (kind === "sales" && s.payType === "آجل") {
-      const c = app.customers.find((x) => x.code === s.partner);
-      if (c?.creditLimit && c.balance + total * rate > c.creditLimit) { app.toast(`تجاوز الحد الائتماني للعميل ${c.name} — رُفض الترحيل`, "err"); return; }
-    }
-    const prefix = kind === "sales" ? "SIN" : kind === "purchases" ? "PIN" : "SRT";
-    const no = `${prefix}-2026-0${300 + Math.floor(Math.random() * 90)}`;
-    const res = app.addInvoice(kind, { id: `${prefix}-${Date.now()}`, no, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: s.lines });
+    const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
+    const no = app.nextNo(prefix);
+    const res = app.addInvoice(kind, { id: no, no, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0 });
     app.toast(res.msg, res.ok ? "ok" : "err");
-    if (res.ok) { setS({ ...s, lines: [] }); onClose(); }
+    if (res.ok) onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} wide icon="receipt"
-      title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "مرتجع مبيعات جديد"}>
+    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"}>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">{kind === "purchases" ? "المورد" : "العميل"}</span>
           <select className="select mt-1" value={s.partner} onChange={(e) => setS({ ...s, partner: e.target.value })}>
-            {partners.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+            {partners.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>
           <input type="date" className="input mt-1 font-num" value={s.date} onChange={(e) => setS({ ...s, date: e.target.value })} /></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">العملة</span>
           <select className="select mt-1" value={s.currency} onChange={(e) => setS({ ...s, currency: e.target.value })}>
-            {app.currencies.map((c) => <option key={c.code} value={c.code}>{c.code} ({app.fmtN(c.rate)})</option>)}
+            {app.db.currencies.map((c: any) => <option key={c.id} value={c.id}>{c.id} ({app.fmtN(c.rate)})</option>)}
           </select></label>
         <div className="col-span-2 md:col-span-4">
-          <span className="text-[0.74rem] font-bold text-soft block mb-1.5">طريقة السداد <span className="text-[var(--bad)]">*</span></span>
-          {payToggle(s.payType, (p) => setS({ ...s, payType: p }))}
+          <span className="text-[0.74rem] font-bold text-soft block mb-1.5">طريقة السداد <b className="text-[var(--bad)]">*</b> خيار صريح لكل فاتورة</span>
+          <div className="flex rounded-xl border border-line overflow-hidden">
+            {(["نقدي", "آجل"] as const).map((p) => (
+              <button key={p} type="button" onClick={() => setS({ ...s, payType: p })}
+                className={`flex-1 py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-all ${s.payType === p ? "text-[var(--brandink)]" : "bg-surface text-mute hover:text-ink"}`}
+                style={s.payType === p ? { background: p === "نقدي" ? "linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 65%,var(--brand)))" : "linear-gradient(135deg,var(--warn),color-mix(in srgb,var(--warn) 65%,var(--bad)))" } : undefined}>
+                <I n={p === "نقدي" ? "coins" : "clock"} size={16} /> {p}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="rounded-xl border border-line bg-panel p-3 mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 items-end">
           <label className="block col-span-2"><span className="text-[0.7rem] font-bold text-mute">الصنف</span>
-            <select className="select mt-1 !py-2" value={s.item} onChange={(e) => { const it = app.items.find((x) => x.code === e.target.value); setS({ ...s, item: e.target.value, price: kind === "purchases" ? it?.cost || 0 : it?.price || 0 }); }}>
-              {app.items.map((i) => <option key={i.code} value={i.code}>{i.name}</option>)}
+            <select className="select mt-1 !py-2" value={s.item} onChange={(e) => { const ni: any = app.db.items.find((x: any) => x.id === e.target.value); setS({ ...s, item: e.target.value, price: kind === "purchases" ? ni?.cost || 0 : ni?.price || 0 }); }}>
+              {app.db.items.map((i: any) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </select></label>
           <label className="block"><span className="text-[0.7rem] font-bold text-mute">الكمية</span><input type="number" className="input mt-1 !py-2 font-num" value={s.qty} onChange={(e) => setS({ ...s, qty: +e.target.value })} /></label>
           <label className="block"><span className="text-[0.7rem] font-bold text-mute">السعر</span><input type="number" className="input mt-1 !py-2 font-num" value={s.price} onChange={(e) => setS({ ...s, price: +e.target.value })} /></label>
           <div className="flex items-end gap-2">
-            <label className="block flex-1"><span className="text-[0.7rem] font-bold text-mute">خصم %</span><input type="number" className="input mt-1 !py-2 font-num" value={s.disc} onChange={(e) => setS({ ...s, disc: +e.target.value })} /></label>
+            <label className="block flex-1"><span className="text-[0.7rem] font-bold text-mute">خصم %</span><input type="number" className="input mt-1 !py-2 font-num" value={s.disc} onChange={(e) => setS({ ...s, disc: Math.min(app.settings.discMax, +e.target.value) })} /></label>
             <button className="btn btn-soft !py-2" onClick={addLine}><I n="plus" size={15} /> إضافة</button>
           </div>
         </div>
@@ -84,18 +455,24 @@ function InvoiceBuilder({ open, onClose, kind }: { open: boolean; onClose: () =>
           <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th><th></th></tr></thead>
           <tbody>{s.lines.map((l, i) => (
             <tr key={i}>
-              <td className="font-bold">{app.items.find((x) => x.code === l.item)?.name}</td>
+              <td className="font-bold">{app.db.items.find((x: any) => x.id === l.item)?.name}</td>
               <td className="font-num">{l.qty}</td><td className="font-num">{app.fmtN(l.price)}</td><td className="font-num">{l.disc}%</td>
               <td className="font-num font-bold">{app.fmtN(lineTotal(l))}</td>
-              <td><button className="text-mute hover:text-[var(--bad)] transition-colors" onClick={() => setS({ ...s, lines: s.lines.filter((_, j) => j !== i) })} aria-label="حذف سطر"><I n="trash" size={15} /></button></td>
+              <td><button className="text-mute hover:text-[var(--bad)] transition-colors" onClick={() => setS({ ...s, lines: s.lines.filter((_, j) => j !== i) })} aria-label="حذف"><I n="trash" size={15} /></button></td>
             </tr>))}
           </tbody>
         </table>
       ) : <Empty msg="لم تُضف أصناف بعد — استخدم النموذج أعلاه" />}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl p-4" style={{ background: "color-mix(in srgb, var(--brand) 6%, var(--panel))" }}>
+      {willExceed && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] border border-[color-mix(in_srgb,var(--bad)_30%,transparent)] text-[0.78rem] font-bold text-[var(--bad)] mb-3">
+          <I n="alert" size={16} /> ستُرفض الفاتورة: الرصيد الناتج {app.fmtN(cust.balance + total * rate)} يتجاوز حد الائتمان {app.fmtN(cust.creditLimit)}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))] border border-line">
         <div className="text-[0.78rem] font-bold text-soft space-y-1">
-          <div>الإجمالي الفرعي: <span className="font-num">{app.fmtN(sub)}</span> • ضريبة 5%: <span className="font-num">{app.fmtN(sub * 0.05)}</span></div>
+          <div>الفرعي: <span className="font-num">{app.fmtN(sub)}</span> • ضريبة {app.settings.vat}%: <span className="font-num">{app.fmtN(vatV)}</span></div>
           {s.currency !== "YER" && <div>سعر التحويل: <span className="font-num">1 {s.currency} = {app.fmtN(rate)} ر.ي</span></div>}
         </div>
         <div className="text-end">
@@ -105,164 +482,60 @@ function InvoiceBuilder({ open, onClose, kind }: { open: boolean; onClose: () =>
       </div>
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-brand" onClick={save}><I n="check" size={16} /> ترحيل الفاتورة ({s.payType})</button>
+        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> ترحيل الفاتورة ({s.payType})</button>
       </div>
     </Modal>
   );
 }
 
-function InvoicesTable({ kind }: { kind: "sales" | "purchases" | "returns" }) {
+/* ═══════════ تقارير المشتريات ═══════════ */
+function PurchaseReports() {
   const app = useApp();
-  const list = kind === "sales" ? app.sales : kind === "purchases" ? app.purchases : app.returns;
-  const partners = kind === "purchases" ? app.suppliers : app.customers;
-  const [q, setQ] = useState("");
-  const rows = list.filter((i) => { const p = partners.find((x) => x.code === i.partner)?.name || ""; return !q || i.no.includes(q) || p.includes(q); });
+  const act = (app.db.purchases as any as Invoice[]).filter((i) => i.status !== "ملغاة");
+  const bySup = app.db.suppliers.map((s: any) => ({ label: String(s.name).split(" ").slice(0, 2).join(" "), value: Math.round(act.filter((p) => p.partner === s.id).reduce((a, i) => a + app.invoiceTotal(i), 0)) }));
+  const byMonth = ["يناير", "فبراير", "مارس"].map((m, idx) => ({ label: m, value: Math.round(act.filter((p) => p.date.slice(5, 7) === String(idx + 1).padStart(2, "0")).reduce((a, i) => a + app.invoiceTotal(i), 0)) }));
   return (
-    <div>
-      <div className="relative w-72 max-w-full mb-3">
-        <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
-        <input className="input !ps-9" placeholder="بحث برقم الفاتورة أو اسم الطرف…" value={q} onChange={(e) => setQ(e.target.value)} />
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="chart" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">تقارير المشتريات</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">تحليلات حسب المورد والصنف والفترة مع تصدير فوري</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={() => app.exportCsv("تقرير_المشتريات_حسب_المورد", [["المورد", "الإجمالي"], ...bySup.map((s) => [s.label, s.value])])}><I n="xlsx" size={15} /> Excel</button>
+          <button className="btn btn-ghost" onClick={() => app.toast("تقرير PDF جاهز في قائمة الطباعة", "info")}><I n="pdf" size={15} /> PDF</button>
+        </div>
       </div>
-      <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
-        <table className="tbl min-w-[820px]">
-          <thead><tr><th>الرقم</th><th>التاريخ</th><th>{kind === "purchases" ? "المورد" : "العميل"}</th><th>السداد</th><th>العملة</th><th>الإجمالي</th><th>الحالة</th><th>إجراء</th></tr></thead>
-          <tbody>
-            {rows.map((inv) => (
-              <tr key={inv.id}>
-                <td className="font-num font-bold" dir="ltr">{inv.no}</td>
-                <td className="font-num">{app.fmtDate(inv.date)}</td>
-                <td className="font-bold">{partners.find((p) => p.code === inv.partner)?.name}</td>
-                <td><Chip s={inv.payType} /></td>
-                <td className="font-num">{inv.currency}</td>
-                <td className="font-num font-bold">{app.fmtN(app.invoiceTotal(inv))} <span className="text-[0.62rem] text-mute">ر.ي</span></td>
-                <td><Chip s={inv.status} /></td>
-                <td>
-                  <div className="flex gap-1">
-                    <button className="btn btn-ghost !p-1.5" onClick={() => app.toast(`${inv.no}: ${inv.lines.length} صنف — ${inv.note || "بدون ملاحظات"}`, "info")} title="عرض"><I n="eye" size={14} /></button>
-                    <button className="btn btn-ghost !p-1.5" onClick={() => app.toast("أُرسلت الفاتورة إلى قائمة الطباعة", "info")} title="طباعة"><I n="print" size={14} /></button>
-                    {inv.status !== "ملغاة" && <button className="btn btn-danger !p-1.5" onClick={() => app.voidInvoice(kind, inv.id)} title="إلغاء"><I n="undo" size={14} /></button>}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div></div></Reveal>
-    </div>
-  );
-}
-
-/* ══════════════════ وحدة المشتريات ══════════════════ */
-export function Purchases() {
-  const app = useApp();
-  const [tab, setTab] = useState(app.route.tab || "base");
-  const [show, setShow] = useState(false);
-  const total = (arr: Invoice[]) => arr.filter((i) => i.status !== "ملغاة").reduce((a, i) => a + app.invoiceTotal(i), 0);
-
-  return (
-    <div>
-      <PageHead icon="truck" title="وحدة المشتريات والموردين" desc="طلبات الشراء، عروض الأسعار، وفواتير بنمطي السداد نقدي / آجل">
-        <button className="btn btn-brand" onClick={() => setShow(true)}><I n="plus" size={16} /> فاتورة مشتريات</button>
-      </PageHead>
-      <Tabs active={tab} onChange={setTab} tabs={[
-        { id: "base", label: "الموردون", icon: "users" },
-        { id: "quotes", label: "الطلبات وعروض الأسعار", icon: "clip" },
-        { id: "moves", label: "فواتير المشتريات", icon: "receipt" },
-        { id: "reports", label: "التقارير التحليلية", icon: "chart" },
-      ]} />
-
-      {tab === "base" && (
-        <div className="grid md:grid-cols-2 gap-4 stagger">
-          {app.suppliers.map((s) => (
-            <div key={s.code} className="card card-lift p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="w-11 h-11 rounded-xl grid place-items-center font-display font-bold" style={{ background: "color-mix(in srgb, var(--accent) 13%, transparent)", color: "var(--accent)" }}>{s.name.slice(5, 7)}</span>
-                  <div>
-                    <div className="font-display font-bold">{s.name}</div>
-                    <div className="text-[0.72rem] text-mute font-bold font-num" dir="ltr">{s.code} • {s.phone}</div>
-                  </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Reveal><div className="card p-5"><h3 className="font-display font-bold text-base mb-4">المشتريات حسب المورد</h3><BarChart height={180} color="var(--accent)" data={bySup} unit=" ر.ي" /></div></Reveal>
+        <Reveal delay={80}><div className="card p-5"><h3 className="font-display font-bold text-base mb-4">التوزيع الشهري — الربع الأول 2026</h3><BarChart height={180} data={byMonth} unit=" ر.ي" /></div></Reveal>
+        <Reveal className="lg:col-span-2"><div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-4">أعلى الأصناف شراءً (حسب قيمة الفواتير)</h3>
+          <div className="space-y-3">
+            {app.db.items.slice(0, 6).map((itx: any) => {
+              const v = act.flatMap((p) => p.lines).filter((l) => l.item === itx.id).reduce((a, l) => a + l.qty * l.price, 0);
+              return (
+                <div key={itx.id}>
+                  <div className="flex justify-between text-[0.78rem] font-bold mb-1"><span>{itx.name}</span><span className="font-num text-mute">{app.fmtN(v)}</span></div>
+                  <div className="h-2.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (v / 600000) * 100)}%`, background: "linear-gradient(90deg, var(--accent), var(--brand))" }} /></div>
                 </div>
-                <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{s.category}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-4">
-                <div className="bg-panel rounded-lg p-2.5 text-center"><div className="text-[0.64rem] font-bold text-mute">الرصيد المستحق</div><div className="font-num font-bold text-[0.95rem] mt-0.5">{app.fmtN(s.balance)}</div></div>
-                <div className="bg-panel rounded-lg p-2.5 text-center"><div className="text-[0.64rem] font-bold text-mute">فواتير الربع</div><div className="font-num font-bold text-[0.95rem] mt-0.5">{app.purchases.filter((p) => p.partner === s.code && p.status !== "ملغاة").length}</div></div>
-                <div className="bg-panel rounded-lg p-2.5 text-center"><div className="text-[0.64rem] font-bold text-mute">حساب الربط</div><div className="font-num font-bold text-[0.95rem] mt-0.5" dir="ltr">{s.account}</div></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === "quotes" && (
-        <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
-          <table className="tbl min-w-[680px]">
-            <thead><tr><th>الرقم</th><th>النوع</th><th>الطرف</th><th>التاريخ</th><th>الصالحية</th><th>القيمة</th><th>الحالة</th></tr></thead>
-            <tbody>
-              {app.quotes.filter((q) => q.no.startsWith("PQ") || tab === "quotes").slice(0, 8).map((q) => (
-                <tr key={q.id}>
-                  <td className="font-num font-bold" dir="ltr">{q.no}</td>
-                  <td>{q.no.startsWith("PQ") ? <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]">عرض سعر شراء</span> : <span className="chip bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]">عرض سعر بيع</span>}</td>
-                  <td className="font-bold">{[...app.suppliers, ...app.customers].find((p) => p.code === q.partner)?.name}</td>
-                  <td className="font-num">{app.fmtDate(q.date)}</td>
-                  <td className="font-num">{app.fmtDate(q.valid)}</td>
-                  <td className="font-num font-bold">{app.fmtN(q.total)}</td>
-                  <td><Chip s={q.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div></div></Reveal>
-      )}
-
-      {tab === "moves" && <InvoicesTable kind="purchases" />}
-
-      {tab === "reports" && (
-        <div className="grid lg:grid-cols-2 gap-4">
-          <Reveal><div className="card p-5">
-            <h3 className="font-display font-bold text-base mb-4">المشتريات حسب المورد (الربع الأول)</h3>
-            <BarChart height={180} color="var(--accent)" data={app.suppliers.map((s) => ({ label: s.name.split(" ").slice(0, 2).join(" "), value: Math.round(app.purchases.filter((p) => p.partner === s.code && p.status !== "ملغاة").reduce((a, i) => a + app.invoiceTotal(i), 0)) }))} unit=" ر.ي" />
-          </div></Reveal>
-          <Reveal delay={80}><div className="card p-5">
-            <h3 className="font-display font-bold text-base mb-4">التوزيع الشهري</h3>
-            <BarChart height={180} data={["يناير", "فبراير", "مارس"].map((m, idx) => ({ label: m, value: Math.round(app.purchases.filter((p) => p.status !== "ملغاة" && p.date.slice(5, 7) === String(idx + 1).padStart(2, "0")).reduce((a, i) => a + app.invoiceTotal(i), 0)) }))} unit=" ر.ي" />
-          </div></Reveal>
-          <Reveal className="lg:col-span-2"><div className="card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-display font-bold text-base">أعلى الأصناف شراءً</h3>
-              <button className="btn btn-ghost !py-1.5 !text-[0.72rem]" onClick={() => { const rows: (string | number)[][] = [["المورد", "الإجمالي"], ...app.suppliers.map((s) => [s.name, Math.round(app.purchases.filter((p) => p.partner === s.code).reduce((a, i) => a + app.invoiceTotal(i), 0))])]; app.exportCsv("تحليل_المشتريات", rows); }}><I n="xlsx" size={14} /> تصدير Excel</button>
-            </div>
-            <div className="space-y-3">
-              {app.items.slice(0, 5).map((it) => {
-                const v = app.purchases.filter((p) => p.status !== "ملغاة").flatMap((p) => p.lines).filter((l) => l.item === it.code).reduce((a, l) => a + l.qty * l.price, 0);
-                const max = 600000;
-                return (
-                  <div key={it.code}>
-                    <div className="flex justify-between text-[0.76rem] font-bold mb-1"><span>{it.name}</span><span className="font-num text-mute">{app.fmtN(v)}</span></div>
-                    <div className="h-2.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (v / max) * 100)}%`, background: "linear-gradient(90deg, var(--accent), var(--brand))" }} /></div>
-                  </div>
-                );
-              })}
-            </div>
-          </div></Reveal>
-        </div>
-      )}
-      <InvoiceBuilder open={show} onClose={() => setShow(false)} kind="purchases" />
-      <div className="mt-3 text-[0.72rem] font-bold text-mute">إجمالي مشتريات الربع الأول: <span className="font-num text-[var(--brand)]">{app.fmtMoney(total(app.purchases))}</span> — منها <span className="font-num">{app.fmtMoney(total(app.purchases.filter((i) => i.payType === "آجل")))}</span> آجلة.</div>
+              );
+            })}
+          </div>
+        </div></Reveal>
+      </div>
     </div>
   );
 }
 
-/* ══════════════════ وحدة المبيعات ══════════════════ */
-export function Sales() {
+/* ═══════════ تقارير المبيعات ═══════════ */
+function SalesReports() {
   const app = useApp();
-  const [tab, setTab] = useState(app.route.tab || "base");
-  const [show, setShow] = useState(false);
-  const [showRet, setShowRet] = useState(false);
   const [period, setPeriod] = useState<"daily" | "monthly" | "yearly">("monthly");
-  const act = app.sales.filter((s) => s.status !== "ملغاة");
-
+  const act = useMemo(() => (app.db.sales as any as Invoice[]).filter((i) => i.status !== "ملغاة"), [app.db.sales]);
   const byMonth = ["يناير", "فبراير", "مارس"].map((m, idx) => ({ label: m, value: Math.round(act.filter((s) => s.date.slice(5, 7) === String(idx + 1).padStart(2, "0")).reduce((a, i) => a + app.invoiceTotal(i), 0)) }));
   const byDay = useMemo(() => {
     const days: Record<string, number> = {};
@@ -273,109 +546,44 @@ export function Sales() {
   const cashV = Math.round(act.reduce((a, i) => a + app.invoiceTotal(i), 0)) - creditV;
 
   return (
-    <div>
-      <PageHead icon="tag" title="وحدة المبيعات والعملاء" desc="عروض أسعار، فواتير نقدية وآجلة مع حدود ائتمانية، ومرتجعات مبيعات">
-        <button className="btn btn-ghost" onClick={() => setShowRet(true)}><I n="undo" size={16} /> مرتجع مبيعات</button>
-        <button className="btn btn-brand" onClick={() => setShow(true)}><I n="plus" size={16} /> فاتورة مبيعات</button>
-      </PageHead>
-      <Tabs active={tab} onChange={setTab} tabs={[
-        { id: "base", label: "العملاء والحدود الائتمانية", icon: "users" },
-        { id: "quotes", label: "عروض الأسعار", icon: "clip" },
-        { id: "moves", label: "فواتير المبيعات", icon: "receipt" },
-        { id: "returns", label: "مرتجعات المبيعات", icon: "undo" },
-        { id: "reports", label: "التقارير والرسوم", icon: "chart" },
-      ]} />
-
-      {tab === "base" && (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 stagger">
-          {app.customers.map((c) => {
-            const over = c.creditLimit ? c.balance / c.creditLimit : 0;
-            return (
-              <div key={c.code} className="card card-lift p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="w-11 h-11 rounded-xl grid place-items-center font-display font-bold" style={{ background: "color-mix(in srgb, var(--brand) 12%, transparent)", color: "var(--brand)" }}>{c.name.slice(0, 2)}</span>
-                    <div><div className="font-display font-bold">{c.name}</div><div className="text-[0.7rem] text-mute font-bold font-num" dir="ltr">{c.code} • {c.city}</div></div>
-                  </div>
-                  <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{c.category}</span>
-                </div>
-                <div className="mt-4 space-y-1.5">
-                  <div className="flex justify-between text-[0.74rem] font-bold"><span className="text-mute">الرصيد المدين</span><span className="font-num">{app.fmtN(c.balance)} ر.ي</span></div>
-                  <div className="flex justify-between text-[0.74rem] font-bold"><span className="text-mute">الحد الائتماني</span><span className="font-num">{app.fmtN(c.creditLimit || 0)} ر.ي</span></div>
-                  <div className="h-2 rounded-full bg-panel overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, over * 100)}%`, background: over > 1 ? "var(--bad)" : over > 0.8 ? "var(--warn)" : "linear-gradient(90deg, var(--brand), var(--accent))" }} />
-                  </div>
-                  {over > 1 && <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--bad)]"><I n="alert" size={13} /> تجاوز الحد بمقدار {app.fmtN(c.balance - (c.creditLimit || 0))}</div>}
-                  {over > 0.8 && over <= 1 && <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--warn)]"><I n="info" size={13} /> اقترب من الحد ({Math.round(over * 100)}%)</div>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {tab === "quotes" && (
-        <Reveal><div className="card overflow-hidden"><div className="overflow-x-auto">
-          <table className="tbl min-w-[680px]">
-            <thead><tr><th>الرقم</th><th>العميل</th><th>التاريخ</th><th>صالح حتى</th><th>القيمة</th><th>الحالة</th><th>إجراء</th></tr></thead>
-            <tbody>
-              {app.quotes.filter((q) => q.no.startsWith("QT")).map((q) => (
-                <tr key={q.id}>
-                  <td className="font-num font-bold" dir="ltr">{q.no}</td>
-                  <td className="font-bold">{app.customers.find((c) => c.code === q.partner)?.name}</td>
-                  <td className="font-num">{app.fmtDate(q.date)}</td>
-                  <td className="font-num">{app.fmtDate(q.valid)}</td>
-                  <td className="font-num font-bold">{app.fmtN(q.total)}</td>
-                  <td><Chip s={q.status} /></td>
-                  <td>{q.status === "ساري" ? <button className="btn btn-soft !py-1.5 !text-[0.72rem]" onClick={() => { setShow(true); app.toast(`تحويل العرض ${q.no} إلى فاتورة`, "info"); }}>تحويل لفاتورة</button> : <span className="text-[0.72rem] text-mute font-bold">—</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div></div></Reveal>
-      )}
-
-      {tab === "moves" && <InvoicesTable kind="sales" />}
-      {tab === "returns" && <InvoicesTable kind="returns" />}
-
-      {tab === "reports" && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {([["daily", "يومي"], ["monthly", "شهري"], ["yearly", "سنوي"]] as const).map(([id, l]) => (
-              <button key={id} onClick={() => setPeriod(id)} className={`btn !py-1.5 !px-4 ${period === id ? "btn-brand" : "btn-ghost"}`}>{l}</button>
-            ))}
-            <div className="ms-auto flex gap-2">
-              <button className="btn btn-ghost !py-1.5" onClick={() => app.exportCsv("المبيعات_" + period, [["الفترة", "القيمة"], ...(period === "daily" ? byDay : byMonth).map((d) => [d.label, d.value])])}><I n="xlsx" size={15} /> Excel</button>
-              <button className="btn btn-ghost !py-1.5" onClick={() => app.toast("تقرير PDF جاهز في قائمة الطباعة", "info")}><I n="pdf" size={15} /> PDF</button>
-            </div>
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="chart" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">تقارير المبيعات</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">تقارير يومية وشهرية وسنوية مع رسوم بيانية تفاعلية</p>
           </div>
-          <div className="grid lg:grid-cols-3 gap-4">
-            <Reveal className="lg:col-span-2"><div className="card p-5">
-              <h3 className="font-display font-bold text-base mb-4">
-                {period === "daily" ? "المبيعات اليومية — مارس 2026" : period === "monthly" ? "المبيعات الشهرية — الربع الأول 2026" : "المبيعات السنوية 2023 – 2026"}
-              </h3>
-              {period === "yearly"
-                ? <BarChart height={200} data={[{ label: "2023", value: 5200000 }, { label: "2024", value: 7400000 }, { label: "2025", value: 9100000 }, { label: "2026*", value: Math.round(act.reduce((a, i) => a + app.invoiceTotal(i), 0)) }]} unit=" ر.ي" />
-                : <BarChart height={200} data={period === "daily" ? byDay : byMonth} unit=" ر.ي" />}
-            </div></Reveal>
-            <Reveal delay={90}><div className="card p-5">
-              <h3 className="font-display font-bold text-base mb-4">نقدي مقابل آجل</h3>
-              <Donut label={app.fmtN((cashV + creditV) / 1000).replace(/\.0$/, "") + "K"} parts={[
-                { name: "نقدي", value: cashV, color: "var(--accent)" },
-                { name: "آجل", value: creditV, color: "var(--warn)" },
-              ]} />
-              <div className="mt-4 pt-3 border-t border-line text-[0.72rem] font-bold text-mute">نسبة التحصيل النقدي {Math.round((cashV / (cashV + creditV)) * 100)}% — فوق المستهدف (35%)</div>
-            </div></Reveal>
-          </div>
-          <Reveal><div className="card p-5">
-            <h3 className="font-display font-bold text-base mb-3">اتجاه المبيعات التراكمي (أسبوعياً)</h3>
-            <LineChart points={[180, 240, 310, 290, 380, 460, 520, 610, 680, 745].map((x) => x * 1000)} height={150} />
-          </div></Reveal>
         </div>
-      )}
-
-      <InvoiceBuilder open={show} onClose={() => setShow(false)} kind="sales" />
-      <InvoiceBuilder open={showRet} onClose={() => setShowRet(false)} kind="returns" />
+        <div className="flex flex-wrap gap-2">
+          {([["daily", "يومي"], ["monthly", "شهري"], ["yearly", "سنوي"]] as const).map(([id, l]) => (
+            <button key={id} onClick={() => setPeriod(id)} className={`btn !py-1.5 !px-4 ${period === id ? "btn-brand" : "btn-ghost"}`}>{l}</button>
+          ))}
+          <button className="btn btn-ghost" onClick={() => app.exportCsv(`تقرير_المبيعات_${period}`, [["الفترة", "القيمة"], ...(period === "daily" ? byDay : byMonth).map((d) => [d.label, d.value])])}><I n="xlsx" size={15} /> Excel</button>
+        </div>
+      </div>
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Reveal className="lg:col-span-2"><div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-4">
+            {period === "daily" ? "المبيعات اليومية — مارس 2026" : period === "monthly" ? "المبيعات الشهرية — الربع الأول 2026" : "المبيعات السنوية 2023 – 2026"}
+          </h3>
+          {period === "yearly"
+            ? <BarChart height={210} data={[{ label: "2023", value: 5200000 }, { label: "2024", value: 7400000 }, { label: "2025", value: 9100000 }, { label: "2026*", value: Math.round(act.reduce((a, i) => a + app.invoiceTotal(i), 0)) }]} unit=" ر.ي" />
+            : <BarChart height={210} data={period === "daily" ? byDay : byMonth} unit=" ر.ي" />}
+        </div></Reveal>
+        <Reveal delay={90}><div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-4">نقدي مقابل آجل</h3>
+          <Donut label={`${Math.round((cashV + creditV) / 1000)}K`} parts={[
+            { name: "نقدي", value: cashV, color: "var(--accent)" },
+            { name: "آجل", value: creditV, color: "var(--warn)" },
+          ]} />
+          <div className="mt-4 pt-3 border-t border-line text-[0.72rem] font-bold text-mute">نسبة التحصيل النقدي {Math.round((cashV / (cashV + creditV || 1)) * 100)}% — فوق المستهدف (35%)</div>
+        </div></Reveal>
+        <Reveal className="lg:col-span-3"><div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-3">اتجاه المبيعات التراكمي (أسبوعياً)</h3>
+          <LineChart points={[180, 240, 310, 290, 380, 460, 520, 610, 680, 745].map((x) => x * 1000)} height={150} />
+        </div></Reveal>
+      </div>
     </div>
   );
 }
