@@ -17,14 +17,14 @@ export const SYSTEM = {
 
 export type AnyR = Record<string, any> & { id: string };
 
-export interface Account { code: string; name: string; en: string; level: number; parent: string; type: "أصول" | "خصوم" | "حقوق ملكية" | "إيرادات" | "مصروفات"; posting: boolean; analytical?: boolean }
+export interface Account { code: string; name: string; en: string; level: number; parent: string; type: "أصول" | "خصوم" | "إيرادات" | "مصروفات"; posting: boolean; analytical?: boolean }
 export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string }
 export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number }
 export interface JournalLine { account: string; debit: number; credit: number; currency: string; rate: number; analytical?: string; costCenter?: string }
 export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة"; source?: string }
 
 /* ── دليل الحسابات: 5 مستويات (نمط يمين سوفت التجاري) ──
-   1-أصول  2-خصوم  3-حقوق ملكية  4-إيرادات  5-مصروفات */
+   1-الأصول  2-الخصوم (تشمل حقوق الملكية)  3-المصروفات  4-الإيرادات */
 export const ACCOUNTS: Account[] = [
   { code: "1", name: "الأصول", en: "Assets", level: 1, parent: "", type: "أصول", posting: false },
   { code: "11", name: "الأصول المتداولة", en: "Current Assets", level: 2, parent: "1", type: "أصول", posting: false },
@@ -57,14 +57,32 @@ export const ACCOUNTS: Account[] = [
   { code: "2121", name: "ضريبة المبيعات", en: "Sales Tax", level: 4, parent: "212", type: "خصوم", posting: false },
   { code: "21211", name: "ضريبة مخرجات مستحقة", en: "Output VAT", level: 5, parent: "2121", type: "خصوم", posting: true },
   { code: "21212", name: "ضريبة مدخلات قابلة للخصم", en: "Input VAT", level: 5, parent: "2121", type: "خصوم", posting: true },
-  { code: "3", name: "حقوق الملكية", en: "Equity", level: 1, parent: "", type: "حقوق ملكية", posting: false },
-  { code: "31", name: "رأس المال", en: "Capital", level: 2, parent: "3", type: "حقوق ملكية", posting: false },
-  { code: "311", name: "رأس المال المدفوع", en: "Paid-up Capital", level: 3, parent: "31", type: "حقوق ملكية", posting: false },
-  { code: "3111", name: "رأس المال المصرح", en: "Authorized Capital", level: 4, parent: "311", type: "حقوق ملكية", posting: false },
-  { code: "31111", name: "رأس المال — الشركاء", en: "Partners Capital", level: 5, parent: "3111", type: "حقوق ملكية", posting: true },
-  { code: "312", name: "الاحتياطيات والأرباح", en: "Retained Earnings", level: 2, parent: "3", type: "حقوق ملكية", posting: false },
-  { code: "3121", name: "أرباح محتجزة", en: "Retained Profits", level: 3, parent: "312", type: "حقوق ملكية", posting: false },
-  { code: "31211", name: "أرباح سنوات سابقة", en: "Prior Years Profits", level: 5, parent: "3121", type: "حقوق ملكية", posting: true },
+  { code: "22", name: "حقوق الملكية", en: "Equity", level: 2, parent: "2", type: "خصوم", posting: false },
+  { code: "221", name: "رأس المال", en: "Capital", level: 3, parent: "22", type: "خصوم", posting: false },
+  { code: "2211", name: "رأس المال المصرح", en: "Authorized Capital", level: 4, parent: "221", type: "خصوم", posting: false },
+  { code: "22111", name: "رأس المال — الشركاء", en: "Partners Capital", level: 5, parent: "2211", type: "خصوم", posting: true },
+  { code: "222", name: "الاحتياطيات والأرباح", en: "Retained Earnings", level: 3, parent: "22", type: "خصوم", posting: false },
+  { code: "2221", name: "أرباح محتجزة", en: "Retained Profits", level: 4, parent: "222", type: "خصوم", posting: false },
+  { code: "22211", name: "أرباح سنوات سابقة", en: "Prior Years Profits", level: 5, parent: "2221", type: "خصوم", posting: true },
+  /* ── 3: المصروفات ── */
+  { code: "3", name: "المصروفات", en: "Expenses", level: 1, parent: "", type: "مصروفات", posting: false },
+  { code: "31", name: "المصروفات التشغيلية", en: "Operating Expenses", level: 2, parent: "3", type: "مصروفات", posting: false },
+  { code: "311", name: "الرواتب والأجور", en: "Salaries", level: 3, parent: "31", type: "مصروفات", posting: false },
+  { code: "3111", name: "رواتب الموظفين", en: "Staff Salaries", level: 4, parent: "311", type: "مصروفات", posting: false },
+  { code: "31111", name: "رواتب إدارية وطبية", en: "Admin & Medical Salaries", level: 5, parent: "3111", type: "مصروفات", posting: true },
+  { code: "312", name: "الإيجارات والمرافق", en: "Rent & Utilities", level: 3, parent: "31", type: "مصروفات", posting: false },
+  { code: "3121", name: "الإيجارات", en: "Rent", level: 4, parent: "312", type: "مصروفات", posting: false },
+  { code: "31211", name: "إيجار المقر الرئيسي", en: "HQ Rent", level: 5, parent: "3121", type: "مصروفات", posting: true },
+  { code: "313", name: "الاستهلاكات", en: "Depreciation", level: 3, parent: "31", type: "مصروفات", posting: false },
+  { code: "3131", name: "استهلاك أصول ثابتة", en: "FA Depreciation", level: 4, parent: "313", type: "مصروفات", posting: false },
+  { code: "31311", name: "استهلاك المعدات الطبية", en: "Medical Equip. Depr.", level: 5, parent: "3131", type: "مصروفات", posting: true },
+  { code: "314", name: "مصاريف تسويقية", en: "Marketing", level: 3, parent: "31", type: "مصروفات", posting: false },
+  { code: "3141", name: "إعلان ودعاية", en: "Advertising", level: 4, parent: "314", type: "مصروفات", posting: false },
+  { code: "31411", name: "حملات رقمية", en: "Digital Campaigns", level: 5, parent: "3141", type: "مصروفات", posting: true },
+  { code: "315", name: "تكلفة المبيعات", en: "COGS", level: 3, parent: "31", type: "مصروفات", posting: false },
+  { code: "3151", name: "تكلفة البضاعة المباعة", en: "Cost of Goods Sold", level: 4, parent: "315", type: "مصروفات", posting: false },
+  { code: "31511", name: "تكلفة مبيعات محلية", en: "Local COGS", level: 5, parent: "3151", type: "مصروفات", posting: true },
+  /* ── 4: الإيرادات ── */
   { code: "4", name: "الإيرادات", en: "Revenues", level: 1, parent: "", type: "إيرادات", posting: false },
   { code: "41", name: "الإيرادات التشغيلية", en: "Operating Revenue", level: 2, parent: "4", type: "إيرادات", posting: false },
   { code: "411", name: "المبيعات", en: "Sales", level: 3, parent: "41", type: "إيرادات", posting: false },
@@ -77,23 +95,6 @@ export const ACCOUNTS: Account[] = [
   { code: "413", name: "مرتجعات المبيعات", en: "Sales Returns", level: 3, parent: "41", type: "إيرادات", posting: false },
   { code: "4131", name: "مرتجعات محلية", en: "Local Returns", level: 4, parent: "413", type: "إيرادات", posting: false },
   { code: "41311", name: "مرتجع مبيعات محلية", en: "Local Sales Returns", level: 5, parent: "4131", type: "إيرادات", posting: true },
-  { code: "5", name: "المصروفات", en: "Expenses", level: 1, parent: "", type: "مصروفات", posting: false },
-  { code: "51", name: "المصروفات التشغيلية", en: "Operating Expenses", level: 2, parent: "5", type: "مصروفات", posting: false },
-  { code: "511", name: "الرواتب والأجور", en: "Salaries", level: 3, parent: "51", type: "مصروفات", posting: false },
-  { code: "5111", name: "رواتب الموظفين", en: "Staff Salaries", level: 4, parent: "511", type: "مصروفات", posting: false },
-  { code: "51111", name: "رواتب إدارية وطبية", en: "Admin & Medical Salaries", level: 5, parent: "5111", type: "مصروفات", posting: true },
-  { code: "512", name: "الإيجارات والمرافق", en: "Rent & Utilities", level: 3, parent: "51", type: "مصروفات", posting: false },
-  { code: "5121", name: "الإيجارات", en: "Rent", level: 4, parent: "512", type: "مصروفات", posting: false },
-  { code: "51211", name: "إيجار المقر الرئيسي", en: "HQ Rent", level: 5, parent: "5121", type: "مصروفات", posting: true },
-  { code: "513", name: "الاستهلاكات", en: "Depreciation", level: 3, parent: "51", type: "مصروفات", posting: false },
-  { code: "5131", name: "استهلاك أصول ثابتة", en: "FA Depreciation", level: 4, parent: "513", type: "مصروفات", posting: false },
-  { code: "51311", name: "استهلاك المعدات الطبية", en: "Medical Equip. Depr.", level: 5, parent: "5131", type: "مصروفات", posting: true },
-  { code: "514", name: "مصاريف تسويقية", en: "Marketing", level: 3, parent: "51", type: "مصروفات", posting: false },
-  { code: "5141", name: "إعلان ودعاية", en: "Advertising", level: 4, parent: "514", type: "مصروفات", posting: false },
-  { code: "51411", name: "حملات رقمية", en: "Digital Campaigns", level: 5, parent: "5141", type: "مصروفات", posting: true },
-  { code: "515", name: "تكلفة المبيعات", en: "COGS", level: 3, parent: "51", type: "مصروفات", posting: false },
-  { code: "5151", name: "تكلفة البضاعة المباعة", en: "Cost of Goods Sold", level: 4, parent: "515", type: "مصروفات", posting: false },
-  { code: "51511", name: "تكلفة مبيعات محلية", en: "Local COGS", level: 5, parent: "5151", type: "مصروفات", posting: true },
 ];
 
 export const ANALYTICALS: AnyR[] = [
@@ -309,7 +310,7 @@ export const JOURNALS: Journal[] = [
     { account: "11311", debit: 2300000, credit: 0, currency: "YER", rate: 1 },
     { account: "21111", debit: 0, credit: 940000, currency: "YER", rate: 1 },
     { account: "21211", debit: 0, credit: 85000, currency: "YER", rate: 1 },
-    { account: "31111", debit: 0, credit: 3775000, currency: "YER", rate: 1 },
+    { account: "22111", debit: 0, credit: 3775000, currency: "YER", rate: 1 },
   ]},
   { id: "JE-1001", no: "JE-2026-1001", date: "2026-01-15", desc: "مبيعات نقدية — تحصيل مباشر", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
     { account: "11111", debit: 96500, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
@@ -327,7 +328,7 @@ export const JOURNALS: Journal[] = [
     { account: "21111", debit: 0, credit: 161700, currency: "YER", rate: 1 },
   ]},
   { id: "JE-1004", no: "PV-2026-0104", date: "2026-02-10", desc: "مسيرات رواتب شهر يناير 2026", kind: "صرف", user: "سمير الحداد", status: "مرحّل", source: "سند صرف", lines: [
-    { account: "51111", debit: 185000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
+    { account: "31111", debit: 185000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
     { account: "11121", debit: 0, credit: 185000, currency: "YER", rate: 1 },
   ]},
   { id: "JE-1005", no: "RC-2026-0105", date: "2026-02-18", desc: "سند قبض — دفعة من مستشفى النور التخصصي", kind: "قبض", user: "سمير الحداد", status: "مرحّل", source: "سند قبض", lines: [
@@ -339,11 +340,11 @@ export const JOURNALS: Journal[] = [
     { account: "11121", debit: 0, credit: 90000, currency: "YER", rate: 1 },
   ]},
   { id: "JE-1007", no: "JE-2026-1007", date: "2026-03-11", desc: "إيجار المقر الرئيسي — الربع الأول", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "51211", debit: 24500, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
+    { account: "31211", debit: 24500, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
     { account: "11111", debit: 0, credit: 24500, currency: "YER", rate: 1 },
   ]},
   { id: "JE-1008", no: "JE-2026-1008", date: "2026-03-20", desc: "قسط استهلاك المعدات الطبية — مارس", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "51311", debit: 32000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
+    { account: "31311", debit: 32000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
     { account: "11421", debit: 0, credit: 32000, currency: "YER", rate: 1 },
   ]},
   { id: "JE-1009", no: "JE-2026-1009", date: "2026-03-25", desc: "خدمات طبية لنزلاء — تحليلي: أحمد الشامي", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
@@ -351,7 +352,7 @@ export const JOURNALS: Journal[] = [
     { account: "41211", debit: 0, credit: 45000, currency: "YER", rate: 1, costCenter: "CC-021" },
   ]},
   { id: "JE-1010", no: "REQ-2026-0004", date: "2026-03-27", desc: "طلب قيد — حملة تسويق رقمية (بانتظار موافقة المدير المالي)", kind: "طلب", user: "طارق الوزير", status: "بانتظار الموافقة", source: "طلب سند قيد يومية", lines: [
-    { account: "51411", debit: 40000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-012" },
+    { account: "31411", debit: 40000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-012" },
     { account: "11111", debit: 0, credit: 40000, currency: "YER", rate: 1 },
   ]},
 ];

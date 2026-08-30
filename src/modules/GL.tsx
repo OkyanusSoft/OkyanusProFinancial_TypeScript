@@ -286,13 +286,13 @@ function CoaScreen() {
   const bal = (code: string) => { const b = balances[code]; return b ? b.dr - b.cr : 0; };
   const totalDr = Object.values(balances).reduce((a, b) => a + b.dr, 0);
   const totalCr = Object.values(balances).reduce((a, b) => a + b.cr, 0);
-  const [open, setOpen] = useState<Record<string, boolean>>({ "1": true, "2": true, "3": true, "4": true, "5": true, "11": true, "21": true, "31": true, "41": true, "51": true });
+  const [open, setOpen] = useState<Record<string, boolean>>({ "1": true, "2": true, "3": true, "4": true, "11": true, "21": true, "22": true, "31": true, "41": true });
 
   const render = (acc: Account, depth: number): React.ReactNode => {
     const kids = app.accounts.filter((a) => a.parent === acc.code);
     if (q && !acc.name.includes(q) && !acc.code.includes(q) && kids.length === 0) return null;
     const b = bal(acc.code);
-    const tone = acc.type === "أصول" ? "var(--brand)" : acc.type === "إيرادات" ? "var(--good)" : acc.type === "مصروفات" ? "var(--warn)" : acc.type === "خصوم" ? "var(--bad)" : "var(--accent)";
+    const tone = acc.type === "أصول" ? "var(--brand)" : acc.type === "إيرادات" ? "var(--good)" : acc.type === "مصروفات" ? "var(--warn)" : "var(--bad)";
     return (
       <FragmentRow key={acc.code}>
         <tr className={acc.level === 5 ? "" : "bg-panel/60"}>
@@ -321,7 +321,7 @@ function CoaScreen() {
           <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="layers" size={23} /></span>
           <div>
             <h1 className="font-display font-bold text-2xl leading-tight">دليل الحسابات</h1>
-            <p className="text-mute text-[0.82rem] font-medium mt-0.5">تسلسل هرمي من 5 مستويات — نمط يمين سوفت التجاري: 1-أصول 2-خصوم 3-حقوق ملكية 4-إيرادات 5-مصروفات</p>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">تسلسل هرمي من 5 مستويات — نمط يمين سوفت التجاري: 1-الأصول 2-الخصوم (تشمل حقوق الملكية) 3-المصروفات 4-الإيرادات</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -358,7 +358,7 @@ function printCoa(app: ReturnType<typeof useApp>) {
     <span key="p">{a.posting ? "ترحيلي" : "عنواني"}</span>,
   ]));
   openPrint(
-    <ReportSheet title="دليل الحسابات" subtitle="التسلسل الهرمي الكامل للحسابات — أصول، خصوم، حقوق ملكية، إيرادات، مصروفات" user={user}
+    <ReportSheet title="دليل الحسابات" subtitle="التسلسل الهرمي الكامل للحسابات — 1-الأصول، 2-الخصوم (تشمل حقوق الملكية)، 3-المصروفات، 4-الإيرادات" user={user}
       filters={[["عدد الحسابات", String(app.accounts.length)], ["حسابات ترحيلية", String(app.accounts.filter((a) => a.posting).length)], ["حتى تاريخ", today]]}
       summary={[["عدد المستويات", "5 مستويات"], ["الحسابات التحليلية", String(app.accounts.filter((a) => a.analytical).length)]]}>
       <PTable head={["الكود", "اسم الحساب", "المستوى", "التصنيف", "الطبيعة"]} rows={rows} />
@@ -862,11 +862,11 @@ function GLReport({ kind }: { kind: string }) {
           <div className="card p-5">
             <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="shield" size={18} className="text-[var(--warn)]" /> الخصوم وحقوق الملكية</h3>
             <div className="space-y-2">
-              {posting.filter((a) => (a.type === "خصوم" || a.type === "حقوق ملكية") && bal(a.code) !== 0).map((a) => (
+              {posting.filter((a) => a.type === "خصوم" && bal(a.code) !== 0).map((a) => (
                 <div key={a.code} className="flex justify-between text-[0.8rem] font-bold border-b border-line/60 pb-2"><span>{a.name} <span className="font-num text-mute" dir="ltr">({a.code})</span></span><span className="font-num">{app.fmtN(-bal(a.code))}</span></div>
               ))}
               <div className="flex justify-between text-[0.8rem] font-bold border-b border-line/60 pb-2"><span>صافي ربح الفترة</span><span className="font-num text-[var(--good)]">{app.fmtN(-sumType("إيرادات") - sumType("مصروفات"))}</span></div>
-              <div className="flex justify-between font-display font-bold text-[var(--warn)] pt-1"><span>الإجمالي</span><span className="font-num">{app.fmtN(-sumType("خصوم") - sumType("حقوق ملكية") + (-sumType("إيرادات") - sumType("مصروفات")))}</span></div>
+              <div className="flex justify-between font-display font-bold text-[var(--warn)] pt-1"><span>الإجمالي</span><span className="font-num">{app.fmtN(-sumType("خصوم") + (-sumType("إيرادات") - sumType("مصروفات")))}</span></div>
             </div>
           </div>
         </div>
@@ -950,15 +950,15 @@ function printGLReport(app: ReturnType<typeof useApp>, kind: string, d: {
     openPrint(
       <ReportSheet title="تقرير الميزانية العمومية" subtitle="المركز المالي: الأصول مقابل الخصوم وحقوق الملكية" user={user}
         filters={[["حتى تاريخ", today], ["معيار العرض", "IFRS"]]}
-        summary={[["إجمالي الأصول", app.fmtN(sumType("أصول"))], ["إجمالي الخصوم وحقوق الملكية", app.fmtN(-sumType("خصوم") - sumType("حقوق ملكية") + netIncome)], ["صافي ربح الفترة", app.fmtN(netIncome)]]}>
+        summary={[["إجمالي الأصول", app.fmtN(sumType("أصول"))], ["إجمالي الخصوم وحقوق الملكية", app.fmtN(-sumType("خصوم") + netIncome)], ["صافي ربح الفترة", app.fmtN(netIncome)]]}>
         <table className="p-table">
           <thead><tr><th>البند</th><th>الكود</th><th>القيمة</th></tr></thead>
           <tbody>
             <tr className="tot-row"><td colSpan={2}><b>الأصول</b></td><td className="num"><b>{app.fmtN(sumType("أصول"))}</b></td></tr>
             {posting.filter((a) => a.type === "أصول" && bal(a.code) !== 0).map((a) => (
               <tr key={a.code}><td style={{ paddingInlineStart: 18 }}>{a.name}</td><td className="num">{a.code}</td><td className="num">{app.fmtN(bal(a.code))}</td></tr>))}
-            <tr className="tot-row"><td colSpan={2}><b>الخصوم وحقوق الملكية</b></td><td className="num"><b>{app.fmtN(-sumType("خصوم") - sumType("حقوق ملكية") + netIncome)}</b></td></tr>
-            {posting.filter((a) => (a.type === "خصوم" || a.type === "حقوق ملكية") && bal(a.code) !== 0).map((a) => (
+            <tr className="tot-row"><td colSpan={2}><b>الخصوم وحقوق الملكية</b></td><td className="num"><b>{app.fmtN(-sumType("خصوم") + netIncome)}</b></td></tr>
+            {posting.filter((a) => a.type === "خصوم" && bal(a.code) !== 0).map((a) => (
               <tr key={a.code}><td style={{ paddingInlineStart: 18 }}>{a.name}</td><td className="num">{a.code}</td><td className="num">{app.fmtN(-bal(a.code))}</td></tr>))}
             <tr><td style={{ paddingInlineStart: 18 }}><b>صافي ربح الفترة</b></td><td className="num">—</td><td className="num"><b>{app.fmtN(netIncome)}</b></td></tr>
           </tbody>
