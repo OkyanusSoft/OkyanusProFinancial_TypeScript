@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Empty, Reveal } from "../ui";
 import { Directory, type DirConf } from "../crud";
+import { openPrint, DocSheet, PTable, ReportSheet } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
 
 export default function GL() {
@@ -230,6 +231,7 @@ function CurrenciesScreen() {
 function CoaScreen() {
   const app = useApp();
   const [q, setQ] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const balances = useMemo(() => {
     const map: Record<string, { dr: number; cr: number }> = {};
     (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").forEach((j) =>
@@ -278,12 +280,16 @@ function CoaScreen() {
             <p className="text-mute text-[0.82rem] font-medium mt-0.5">تسلسل هرمي من 5 مستويات — نمط يمين سوفت التجاري: 1-أصول 2-خصوم 3-حقوق ملكية 4-إيرادات 5-مصروفات</p>
           </div>
         </div>
-        <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-2"><I n="check" size={13} /> متوازن: {app.fmtN(totalDr)} = {app.fmtN(totalCr)}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-2"><I n="check" size={13} /> متوازن: {app.fmtN(totalDr)} = {app.fmtN(totalCr)}</span>
+          <button className="btn btn-brand" onClick={() => setShowAdd(true)}><I n="plus" size={16} /> إضافة حساب</button>
+        </div>
       </div>
       <div className="relative w-80 max-w-full mb-3.5">
         <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
         <input className="input !ps-9" placeholder="بحث باسم الحساب أو كوده…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      <AddAccountModal open={showAdd} onClose={() => setShowAdd(false)} />
       <div className="card overflow-hidden"><div className="overflow-x-auto">
         <table className="tbl min-w-[880px]">
           <thead><tr><th>الكود</th><th>اسم الحساب</th><th>المستوى</th><th>التصنيف</th><th>الطبيعة</th><th>الرصيد</th><th>خاصية</th></tr></thead>
@@ -294,6 +300,106 @@ function CoaScreen() {
   );
 }
 function FragmentRow({ children }: { children: React.ReactNode }) { return <>{children}</>; }
+
+/* ═══════════ إضافة حساب — ترقيم تلقائي حسب آخر رقم في المستوى ═══════════ */
+function AddAccountModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const app = useApp();
+  const parents = app.accounts.filter((a) => a.level < 5);
+  const [parentCode, setParentCode] = useState("11");
+  const [name, setName] = useState("");
+  const [en, setEn] = useState("");
+  const [manual, setManual] = useState("");
+  const [analytical, setAnalytical] = useState(false);
+  const [errs, setErrs] = useState<Record<string, string>>({});
+
+  const parent = app.accounts.find((a) => a.code === parentCode);
+  const siblings = app.accounts.filter((a) => a.parent === parentCode);
+  const lastSibling = siblings.length ? siblings.reduce((m, s) => (parseInt(s.code.slice(parentCode.length), 10) > parseInt(m.code.slice(parentCode.length), 10) ? s : m)) : null;
+  const autoCode = app.nextAccountCode(parentCode);
+  const code = (manual.trim() || autoCode);
+  const childLevel = (parent?.level || 1) + 1;
+  const isLeaf = childLevel === 5;
+
+  const submit = () => {
+    const e: Record<string, string> = {};
+    if (!name.trim()) e.name = "اسم الحساب إلزامي";
+    if (app.accounts.some((a) => a.code === code)) e.code = `الكود ${code} مستخدم بالفعل في الدليل`;
+    if (!manual.trim() && !autoCode) e.code = "تعذّر توليد الكود — اختر حساباً أباً صالحاً";
+    if (manual.trim() && !manual.trim().startsWith(parentCode)) e.code = `يجب أن يبدأ الكود بكود الأب (${parentCode})`;
+    if (app.accounts.some((a) => a.parent === parentCode && a.name === name.trim())) e.name = "يوجد حساب بهذا الاسم تحت نفس الأب";
+    setErrs(e);
+    if (Object.keys(e).length) { app.toast("تعذّرت الإضافة — راجع الحقول المميّزة", "err"); return; }
+    const ok = app.addAccount({
+      code, name: name.trim(), en: en.trim() || undefined as any, level: childLevel, parent: parentCode,
+      type: parent?.type || "أصول", posting: isLeaf, analytical: isLeaf && analytical ? true : undefined,
+    } as Account);
+    if (ok) { onClose(); setName(""); setEn(""); setManual(""); setAnalytical(false); setErrs({}); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} wide icon="layers" title="إضافة حساب جديد إلى دليل الحسابات">
+      <div className="grid md:grid-cols-2 gap-3.5">
+        <label className="block md:col-span-2">
+          <span className="text-[0.74rem] font-bold text-soft">الحساب الأب <b className="text-[var(--bad)]">*</b></span>
+          <select className="select mt-1" value={parentCode} onChange={(e) => { setParentCode(e.target.value); setManual(""); setErrs({}); }}>
+            {parents.map((p) => <option key={p.code} value={p.code}>{"— ".repeat(p.level - 1)}{p.code} — {p.name} (المستوى {p.level})</option>)}
+          </select>
+          <span className="text-[0.66rem] text-mute font-medium mt-1 block">سيُضاف الحساب الجديد في المستوى {childLevel} تحت هذا الأب{parent && <> — التصنيف «{parent.type}» يُورَّث تلقائياً</>}</span>
+        </label>
+
+        <div className="md:col-span-2 rounded-xl p-3.5 border border-[color-mix(in_srgb,var(--brand)_25%,transparent)]" style={{ background: "color-mix(in srgb, var(--brand) 5%, var(--panel))" }}>
+          <div className="flex items-center gap-2 text-[0.76rem] font-bold text-[var(--brand)] mb-1.5"><I n="info" size={15} /> قاعدة الترقيم التلقائي</div>
+          {lastSibling ? (
+            <p className="text-[0.78rem] font-bold text-soft leading-6">
+              آخر حساب تحت «{parent?.name}» هو <b className="font-num" dir="ltr">{lastSibling.code}</b> ({lastSibling.name})،
+              لذا يُولَّد الرقم التالي <b className="font-num text-[var(--brand)]" dir="ltr">{autoCode}</b> تلقائياً.
+            </p>
+          ) : (
+            <p className="text-[0.78rem] font-bold text-soft">لا توجد حسابات تحت «{parent?.name}» بعد — سيبدأ الترقيم من <b className="font-num text-[var(--brand)]" dir="ltr">{autoCode}</b>.</p>
+          )}
+        </div>
+
+        <label className="block">
+          <span className="text-[0.74rem] font-bold text-soft flex items-center gap-1.5">كود الحساب (المستوى {childLevel}) <b className="text-[var(--bad)]">*</b>
+            <button className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)] !text-[0.6rem] !py-0" onClick={() => setManual("")}><I n="refresh" size={11} /> توليد تلقائي</button>
+          </span>
+          <input className={`input mt-1 font-num ${errs.code ? "!border-[var(--bad)]" : ""}`} dir="ltr" value={code} onChange={(e) => setManual(e.target.value)} />
+          {errs.code ? <span className="flex items-center gap-1 text-[0.68rem] font-bold text-[var(--bad)] mt-1"><I n="alert" size={12} /> {errs.code}</span>
+            : <span className="text-[0.66rem] text-mute font-medium mt-1 block">يمكن تعديله يدوياً بشرط أن يبدأ بـ <b className="font-num" dir="ltr">{parentCode}</b> وألا يكون مكرراً</span>}
+        </label>
+
+        <label className="block">
+          <span className="text-[0.74rem] font-bold text-soft">الاسم الإنجليزي</span>
+          <input className="input mt-1 font-num" dir="ltr" value={en} onChange={(e) => setEn(e.target.value)} placeholder="Account English Name" />
+        </label>
+
+        <label className="block md:col-span-2">
+          <span className="text-[0.74rem] font-bold text-soft">اسم الحساب بالعربية <b className="text-[var(--bad)]">*</b></span>
+          <input className={`input mt-1 ${errs.name ? "!border-[var(--bad)]" : ""}`} value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: أثاث ومفروشات المكتب" />
+          {errs.name && <span className="flex items-center gap-1 text-[0.68rem] font-bold text-[var(--bad)] mt-1"><I n="alert" size={12} /> {errs.name}</span>}
+        </label>
+
+        <div className="md:col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+          <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)]">التصنيف: {parent?.type || "—"}</span>
+          <span className={`chip ${isLeaf ? "bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)]" : "bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)]"}`}>
+            {isLeaf ? "حساب ترحيلي (المستوى الخامس)" : "حساب عنواني — تُضاف تحته تفاصيل"}
+          </span>
+          {isLeaf && (
+            <label className="flex items-center gap-2 cursor-pointer text-[0.78rem] font-bold text-soft">
+              <input type="checkbox" className="cbx" checked={analytical} onChange={(e) => setAnalytical(e.target.checked)} />
+              حساب تحليلي (يُربط بأسماء تفصيلية كحساب النزلاء)
+            </label>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-line">
+        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-brand" onClick={submit}><I n="save" size={15} /> حفظ الحساب <span className="font-num" dir="ltr">({code})</span></button>
+      </div>
+    </Modal>
+  );
+}
 
 /* ═══════════ الحسابات التحليلية ═══════════ */
 function AnalyticalScreen() {
@@ -428,6 +534,7 @@ function JEScreen({ kind }: { kind: string }) {
                   <div className="font-num font-bold text-lg text-[var(--brand)]">{app.fmtN(dr)} <span className="text-[0.66rem] text-mute">ر.ي</span></div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
+                  <button className="btn btn-ghost !p-1.5" title="طباعة السند" onClick={() => printJournal(app, j)}><I n="print" size={15} /></button>
                   {j.status === "بانتظار الموافقة" && <>
                     <button className="btn btn-brand !py-1.5 !text-[0.72rem]" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /> اعتماد وترحيل</button>
                     <button className="btn btn-danger !py-1.5 !text-[0.72rem]" onClick={() => app.voidJournal(j.id)}>رفض</button>
@@ -454,6 +561,43 @@ function JEScreen({ kind }: { kind: string }) {
       </div>
       {show && <JEBuilder kind={kind} onClose={() => setShow(false)} />}
     </div>
+  );
+}
+
+/* ── بناء مستند طباعة قيد/سند مالي ── */
+function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
+  const lines = j.lines.filter((l) => l.debit || l.credit);
+  const dr = lines.reduce((a, l) => a + l.debit * l.rate, 0);
+  const cr = lines.reduce((a, l) => a + l.credit * l.rate, 0);
+  openPrint(
+    <DocSheet
+      docTitle={j.source || "سند قيد يومية"} no={j.no} date={j.date} status={j.status}
+      subtitle={app.session?.branch}
+      meta={[
+        ["البيان", j.desc],
+        ["نوع القيد", j.kind],
+        ["مركز التكلفة", lines[0]?.costCenter || "—"],
+        ["المستخدم", j.user],
+        ["عدد الأسطر", String(lines.length)],
+        ["الحالة", j.status],
+      ]}
+      totals={{ items: [["إجمالي الطرف المدين", app.fmtN(dr)], ["إجمالي الطرف الدائن", app.fmtN(cr)], ["فرق التوازن", app.fmtN(dr - cr)]], grand: ["قيمة السند", app.fmtN(dr)] }}
+      user={app.session?.user || "—"}
+    >
+      <PTable
+        head={["م", "الكود", "الحساب", "تحليلي", "العملة", "مدين", "دائن"]}
+        widths={["4%", "10%", undefined, "16%", "8%", "14%", "14%"]}
+        rows={lines.map((l, i) => [
+          i + 1,
+          <span className="num">{l.account}</span>,
+          app.accounts.find((a) => a.code === l.account)?.name || "—",
+          (l.analytical && (app.db.analyticals.find((x: any) => x.id === l.analytical) as any)?.name) || "—",
+          <span className="num">{l.currency}{l.rate !== 1 ? ` ×${l.rate}` : ""}</span>,
+          <span className="num">{l.debit ? app.fmtN(l.debit * l.rate) : "—"}</span>,
+          <span className="num">{l.credit ? app.fmtN(l.credit * l.rate) : "—"}</span>,
+        ])}
+      />
+    </DocSheet>
   );
 }
 
@@ -584,7 +728,7 @@ function GLReport({ kind }: { kind: string }) {
         </div>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={() => app.exportCsv(t, [["الحساب", "مدين", "دائن"], ...posting.map((a) => [a.name, Math.max(0, bal(a.code)), Math.max(0, -bal(a.code))])])}><I n="xlsx" size={15} /> Excel</button>
-          <button className="btn btn-ghost" onClick={() => app.toast("تقرير PDF جاهز في قائمة الطباعة", "info")}><I n="pdf" size={15} /> PDF</button>
+          <button className="btn btn-soft" onClick={() => printGLReport(app, kind, { bal, sumType, stmtLines, stmtAcc, totalDr, totalCr, posting })}><I n="print" size={15} /> طباعة / PDF</button>
         </div>
       </div>
 
@@ -687,5 +831,96 @@ function GLReport({ kind }: { kind: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ── طباعة التقارير المالية (كشف حساب / ميزان مراجعة / عمومية / أرباح وخسائر) ── */
+function printGLReport(app: ReturnType<typeof useApp>, kind: string, d: {
+  bal: (c: string) => number; sumType: (t: string) => number; stmtLines: any[]; stmtAcc: string;
+  totalDr: number; totalCr: number; posting: Account[];
+}) {
+  const { bal, sumType, stmtLines, stmtAcc, totalDr, totalCr, posting } = d;
+  const user = app.session?.user || "—";
+  const today = new Date().toLocaleDateString("en-GB");
+
+  if (kind === "stmt") {
+    const acc = app.accounts.find((a) => a.code === stmtAcc);
+    let run = 0;
+    openPrint(
+      <ReportSheet title="تقرير كشف حساب" subtitle={`كشف تفصيلي بحركات ورصيد الحساب ${stmtAcc} — ${acc?.name || ""}`} user={user}
+        filters={[["الحساب", `${stmtAcc} — ${acc?.name || ""}`], ["التصنيف", acc?.type || "—"], ["عدد الحركات", String(stmtLines.length)], ["حتى تاريخ", today]]}
+        summary={[["الرصيد النهائي", app.fmtN(stmtLines.reduce((a, l) => a + (l.debit - l.credit) * l.rate, 0))]]}>
+        <PTable head={["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"]}
+          rows={stmtLines.map((l) => { run += (l.debit - l.credit) * l.rate; return [
+            <span className="num">{l.date}</span>, <span className="num">{l.no}</span>, l.desc,
+            <span className="num">{l.debit ? app.fmtN(l.debit * l.rate) : "—"}</span>,
+            <span className="num">{l.credit ? app.fmtN(l.credit * l.rate) : "—"}</span>,
+            <span className="num"><b>{app.fmtN(run)}</b></span>]; })} />
+      </ReportSheet>
+    );
+    return;
+  }
+
+  if (kind === "trial") {
+    openPrint(
+      <ReportSheet title="تقرير ميزان المراجعة" subtitle="توازن المدين والدائن لجميع الحسابات الترحيلية حتى تاريخه" user={user}
+        filters={[["عدد الحسابات", String(posting.filter((a) => bal(a.code) !== 0).length)], ["حتى تاريخ", today]]}
+        summary={[["إجمالي المدين", app.fmtN(totalDr)], ["إجمالي الدائن", app.fmtN(totalCr)], ["حالة التوازن", Math.abs(totalDr - totalCr) < 0.01 ? "متوازن ✓" : "غير متوازن"]]}>
+        <table className="p-table">
+          <thead><tr><th>الكود</th><th>الحساب</th><th>التصنيف</th><th>مدين</th><th>دائن</th></tr></thead>
+          <tbody>
+            {posting.filter((a) => bal(a.code) !== 0).map((a) => { const b = bal(a.code); return (
+              <tr key={a.code}><td className="num">{a.code}</td><td>{a.name}</td><td>{a.type}</td>
+                <td className="num">{b > 0 ? app.fmtN(b) : "—"}</td><td className="num">{b < 0 ? app.fmtN(-b) : "—"}</td></tr>); })}
+            <tr className="tot-row"><td colSpan={3}><b>الإجمالي</b></td><td className="num"><b>{app.fmtN(totalDr)}</b></td><td className="num"><b>{app.fmtN(totalCr)}</b></td></tr>
+          </tbody>
+        </table>
+      </ReportSheet>
+    );
+    return;
+  }
+
+  if (kind === "bs") {
+    const netIncome = -sumType("إيرادات") - sumType("مصروفات");
+    openPrint(
+      <ReportSheet title="تقرير الميزانية العمومية" subtitle="المركز المالي: الأصول مقابل الخصوم وحقوق الملكية" user={user}
+        filters={[["حتى تاريخ", today], ["معيار العرض", "IFRS"]]}
+        summary={[["إجمالي الأصول", app.fmtN(sumType("أصول"))], ["إجمالي الخصوم وحقوق الملكية", app.fmtN(-sumType("خصوم") - sumType("حقوق ملكية") + netIncome)], ["صافي ربح الفترة", app.fmtN(netIncome)]]}>
+        <table className="p-table">
+          <thead><tr><th>البند</th><th>الكود</th><th>القيمة</th></tr></thead>
+          <tbody>
+            <tr className="tot-row"><td colSpan={2}><b>الأصول</b></td><td className="num"><b>{app.fmtN(sumType("أصول"))}</b></td></tr>
+            {posting.filter((a) => a.type === "أصول" && bal(a.code) !== 0).map((a) => (
+              <tr key={a.code}><td style={{ paddingInlineStart: 18 }}>{a.name}</td><td className="num">{a.code}</td><td className="num">{app.fmtN(bal(a.code))}</td></tr>))}
+            <tr className="tot-row"><td colSpan={2}><b>الخصوم وحقوق الملكية</b></td><td className="num"><b>{app.fmtN(-sumType("خصوم") - sumType("حقوق ملكية") + netIncome)}</b></td></tr>
+            {posting.filter((a) => (a.type === "خصوم" || a.type === "حقوق ملكية") && bal(a.code) !== 0).map((a) => (
+              <tr key={a.code}><td style={{ paddingInlineStart: 18 }}>{a.name}</td><td className="num">{a.code}</td><td className="num">{app.fmtN(-bal(a.code))}</td></tr>))}
+            <tr><td style={{ paddingInlineStart: 18 }}><b>صافي ربح الفترة</b></td><td className="num">—</td><td className="num"><b>{app.fmtN(netIncome)}</b></td></tr>
+          </tbody>
+        </table>
+      </ReportSheet>
+    );
+    return;
+  }
+
+  // pl
+  const rev = -sumType("إيرادات"); const exp = sumType("مصروفات"); const net = rev - exp;
+  openPrint(
+    <ReportSheet title="تقرير الأرباح والخسائر (قائمة الدخل)" subtitle="عن الفترة من 2026-01-01 حتى 2026-03-29 — وفقاً لمعايير IFRS" user={user}
+      filters={[["الفترة", "الربع الأول 2026"], ["معيار العرض", "IFRS"]]}
+      summary={[["إجمالي الإيرادات", app.fmtN(rev)], ["إجمالي المصروفات", app.fmtN(exp)], ["صافي الربح", app.fmtN(net)], ["هامش الربح", `${Math.round((net / (rev || 1)) * 100)}%`]]}>
+      <table className="p-table">
+        <thead><tr><th>البند</th><th>القيمة</th></tr></thead>
+        <tbody>
+          <tr className="tot-row"><td><b>الإيرادات</b></td><td className="num"><b>{app.fmtN(rev)}</b></td></tr>
+          {posting.filter((a) => a.type === "إيرادات" && bal(a.code) !== 0).map((a) => (
+            <tr key={a.code}><td style={{ paddingInlineStart: 18 }}>{a.name}</td><td className="num">{app.fmtN(-bal(a.code))}</td></tr>))}
+          <tr className="tot-row"><td><b>المصروفات</b></td><td className="num"><b>({app.fmtN(exp)})</b></td></tr>
+          {posting.filter((a) => a.type === "مصروفات" && bal(a.code) !== 0).map((a) => (
+            <tr key={a.code}><td style={{ paddingInlineStart: 18 }}>({a.name})</td><td className="num">({app.fmtN(bal(a.code))})</td></tr>))}
+          <tr className="tot-row"><td><b>صافي الربح</b></td><td className="num"><b>{app.fmtN(net)}</b></td></tr>
+        </tbody>
+      </table>
+    </ReportSheet>
   );
 }

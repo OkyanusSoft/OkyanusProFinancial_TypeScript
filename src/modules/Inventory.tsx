@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart } from "../ui";
 import { Directory, DocList, type DirConf, type ColDef } from "../crud";
+import { openPrint, DocSheet, PTable } from "../print";
 import type { InvDoc } from "../data";
 
 export default function Inventory() {
@@ -107,6 +108,37 @@ const DOC_META: Record<string, { label: string; full: string; icon: string; pref
   count: { label: "جرد", full: "جرد مخزني", icon: "clip", prefix: "JC", desc: "جرد فعلي: تُدخل الكميات المعدودة ويُحتسب الفرق عن النظام تلقائياً", verb: "جرد" },
 };
 
+/* ── طباعة سند مخزني ── */
+function printInvDoc(app: ReturnType<typeof useApp>, d: AnyR, docTitle: string) {
+  const whName = (id: string) => app.db.warehouses.find((w) => w.id === id)?.name || id;
+  const itemName = (id: string) => app.db.items.find((i) => i.id === id)?.name || id;
+  const lines = (d.lines || []) as any[];
+  const totalVal = lines.reduce((s, l) => s + l.qty * l.cost, 0);
+  openPrint(
+    <DocSheet docTitle={docTitle} no={d.ref} date={d.date} status={d.status} subtitle={app.session?.branch}
+      meta={[
+        ["المخزن", whName(d.warehouse)],
+        ...(d.toWarehouse ? [["إلى مخزن", whName(d.toWarehouse)] as [string, string]] : []),
+        ["المستخدم", d.user],
+        ["عدد الأصناف", String(lines.length)],
+        ["البيان", d.note || "—"],
+        ["الحالة", d.status],
+      ]}
+      totals={{ items: [["عدد الأسطر", String(lines.length)], ["إجمالي الكميات", app.fmtN(lines.reduce((s, l) => s + Math.abs(l.qty), 0))]], grand: ["القيمة الإجمالية بالتكلفة", app.fmtN(totalVal)] }}
+      note={d.note} user={app.session?.user || "—"}
+    >
+      <PTable head={["م", "كود الصنف", "اسم الصنف", "الكمية", "التكلفة", "الإجمالي"]}
+        widths={["4%", "12%", undefined, "12%", "14%", "16%"]}
+        rows={lines.map((l, i) => [
+          i + 1, <span className="num">{l.item}</span>, itemName(l.item),
+          <span className="num"><b>{l.qty > 0 ? `+${app.fmtN(l.qty)}` : app.fmtN(l.qty)}</b></span>,
+          <span className="num">{app.fmtN(l.cost)}</span>,
+          <span className="num">{app.fmtN(l.qty * l.cost)}</span>,
+        ])} />
+    </DocSheet>
+  );
+}
+
 function MoveScreen({ kind }: { kind: string }) {
   const app = useApp();
   const meta = DOC_META[kind];
@@ -130,7 +162,7 @@ function MoveScreen({ kind }: { kind: string }) {
   return (
     <>
       <DocList docs={docs} title={meta.full} desc={meta.desc} icon={meta.icon} cols={cols}
-        onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} />
+        onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} onPrint={(d) => printInvDoc(app, d, meta.full)} />
 
       {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
 
@@ -326,7 +358,7 @@ function ReportScreen({ kind }: { kind: string }) {
         </div>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={exportReport}><I n="xlsx" size={15} /> تصدير Excel</button>
-          <button className="btn btn-ghost" onClick={() => { app.toast("أُرسل التقرير إلى قائمة الطباعة PDF", "info"); }}><I n="pdf" size={15} /> PDF</button>
+          <button className="btn btn-soft" onClick={() => printInvReport(app, kind, { title, it, items, whs, moveRows, watchRows })}><I n="print" size={15} /> طباعة / PDF</button>
         </div>
       </div>
 

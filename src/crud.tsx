@@ -297,9 +297,9 @@ export function Directory({ conf }: { conf: DirConf }) {
 }
 
 /* ═══════ شاشة حركات عامة (سندات) ═══════ */
-export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView }: {
+export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView, onPrint }: {
   docs: AnyR[]; title: string; desc: string; icon: string; cols: ColDef[];
-  onNew?: () => void; newLabel?: string; onView?: (d: AnyR) => void;
+  onNew?: () => void; newLabel?: string; onView?: (d: AnyR) => void; onPrint?: (d: AnyR) => void;
 }) {
   const app = useApp();
   const [q, setQ] = useState("");
@@ -334,6 +334,7 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
                     <td>
                       <div className="flex gap-1">
                         {onView && <button className="btn btn-ghost !p-1.5" title="عرض التفاصيل" onClick={() => onView(d)}><I n="eye" size={14} /></button>}
+                        {onPrint && <button className="btn btn-ghost !p-1.5" title="طباعة السند" onClick={() => onPrint(d)}><I n="print" size={14} /></button>}
                         {d.status !== "ملغي" && d.status !== "ملغاة" && (
                           <button className="btn btn-danger !p-1.5" title="إلغاء السند وعكس أثره" onClick={() => {
                             if (d.lines) app.voidInvDoc(d.id);

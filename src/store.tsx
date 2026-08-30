@@ -3,9 +3,28 @@ import {
   ACCOUNTS, ANALYTICALS, UNITS, GROUPS, WAREHOUSES, ITEMS, SUPPLIERS, CUSTOMERS, CASHBOXES,
   COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
-  SYSTEM, type AnyR, type InvDoc, type Invoice, type Journal,
+  SYSTEM, type AnyR, type InvDoc, type Invoice, type Journal, type Account,
 } from "./data";
 export type { AnyR } from "./data";
+
+/* ═══════ توليد أرقام دليل الحسابات حسب آخر رقم في المستوى ═══════
+   القاعدة: الرقم الجديد = كود الحساب الأب + (آخر رقم للأشقاء + 1)
+   مثال: آخر حساب تحت «الأصول الثابتة» هو 1113 ← يُولَّد 1114        */
+export function nextAccountCode(accounts: Account[], parentCode: string): string {
+  const kids = accounts.filter((a) => a.parent === parentCode);
+  let max = 0, width = 1;
+  kids.forEach((k) => {
+    const suffix = k.code.slice(parentCode.length);
+    const n = parseInt(suffix, 10);
+    if (!isNaN(n)) {
+      max = Math.max(max, n);
+      width = Math.max(width, suffix.length);
+    }
+  });
+  const next = max + 1;
+  width = Math.max(width, String(next).length);
+  return parentCode + String(next).padStart(width, "0");
+}
 
 /* ═══════ أدوات تحقق عامة (صلاحية / تكرار / أرقام) ═══════ */
 export const vReq = (v: any, label: string) => (v === "" || v === undefined || v === null ? `حقل «${label}» إلزامي` : "");
@@ -85,7 +104,9 @@ interface AppCtx {
   can: (module: string, action: string) => boolean;
   togglePerm: (role: string, module: string, action: string) => void;
   perms: Record<string, Record<string, string[]>>;
-  accounts: typeof ACCOUNTS;
+  accounts: Account[];
+  addAccount: (a: Account) => boolean;
+  nextAccountCode: (parentCode: string) => string;
   sidebarBgs: typeof SIDEBAR_BGS;
   SYSTEM: typeof SYSTEM;
 }
@@ -113,6 +134,7 @@ const DEF_PERMS: Record<string, Record<string, string[]>> = {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState(initDb);
+  const [accounts, setAccounts] = useState<Account[]>(ACCOUNTS);
   const [trash, setTrash] = useState<{ coll: CollKey; row: AnyR; at: string }[]>([]);
   const [seq, setSeq] = useState<Record<string, number>>({ SIN: 260, PIN: 120, SRT: 18, GRN: 8, ISS: 22, TR: 4, ADJ: 4, JC: 2, JE: 1010, RC: 107, PV: 107, PR: 36, QT: 48, OB: 2, FYE: 2, REQ: 5 });
   const [settings, setSettings] = useState<Settings>({
@@ -184,6 +206,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast(`حُذف «${t?.row?.name || t?.row?.code || "السجل"}» نهائياً من قاعدة البيانات`, "err");
   };
   const emptyTrash = () => { setTrash([]); toast("أُفرغت سلة المحذوفات — اكتملت عملية الصيانة", "info"); };
+
+  /* ── إضافة حساب لدليل الحسابات (ترقيم تلقائي حسب المستوى) ── */
+  const addAccount = (acc: Account): boolean => {
+    if (accounts.some((a) => a.code === acc.code)) { toast(`الكود ${acc.code} مستخدم بالفعل — التكرار غير مسموح`, "err"); return false; }
+    if (accounts.some((a) => a.parent === acc.parent && a.name === acc.name)) { toast("يوجد حساب بنفس الاسم تحت هذا الأب", "err"); return false; }
+    const parent = accounts.find((a) => a.code === acc.parent);
+    if (!parent) { toast("الحساب الأب غير موجود", "err"); return false; }
+    if (parent.level >= 5) { toast("لا يمكن الإضافة تحت حساب من المستوى الخامس", "err"); return false; }
+    setAccounts((old) => [
+      ...old.map((a) => (a.code === acc.parent && a.posting ? { ...a, posting: false } : a)),
+      { ...acc, level: parent.level + 1, type: acc.type || parent.type, parent: acc.parent },
+    ]);
+    toast(`أُضيف الحساب ${acc.code} — «${acc.name}» (المستوى ${parent.level + 1}) بنجاح`, "ok");
+    pushNotif({ kind: "info", title: "دليل الحسابات", body: `حساب جديد ${acc.code} — ${acc.name}` });
+    return true;
+  };
 
   const importRows = (coll: CollKey, rows: AnyR[], keyField: string, prefix: string) => {
     let added = 0, skipped = 0;
@@ -424,7 +462,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addInvDoc, voidInvDoc, addInvoice, voidInvoice, payInvoice,
       addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
-      accounts: ACCOUNTS, sidebarBgs: SIDEBAR_BGS, SYSTEM,
+      accounts, addAccount, nextAccountCode: (p: string) => nextAccountCode(accounts, p),
+      sidebarBgs: SIDEBAR_BGS, SYSTEM,
     }}>
       {children}
     </Ctx.Provider>
