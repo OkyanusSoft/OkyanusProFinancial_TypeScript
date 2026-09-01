@@ -146,7 +146,35 @@ FOR EACH ROW BEGIN
   IF EXISTS (SELECT 1 FROM periods WHERE id=NEW.fy_period AND locked=1) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Period locked';
   END IF; END$$
-DELIMITER ;`}</pre>
+DELIMITER ;
+
+-- ═══ جداول المزامنة المركزية اللحظية (يرمّمها الخادم تلقائياً عند التشغيل) ═══
+CREATE TABLE IF NOT EXISTS device_registry (
+  device_id   VARCHAR(16) PRIMARY KEY,
+  name        VARCHAR(80)  NOT NULL,
+  username    VARCHAR(60), role VARCHAR(60), category VARCHAR(40),
+  ip          VARCHAR(45), online TINYINT(1) DEFAULT 0,
+  ops         INT UNSIGNED DEFAULT 0,
+  last_seen   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS activity_log (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  device_id   VARCHAR(16), username VARCHAR(60), role VARCHAR(60),
+  category    VARCHAR(40), action VARCHAR(255),
+  op_type     ENUM('create','update','delete','login','sync'),
+  created_at  TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3),   -- يُضاف ولا يُحذف أبداً
+  KEY idx_cat_time (category, created_at)
+);
+CREATE TABLE IF NOT EXISTS deletions (          -- شواهد الحذف Tombstones
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  collection  VARCHAR(40), record_id VARCHAR(40), label VARCHAR(120),
+  deleted_by  VARCHAR(60), gen INT UNSIGNED,
+  created_at  TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_del (collection, record_id)     -- الحذف ينتشر مرة واحدة لكل الأجهزة
+);
+-- جيل المزامنة: عند الحذف الكلي يرتفع فتستبدل كل الأجهزة نسختها القديمة
+CREATE TABLE IF NOT EXISTS sync_meta ( k VARCHAR(20) PRIMARY KEY, v INT UNSIGNED );
+INSERT IGNORE INTO sync_meta(k,v) VALUES ('gen', 1);`}</pre>
             </div>
           )}
           {doc === "api" && (

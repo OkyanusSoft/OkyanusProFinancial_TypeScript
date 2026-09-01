@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useApp } from "../store";
 import { I, Chip } from "../ui";
 import { Directory, type DirConf } from "../crud";
-import { PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, SYSTEM } from "../data";
+import { PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, SYSTEM, ACTIVITY_CATS } from "../data";
+import type { Activity } from "../data";
 import { LOGIN_BGS } from "./Login";
 
 export default function Admin() {
@@ -10,6 +11,7 @@ export default function Admin() {
   const p = app.route.path || "users";
   if (p === "users") return <UsersScreen />;
   if (p === "roles") return <Directory conf={rolesConf(app)} />;
+  if (p === "monitor") return <MonitorScreen />;
   if (p === "settings") return <SettingsScreen />;
   if (p === "prefs") return <PrefsScreen />;
   return <UsersScreen />;
@@ -144,6 +146,164 @@ function UsersScreen() {
           }} />
         </div>
       )}
+    </div>
+  );
+}
+
+/* ═══════════ مراقبة النشاط — بث لحظي لكل عمليات الموظفين (للمدير) ═══════════ */
+const ago = (ts: number) => {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 10) return "الآن";
+  if (s < 60) return `قبل ${s} ث`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `قبل ${m} د`;
+  return `قبل ${Math.floor(m / 60)} س`;
+};
+const typeMeta: Record<Activity["type"], { icon: string; color: string; label: string }> = {
+  create: { icon: "plus", color: "var(--good)", label: "إنشاء" },
+  update: { icon: "edit", color: "var(--brand)", label: "تعديل" },
+  delete: { icon: "trash", color: "var(--bad)", label: "حذف" },
+  login: { icon: "user", color: "var(--accent)", label: "دخول" },
+  sync: { icon: "refresh", color: "var(--mute)", label: "مزامنة" },
+};
+
+function MonitorScreen() {
+  const app = useApp();
+  const [fUser, setFUser] = useState("الكل");
+  const [fCat, setFCat] = useState("الكل");
+  const [q, setQ] = useState("");
+  const [, force] = useState(0);
+  useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+
+  const feed = app.activity.filter((a) =>
+    (fUser === "الكل" || a.user === fUser) &&
+    (fCat === "الكل" || a.category === fCat) &&
+    (!q || a.action.includes(q) || a.user.includes(q) || a.device.includes(q))
+  ).slice(0, 60);
+
+  const users = useMemo<string[]>(() => Array.from(new Set(app.activity.map((a: Activity) => a.user))), [app.activity]);
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const kpi = {
+    today: app.activity.filter((a) => a.ts >= dayStart.getTime()).length,
+    active: new Set(app.activity.filter((a) => Date.now() - a.ts < 3600_000).map((a) => a.user)).size,
+    online: app.devices.filter((d) => d.online).length + 1,
+    dels: app.tombstones.length,
+  };
+  const hours = Array.from({ length: 12 }, (_, i) => {
+    const from = Date.now() - (12 - i) * 3600_000, to = Date.now() - (11 - i) * 3600_000;
+    return { label: `${new Date(to).getHours()}`, n: app.activity.filter((a) => a.ts > from && a.ts <= to).length };
+  });
+  const maxH = Math.max(...hours.map((h) => h.n), 1);
+  const allDevices = [
+    { id: app.deviceId, name: app.settings.deviceName + " (أنت)", user: app.session?.user || "—", role: app.session?.role || "—", ip: "192.168.1.10", online: true, ops: app.activity.length, lastSeen: Date.now(), category: "النظام" },
+    ...app.devices,
+  ];
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="pulse" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">مراقبة النشاط</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">بث لحظي مباشر لكل عمليات الموظفين على الأجهزة المختلفة — مزامنة دمج مركزية، لا حذف للبيانات</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /> بث مباشر — تحديث كل 4.5 ث</span>
+          <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num !py-1.5" dir="ltr">جيل المزامنة #{app.gen}</span>
+        </div>
+      </div>
+
+      {/* مؤشرات */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5 stagger">
+        {[
+          { icon: "pulse", label: "عمليات اليوم", v: kpi.today, tone: "var(--brand)" },
+          { icon: "users", label: "موظفون نشطون (آخر ساعة)", v: kpi.active, tone: "var(--good)" },
+          { icon: "server", label: "أجهزة متصلة الآن", v: kpi.online, tone: "var(--accent)" },
+          { icon: "trash", label: "شواهد حذف منتشرة", v: kpi.dels, tone: "var(--bad)" },
+        ].map((k) => (
+          <div key={k.label} className="card card-lift p-4 relative overflow-hidden">
+            <div className="absolute -top-6 -start-6 w-20 h-20 rounded-full opacity-[0.09]" style={{ background: k.tone }} />
+            <div className="flex items-start justify-between">
+              <div><div className="text-[0.7rem] font-bold text-mute">{k.label}</div>
+                <div className="font-num font-bold text-[1.5rem] leading-tight mt-1" style={{ color: k.tone }}>{k.v}</div></div>
+              <span className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: `color-mix(in srgb, ${k.tone} 13%, transparent)`, color: k.tone }}><I n={k.icon} size={19} /></span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* البث المباشر */}
+        <div className="lg:col-span-2 card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-display font-bold text-base flex items-center gap-2"><I n="clock" size={18} className="text-[var(--brand)]" /> سجل العمليات اللحظي <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] !text-[0.6rem]">{feed.length}</span></h3>
+            <span className="text-[0.66rem] font-bold text-mute">activity_log — يُضاف ولا يُحذف</span>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <select className="select !w-44 !py-2 !text-[0.76rem]" value={fUser} onChange={(e) => setFUser(e.target.value)}><option>الكل</option>{users.map((u) => <option key={u}>{u}</option>)}</select>
+            <select className="select !w-40 !py-2 !text-[0.76rem]" value={fCat} onChange={(e) => setFCat(e.target.value)}><option>الكل</option>{ACTIVITY_CATS.map((c) => <option key={c}>{c}</option>)}</select>
+            <div className="relative flex-1 min-w-[160px]"><I n="search" size={14} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
+              <input className="input !ps-9 !py-2 !text-[0.76rem]" placeholder="بحث في العمليات…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          </div>
+          <div className="space-y-2 max-h-[520px] overflow-auto pe-1" style={{ scrollbarWidth: "thin" }}>
+            {feed.map((a) => {
+              const m = typeMeta[a.type];
+              return (
+                <div key={a.id} className="flex items-start gap-3 p-3 rounded-xl bg-panel border border-line/70 anim-rise hover:border-[color-mix(in_srgb,var(--brand)_35%,transparent)] transition-colors">
+                  <span className="w-8 h-8 rounded-lg grid place-items-center shrink-0 mt-0.5" style={{ background: `color-mix(in srgb, ${m.color} 13%, transparent)`, color: m.color }}><I n={m.icon} size={15} /></span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <b className="text-[0.8rem]">{a.user}</b>
+                      <span className="chip bg-[color-mix(in_srgb,var(--mute)_12%,transparent)] text-[var(--soft)] !text-[0.58rem] !py-0">{a.category}</span>
+                      <span className="chip !text-[0.58rem] !py-0" style={{ background: `color-mix(in srgb, ${m.color} 12%, transparent)`, color: m.color }}>{m.label}</span>
+                    </div>
+                    <p className="text-[0.76rem] text-soft font-medium leading-5 mt-0.5 truncate">{a.action}</p>
+                    <div className="text-[0.62rem] text-mute font-bold mt-0.5 font-num" dir="ltr">{a.device} • {ago(a.ts)}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {feed.length === 0 && <div className="text-center py-10 text-[0.8rem] font-bold text-mute">لا توجد عمليات مطابقة للفلاتر</div>}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* توزيع النشاط */}
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="chart" size={18} className="text-[var(--brand)]" /> توزيع النشاط — آخر 12 ساعة</h3>
+            <div className="flex items-end gap-1.5" style={{ height: 110 }}>
+              {hours.map((h, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group" title={`${h.n} عملية`}>
+                  <div className="w-full rounded-t bar-grow" style={{ height: `${(h.n / maxH) * 100}%`, minHeight: h.n ? 6 : 2, background: h.n ? "linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 45%, transparent))" : "var(--panel)", animationDelay: `${i * 40}ms` }} />
+                  <span className="text-[0.58rem] font-num font-bold text-mute">{h.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* أجهزة الشبكة */}
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="server" size={18} className="text-[var(--accent)]" /> أجهزة الشبكة <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !text-[0.6rem]">{allDevices.filter((d) => d.online).length} متصل</span></h3>
+            <div className="space-y-2 max-h-[300px] overflow-auto pe-1" style={{ scrollbarWidth: "thin" }}>
+              {allDevices.map((d) => (
+                <div key={d.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-panel border border-line/70">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${d.online ? "bg-[var(--good)] blink" : "bg-[var(--mute)]"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[0.78rem] font-bold truncate">{d.name}</div>
+                    <div className="text-[0.62rem] text-mute font-bold truncate">{d.user} — {d.role} • <span className="font-num" dir="ltr">{d.ip}</span></div>
+                  </div>
+                  <div className="text-end shrink-0">
+                    <div className="font-num text-[0.7rem] font-bold text-[var(--brand)]">{d.ops}</div>
+                    <div className="text-[0.58rem] text-mute font-bold">{d.online ? ago(d.lastSeen) : "خامل"}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <p className="text-[0.7rem] font-bold text-mute mt-4 flex items-center gap-1.5"><I n="info" size={13} className="text-[var(--brand)]" /> معمارية المزامنة: كل جهاز يرسل عملياته للقاعدة المركزية فتُدمج (الأحدث يفوز)، ويبث المركز التغييرات لكل الأجهزة كل 4.5 ثانية. الحذف ينتشر عبر شواهد (Tombstones) فلا يعود السجل المحذوف أبداً.</p>
     </div>
   );
 }
@@ -331,7 +491,24 @@ function BackupSection() {
   ]);
   const [path, setPath] = useState("/var/backups/okyanus-ifs/");
   return (
-    <div className="grid lg:grid-cols-3 gap-5">
+    <div className="space-y-5">
+      {/* هوية هذا الجهاز — تظهر باسمها في مراقبة النشاط للمدير */}
+      <div className="card p-5">
+        <h3 className="font-display font-bold text-base mb-1 flex items-center gap-2"><I n="server" size={19} className="text-[var(--accent)]" /> هوية هذا الجهاز</h3>
+        <p className="text-[0.72rem] text-mute font-bold mb-3">يُمنح كل متصفح معرّفاً فريداً تلقائياً. سمِّ الجهاز ليظهر باسمه في شاشة «مراقبة النشاط» عند المدير.</p>
+        <div className="grid md:grid-cols-2 gap-3 max-w-3xl">
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">اسم الجهاز</span>
+            <input className="input mt-1" value={app.settings.deviceName} placeholder="مثال: جهاز الاستقبال، جهاز الحسابات 1"
+              onChange={(e) => app.setSettings({ ...app.settings, deviceName: e.target.value })} /></label>
+          <div><span className="text-[0.74rem] font-bold text-soft block">معرّف الجهاز (تلقائي)</span>
+            <div className="input mt-1 font-num !bg-panel text-mute cursor-default flex items-center justify-between" dir="ltr">
+              <span>{app.deviceId}</span><I n="key" size={14} />
+            </div></div>
+        </div>
+        <button className="btn btn-soft mt-3" onClick={() => app.toast(`سُجّل الجهاز «${app.settings.deviceName}» (${app.deviceId}) في شبكة النظام`, "ok")}><I n="save" size={15} /> حفظ هوية الجهاز</button>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-5">
       <div className="card p-5">
         <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="save" size={19} className="text-[var(--brand)]" /> ملفات الحزمة والنسخ الاحتياطي</h3>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">مسار حفظ النسخ الاحتياطية</span>
@@ -365,6 +542,7 @@ function BackupSection() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

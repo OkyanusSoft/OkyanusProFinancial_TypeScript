@@ -1,11 +1,13 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
 import {
   ACCOUNTS, ANALYTICALS, UNITS, GROUPS, WAREHOUSES, ITEMS, SUPPLIERS, CUSTOMERS, CASHBOXES,
   COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
-  SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, type AnyR, type InvDoc, type Invoice, type Journal, type Account,
+  SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, DEVICES, ACTIVITY_SEED,
+  type AnyR, type InvDoc, type Invoice, type Journal, type Account,
+  type Activity, type Device, type Tombstone,
 } from "./data";
-export type { AnyR } from "./data";
+export type { AnyR, Activity, Device, Tombstone } from "./data";
 
 /* ═══════ توليد أرقام دليل الحسابات حسب آخر رقم في المستوى ═══════
    القاعدة: الرقم الجديد = كود الحساب الأب + (آخر رقم للأشقاء + 1)
@@ -58,6 +60,7 @@ export interface Settings {
   prefixes: Record<string, string>;
   suspense: Record<string, string>;
   dbCfg: { host: string; port: number; user: string; pass: string; name: string; engine: string };
+  deviceName: string;
 }
 
 export interface Prefs { theme: string; font: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
@@ -108,6 +111,10 @@ interface AppCtx {
   accounts: Account[];
   addAccount: (a: Account) => boolean;
   nextAccountCode: (parentCode: string) => string;
+  /* المزامنة المركزية اللحظية */
+  activity: Activity[]; devices: Device[]; tombstones: Tombstone[];
+  gen: number; deviceId: string;
+  mergeSync: (coll: CollKey, incoming: AnyR[]) => void;
   sidebarBgs: typeof SIDEBAR_BGS;
   SYSTEM: typeof SYSTEM;
 }
@@ -145,6 +152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     prefixes: { SIN: "SIN", PIN: "PIN", SRT: "SRT", GRN: "GRN", ISS: "ISS", TR: "TR", ADJ: "ADJ", JC: "JC", JE: "JE", RC: "RC", PV: "PV", PR: "PR", QT: "QT" },
     suspense: { salesCash: "41111", salesCredit: "41112", purchases: "11311", vatOut: "21211", vatIn: "21212", customers: "11211", suppliers: "21111", cogs: "31511", cash: "11111", bank: "11121" },
     dbCfg: { host: "localhost", port: 3306, user: "erp_admin", pass: "", name: "okyanus_ifs", engine: "InnoDB" },
+    deviceName: "جهاز الإدارة الرئيسي",
   });
   const [prefs, setPrefsState] = useState<Prefs>({ theme: "azure", font: 100, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" });
   const [session, setSession] = useState<Session | null>(null);
@@ -157,6 +165,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ]);
   const [perms, setPerms] = useState(DEF_PERMS);
 
+  /* ═══════ محرك المزامنة المركزية اللحظية (Merge Sync) ═══════ */
+  const [activity, setActivity] = useState<Activity[]>(ACTIVITY_SEED);
+  const [devices, setDevices] = useState<Device[]>(DEVICES);
+  const [tombstones, setTombstones] = useState<Tombstone[]>([]);
+  const [gen, setGen] = useState(1);
+  const [deviceId] = useState(() => {
+    try {
+      let d = localStorage.getItem("okyanus_device_id");
+      if (!d) { d = "DV-" + Math.random().toString(36).slice(2, 7).toUpperCase(); localStorage.setItem("okyanus_device_id", d); }
+      return d;
+    } catch { return "DV-LOCAL"; }
+  });
+  const mutCount = useRef(0);
+
+  /* تسجيل عملية في activity_log — لا يُحذف أي سجل أبداً */
+  const logActivity = (a: Omit<Activity, "id" | "ts">) =>
+    setActivity((old) => [{ ...a, id: `AC-${Date.now()}-${Math.floor(Math.random() * 1e4)}`, ts: Date.now() }, ...old].slice(0, 400));
+
+  /* عملية محلية (المستخدم الحالي على هذا الجهاز) */
+  const logLocal = (category: string, action: string, type: Activity["type"]) => {
+    if (!session) return;
+    logActivity({ user: session.user, role: session.role, device: settings.deviceName, deviceId, category, action, type });
+  };
+
+  /* دمج مركزي: الأحدث يفوز على مستوى السجل، ولا يُحذف شيء */
+  const mergeSync = (coll: CollKey, incoming: AnyR[]) => {
+    setDb((d) => {
+      const list = [...d[coll]];
+      incoming.forEach((inc) => {
+        const i = list.findIndex((r) => r.id === inc.id);
+        const incTs = (inc as any).updatedAt || 0;
+        if (i < 0) list.push(inc);
+        else { const curTs = (list[i] as any).updatedAt || 0; if (incTs >= curTs) list[i] = inc; } /* latest wins */
+      });
+      return { ...d, [coll]: list };
+    });
+  };
+
+  /* شاهد حذف (Tombstone) — ينتشر لكل الأجهزة فلا يعود السجل أبداً */
+  const addTombstone = (coll: CollKey, recordId: string, label: string) => {
+    const by = session?.user || "النظام";
+    setTombstones((t) => [{ id: `TB-${Date.now()}`, coll, recordId, label, by, ts: Date.now() }, ...t]);
+    logLocal("النظام", `حذف «${label}» من ${coll} — نُشر شاهد الحذف لكل الأجهزة`, "delete");
+  };
+
+  /* خرائط: كل مجموعة بيانات ← فئتها المحاسبية واسمها العربي (للبث اللحظي) */
+  const COLL_CAT: Record<string, string> = {
+    units: "المخازن", groups: "المخازن", warehouses: "المخازن", items: "الأصول",
+    suppliers: "المشتريات", customers: "المبيعات", cashboxes: "المالية", costCenters: "المالية",
+    branches: "النظام", departments: "الموارد", users: "النظام", currencies: "المالية", periods: "المالية",
+    banks: "المالية", payTerms: "المالية", partnerCats: "المبيعات", roles: "النظام",
+    analyticals: "المالية", requests: "المشتريات", quotes: "المبيعات",
+    sales: "المبيعات", purchases: "المشتريات", returns: "المبيعات", invDocs: "المخازن", journals: "المالية",
+  };
+  const COLL_AR: Record<string, string> = {
+    units: "الوحدات", groups: "المجموعات", warehouses: "المخازن", items: "الأصناف",
+    suppliers: "الموردين", customers: "العملاء", cashboxes: "الصناديق", costCenters: "مراكز التكلفة",
+    branches: "الفروع", departments: "الأقسام", users: "المستخدمين", currencies: "العملات", periods: "الفترات",
+    banks: "البنوك", payTerms: "شروط الدفع", partnerCats: "التصنيفات", roles: "الأدوار",
+    analyticals: "الحسابات التحليلية", requests: "طلبات الشراء", quotes: "عروض الأسعار",
+    sales: "فواتير المبيعات", purchases: "فواتير المشتريات", returns: "مرتجعات المبيعات", invDocs: "السندات المخزنية", journals: "القيود اليومية",
+  };
+
   const toast = (msg: string, kind: Toast["kind"] = "info") => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg, kind }]);
@@ -168,8 +239,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setPrefs = (p: Partial<Prefs>) => setPrefsState((old) => ({ ...old, ...p }));
   const nav = (r: Partial<Route>) => setRoute((old) => ({ module: r.module || old.module, path: r.path !== undefined ? r.path : old.path }));
-  const login = (s: Session) => { setSession(s); setRoute({ module: "dashboard", path: "" }); };
-  const logout = () => setSession(null);
+  const login = (s: Session) => {
+    setSession(s); setRoute({ module: "dashboard", path: "" });
+    logActivity({ user: s.user, role: s.role, device: settings.deviceName, deviceId, category: "النظام", action: `تسجيل دخول إلى ${s.company} — ${s.branch} (السنة المالية ${s.year})`, type: "login" });
+  };
+  const logout = () => { if (session) logActivity({ user: session.user, role: session.role, device: settings.deviceName, deviceId, category: "النظام", action: "تسجيل خروج", type: "login" }); setSession(null); };
 
   const year = session?.year || "2026";
   const nextNo = (prefix: string) => {
@@ -178,22 +252,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return `${prefix}-${year}-${String(n).padStart(4, "0")}`;
   };
 
-  /* ── إدارة السجلات العامة ── */
-  const save = (coll: CollKey, row: AnyR) =>
-    setDb((d) => {
-      const list = d[coll];
-      const i = list.findIndex((r) => r.id === row.id);
-      const next = i >= 0 ? list.map((r, j) => (j === i ? row : r)) : [...list, row];
-      return { ...d, [coll]: next };
-    });
+  /* ── إدارة السجلات العامة (دمج مركزي + تسجيل لحظي) ── */
+  const save = (coll: CollKey, row: AnyR) => {
+    const stamped: AnyR = { ...row, updatedAt: Date.now() };
+    mergeSync(coll, [stamped]);
+    logLocal(COLL_CAT[coll] || "النظام", `حفظ «${String(stamped.name || stamped.code || stamped.id)}» في ${COLL_AR[coll] || coll} — دُمج في القاعدة المركزية`, "update");
+  };
 
   const remove = (coll: CollKey, id: string, label?: string) => {
-    setDb((d) => {
-      const row = d[coll].find((r) => r.id === id);
-      if (row) setTrash((t) => [{ coll, row, at: new Date().toLocaleString("ar-EG") }, ...t]);
-      return { ...d, [coll]: d[coll].filter((r) => r.id !== id) };
-    });
-    toast(`نُقل «${label || id}» إلى سلة المحذوفات — يمكن الاستعادة من سلة الصيانة`, "ok");
+    const row = db[coll].find((r) => r.id === id);
+    setTrash((t) => [{ coll, row: row || ({ id } as AnyR), at: new Date().toLocaleString("ar-EG") }, ...t]);
+    setDb((d) => ({ ...d, [coll]: d[coll].filter((r) => r.id !== id) }));
+    addTombstone(coll, id, label || id);
+    toast(`نُقل «${label || id}» إلى سلة المحذوفات ونُشر الحذف لكل الأجهزة`, "ok");
   };
   const restore = (idx: number) => {
     const t = trash[idx];
@@ -205,9 +276,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const purge = (idx: number) => {
     const t = trash[idx];
     setTrash((old) => old.filter((_, i) => i !== idx));
+    if (t) addTombstone(t.coll, t.row.id, String(t.row.name || t.row.code || t.row.id));
     toast(`حُذف «${t?.row?.name || t?.row?.code || "السجل"}» نهائياً من قاعدة البيانات`, "err");
   };
-  const emptyTrash = () => { setTrash([]); toast("أُفرغت سلة المحذوفات — اكتملت عملية الصيانة", "info"); };
+  const emptyTrash = () => {
+    setTrash([]);
+    setGen((g) => g + 1); /* حذف كلي ← يرتفع الجيل فتستبدل كل الأجهزة نسختها القديمة */
+    logLocal("النظام", `إفراغ سلة المحذوفات — ارتفع الجيل إلى ${gen + 1} وستُستبدل النسخ القديمة على كل الأجهزة`, "delete");
+    toast("أُفرغت سلة المحذوفات وارتفع جيل المزامنة — اكتملت الصيانة", "info");
+  };
 
   /* ── إضافة حساب لدليل الحسابات (ترقيم تلقائي حسب المستوى) ── */
   const addAccount = (acc: Account): boolean => {
@@ -239,6 +316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return { ...d, [coll]: list };
     });
+    logLocal(COLL_CAT[coll] || "النظام", `استيراد جماعي إلى ${COLL_AR[coll] || coll}: أُضيف ${added} وتُخطي ${skipped}`, "create");
     return { added, skipped };
   };
 
@@ -456,6 +534,99 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast(`صُدّر التقرير «${name}» بصيغة Excel (CSV)`, "ok");
   };
 
+  /* ═══════ محاكي البث اللحظي: أجهزة بعيدة تُدخل بيانات فتظهر هنا فوراً ═══════ */
+  const liveNo = useRef(0);
+  useEffect(() => {
+    if (!session) return;
+    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+    const ri = (a: number, b: number) => a + Math.floor(Math.random() * (b - a + 1));
+
+    /* عملية تعديل حقيقية على جهاز بعيد → تُدمج في القاعدة المركزية */
+    const remoteMutate = (dev: Device): string => {
+      const items = ["IT-1001", "IT-1002", "IT-1003", "IT-1004", "IT-1005", "IT-1008"];
+      const cust = ["CU-01", "CU-02", "CU-03", "CU-04"];
+      const supp = ["SP-01", "SP-02", "SP-04"];
+      const it = pick(items);
+      const qty = ri(2, 24);
+      const n = ++liveNo.current;
+
+      if (dev.category === "الموارد" || dev.category === "النظام") {
+        const hr = ["تحديث بيانات موظف — قسم المختبرات", "تسجيل حضور وانصراف — وردية الصباح", "مراجعة مسير الرواتب الشهري", "إضافة موظف جديد — قسم الاستقبال"];
+        return pick(hr);
+      }
+      if (dev.category === "المخازن") {
+        const ref = `GRN-2026-${String(300 + n).padStart(4, "0")}`;
+        setDb((d) => ({
+          ...d,
+          invDocs: [...d.invDocs, { id: `LIVE-${ref}`, type: "توريد", date: "2026-03-29", ref, warehouse: "WH-01", user: dev.user, status: "مرحّل", lines: [{ item: it, qty, cost: 1000 }], updatedAt: Date.now() } as any],
+          items: d.items.map((x) => (x.id === it ? { ...x, qty: { ...(x.qty as any), "WH-01": ((x.qty as any)["WH-01"] || 0) + qty } } : x)),
+        }));
+        return `سند توريد مخزني ${ref} — ${qty} وحدة من ${it}`;
+      }
+      if (dev.category === "المشتريات") {
+        const no = `PIN-2026-${String(400 + n).padStart(4, "0")}`;
+        const price = ri(800, 4000); const credit = Math.random() > 0.5;
+        setDb((d) => ({
+          ...d,
+          purchases: [...d.purchases, { id: `LIVE-${no}`, no, date: "2026-03-29", partner: pick(supp), payType: credit ? "آجل" : "نقدي", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: it, qty, price, disc: 0 }], updatedAt: Date.now() } as any],
+          items: d.items.map((x) => (x.id === it ? { ...x, qty: { ...(x.qty as any), "WH-01": ((x.qty as any)["WH-01"] || 0) + qty } } : x)),
+        }));
+        return `فاتورة مشتريات ${no} (${credit ? "آجل" : "نقدي"}) — ${qty} × ${it}`;
+      }
+      if (dev.category === "المالية") {
+        const amt = ri(20, 400) * 1000;
+        const no = `RC-2026-${String(500 + n).padStart(4, "0")}`;
+        setDb((d) => ({
+          ...d,
+          journals: [...d.journals, { id: `LIVE-${no}`, no, date: "2026-03-29", desc: `سند قبض — تحصيل دفعة (بث لحظي من ${dev.name})`, kind: "قبض", user: dev.user, status: "مرحّل", source: "سند قبض", lines: [
+            { account: "11111", debit: amt, credit: 0, currency: "YER", rate: 1 },
+            { account: "11211", debit: 0, credit: amt, currency: "YER", rate: 1 },
+          ], updatedAt: Date.now() } as any],
+        }));
+        return `سند قبض ${no} — تحصيل ${amt.toLocaleString("en-US")} ر.ي`;
+      }
+      /* المبيعات / نقاط البيع */
+      const no = `SIN-2026-${String(600 + n).padStart(4, "0")}`;
+      const price = ri(900, 5000); const credit = dev.category === "المبيعات" && Math.random() > 0.6;
+      const partner = pick(cust);
+      setDb((d) => ({
+        ...d,
+        sales: [...d.sales, { id: `LIVE-${no}`, no, date: "2026-03-29", partner, payType: credit ? "آجل" : "نقدي", currency: "YER", rate: 1, costCenter: "CC-012", status: "مرحّلة", vat: 5, lines: [{ item: it, qty, price, disc: 0 }], updatedAt: Date.now() } as any],
+        items: d.items.map((x) => (x.id === it ? { ...x, qty: { ...(x.qty as any), "WH-01": Math.max(0, ((x.qty as any)["WH-01"] || 0) - qty) } } : x)),
+        customers: credit ? d.customers.map((c) => (c.id === partner ? { ...c, balance: c.balance + qty * price } : c)) : d.customers,
+      }));
+      return `فاتورة ${dev.category === "نقاط البيع" ? "نقاط بيع" : "مبيعات"} ${no} (${credit ? "آجل" : "نقدي"}) — ${qty} × ${it}`;
+    };
+
+    const iv = setInterval(() => {
+      const dev = pick(DEVICES);
+      /* تحديث حالة الجهاز: آخر ظهور، عدد العمليات، وتبديل الاتصال أحياناً */
+      setDevices((old) => old.map((x) => (x.id === dev.id ? { ...x, lastSeen: Date.now(), ops: x.ops + 1, online: Math.random() > 0.06 ? true : !x.online } : x)));
+
+      const doMutate = mutCount.current < 18 && Math.random() < 0.42;
+      if (doMutate) {
+        mutCount.current++;
+        const action = remoteMutate(dev);
+        const t: Activity["type"] = dev.category === "الموارد" || dev.category === "النظام" ? "update" : "create";
+        logActivity({ user: dev.user, role: dev.role, device: dev.name, deviceId: dev.id, category: dev.category, action, type: t });
+      } else {
+        /* نبض مزامنة يبقي البث حياً دون تعديل البيانات */
+        if (Math.random() < 0.5) {
+          const syncMsgs = [
+            "مزامنة تلقائية ناجحة — لا تغييرات جديدة",
+            `مزامنة دلتا — استلام ${ri(1, 5)} سجلات محدثة`,
+            "فحص اتصال بقاعدة البيانات المركزية — 12ms",
+            "تحديث الرصيد اللحظي للصناديق والبنوك",
+            "نسخ احتياطي تفاضلي مجدول اكتمل",
+          ];
+          logActivity({ user: dev.user, role: dev.role, device: dev.name, deviceId: dev.id, category: dev.category === "المالية" ? "المالية" : "النظام", action: pick(syncMsgs), type: "sync" });
+        }
+      }
+    }, 4500);
+
+    return () => clearInterval(iv);
+  }, [session]);
+
   return (
     <Ctx.Provider value={{
       db, trash, seq, settings, setSettings, prefs, setPrefs, session, route, toasts, notifs,
@@ -465,6 +636,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       accounts, addAccount, nextAccountCode: (p: string) => nextAccountCode(accounts, p),
+      activity, devices, tombstones, gen, deviceId, mergeSync,
       sidebarBgs: SIDEBAR_BGS, SYSTEM,
     }}>
       {children}

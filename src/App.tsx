@@ -45,6 +45,7 @@ const TREE: { id: string; label: string; icon: string; groups: Group[]; leaves?:
   },
   {
     id: "adm", label: "إدارة النظام", icon: "shield", groups: [], leaves: [
+      { id: "monitor", label: "مراقبة النشاط (بث لحظي)" },
       { id: "users", label: "المستخدمون والصلاحيات" },
       { id: "roles", label: "الأدوار الوظيفية" },
       { id: "settings", label: "الإعدادات العامة" },

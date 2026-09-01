@@ -396,3 +396,65 @@ export const IMPORT_SAMPLES: Record<string, { headers: string[]; rows: string[][
   partnerCats: { headers: ["الاسم", "النطاق", "ملاحظة"], rows: [["خدمات لوجستية", "موردون", "شركات النقل والتخليص"]] },
   roles: { headers: ["الاسم", "الوصف", "المستوى"], rows: [["مشرف تقارير", "عرض وإصدار التقارير فقط", "3"]] },
 };
+
+/* ════════ بنية المزامنة المركزية اللحظية (Central Merge Sync) ════════
+   activity_log  : سجل كل عملية على كل جهاز (لا يُحذف أبداً)
+   deletions     : سجل الحذف (Tombstones) — ينتشر لكل الأجهزة
+   device_registry: الأجهزة المسجلة في الشبكة وحالتها اللحظية        */
+export interface Activity {
+  id: string; ts: number; user: string; role: string; device: string; deviceId: string;
+  category: string; action: string; type: "create" | "update" | "delete" | "login" | "sync";
+}
+export interface Device {
+  id: string; name: string; user: string; role: string; category: string;
+  lastSeen: number; online: boolean; ops: number; ip: string;
+}
+export interface Tombstone { id: string; coll: string; recordId: string; label: string; by: string; ts: number }
+
+export const ACTIVITY_CATS = ["المالية", "الأصول", "المخازن", "المشتريات", "المبيعات", "نقاط البيع", "الموارد", "النظام"];
+
+/* سجل الأجهزة في الشبكة (الأجهزة البعيدة — يُبث منها العمليات اللحظية) */
+export const DEVICES: Device[] = [
+  { id: "DV-CASH1", name: "كاشير الاستقبال 1", user: "نبيل سعيد", role: "نقاط البيع", category: "نقاط البيع", lastSeen: 0, online: true, ops: 142, ip: "192.168.1.21" },
+  { id: "DV-SALES", name: "جهاز المبيعات 2", user: "طارق الوزير", role: "مسؤول مبيعات", category: "المبيعات", lastSeen: 0, online: true, ops: 98, ip: "192.168.1.24" },
+  { id: "DV-FIN", name: "جهاز الحسابات 1", user: "سمير الحداد", role: "محاسب رئيسي", category: "المالية", lastSeen: 0, online: true, ops: 210, ip: "192.168.1.30" },
+  { id: "DV-WH", name: "جهاز المخازن", user: "عادل الحميري", role: "أمين مخزن", category: "المخازن", lastSeen: 0, online: false, ops: 76, ip: "192.168.1.33" },
+  { id: "DV-PUR", name: "جهاز المشتريات", user: "هدى العامري", role: "مسؤولة مشتريات", category: "المشتريات", lastSeen: 0, online: true, ops: 64, ip: "192.168.1.36" },
+  { id: "DV-HR", name: "جهاز الموارد البشرية", user: "أمل الشرعبي", role: "موارد بشرية", category: "الموارد", lastSeen: 0, online: false, ops: 41, ip: "192.168.1.40" },
+].map((d) => ({ ...d, lastSeen: Date.now() - Math.floor(Math.random() * 240_000) }));
+
+/* بث تاريخي لآخر 12 ساعة حتى تمتلئ شاشة المراقبة منذ اللحظة الأولى */
+const _now = Date.now();
+const _H = 3600_000;
+type _Seed = [number, number, string, Activity["type"]]; /* [قبل كم دقيقة, فهرس الجهاز, الوصف, النوع] */
+const _seed: _Seed[] = [
+  [11.6 * 60, 2, "ترحيل القيد الافتتاحي للسنة المالية 2026", "create"],
+  [11.1 * 60, 2, "مراجعة أرصدة الصندوق الرئيسي والبنوك", "update"],
+  [10.4 * 60, 3, "سند توريد مخزني GRN-0114 (سيفترياكسون + قفازات)", "create"],
+  [9.7 * 60, 0, "فاتورة نقاط البيع PV-2026-0240 (نقدي)", "create"],
+  [9.2 * 60, 1, "عرض سعر QT-2026-0047 — صيدلية ابن سينا", "create"],
+  [8.6 * 60, 4, "فاتورة مشتريات آجلة PIN-2026-0109 (مختبرات فارما كير)", "create"],
+  [8.0 * 60, 2, "سند قبض RC-2026-0105 — دفعة مستشفى النور 130,000", "create"],
+  [7.3 * 60, 5, "تحديث بيانات موظف — قسم المختبرات", "update"],
+  [6.8 * 60, 0, "فاتورة نقاط البيع PV-2026-0241 (نقدي)", "create"],
+  [6.1 * 60, 3, "تحويل مخزني TR-0007 — من الرئيسي إلى فرع عدن", "create"],
+  [5.6 * 60, 2, "قيد إيجار المقر الرئيسي — الربع الأول", "create"],
+  [5.0 * 60, 1, "فاتورة مبيعات SIN-2026-0245 (آجل) — ابن سينا", "create"],
+  [4.4 * 60, 4, "عروض أسعار شراء PQ-2026-0022 — ميديكال بلس", "create"],
+  [3.9 * 60, 2, "قسط استهلاك المعدات الطبية — مارس", "create"],
+  [3.3 * 60, 0, "فاتورة نقاط البيع PV-2026-0242 (نقدي)", "create"],
+  [2.8 * 60, 5, "مسير رواتب — مراجعة الحضور والانصراف", "update"],
+  [2.2 * 60, 3, "جرد دوري JC-0001 — مخزن فرع عدن", "create"],
+  [1.7 * 60, 1, "مرتجع مبيعات SRT-2026-0017 — صيدلية الأمل", "create"],
+  [1.2 * 60, 2, "قيد خدمات طبية — تحليلي: أحمد الشامي 45,000", "create"],
+  [0.7 * 60, 4, "سند صرف PV-2026-0106 — سداد دفعة لمؤسسة الخليج", "create"],
+  [0.4 * 60, 0, "مزامنة تلقائية — استلام 4 سجلات جديدة", "sync"],
+  [0.15 * 60, 1, "فاتورة مبيعات SIN-2026-0251 — مستشفى النور (نقدي)", "create"],
+];
+export const ACTIVITY_SEED: Activity[] = _seed.map(([min, di, action, type], i) => {
+  const d = DEVICES[di % DEVICES.length];
+  return {
+    id: `SEED-${i}`, ts: _now - min * 60_000, user: d.user, role: d.role,
+    device: d.name, deviceId: d.id, category: d.category, action, type,
+  };
+}).sort((a, b) => b.ts - a.ts);
