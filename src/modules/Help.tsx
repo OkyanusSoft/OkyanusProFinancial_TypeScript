@@ -97,7 +97,7 @@ export default function Help() {
       {tab === "dev" && (
         <div>
           <div className="flex flex-wrap gap-2 mb-4">
-            {[["sql", "قاعدة البيانات SQL + ERD", "db"], ["api", "واجهة APIs (OpenAPI)", "code"], ["plan", "الخطة التنفيذية (Sprints)", "cal"]].map(([id, l, ic]) => (
+            {[["sql", "قاعدة البيانات SQL + ERD", "db"], ["sync", "المزامنة والـBackend", "swap"], ["api", "واجهة APIs (OpenAPI)", "code"], ["plan", "الخطة التنفيذية (Sprints)", "cal"]].map(([id, l, ic]) => (
               <button key={id} onClick={() => setDoc(id)} className={`btn !py-2 ${doc === id ? "btn-brand" : "btn-ghost"}`}><I n={ic} size={15} /> {l}</button>
             ))}
             <button className="btn btn-ghost ms-auto" onClick={() => app.toast("نُزلت حزمة الوثائق كاملة (PDF + SQL)", "ok")}><I n="down" size={15} /> تنزيل الحزمة</button>
@@ -175,6 +175,53 @@ CREATE TABLE IF NOT EXISTS deletions (          -- شواهد الحذف Tombsto
 -- جيل المزامنة: عند الحذف الكلي يرتفع فتستبدل كل الأجهزة نسختها القديمة
 CREATE TABLE IF NOT EXISTS sync_meta ( k VARCHAR(20) PRIMARY KEY, v INT UNSIGNED );
 INSERT IGNORE INTO sync_meta(k,v) VALUES ('gen', 1);`}</pre>
+            </div>
+          )}
+          {doc === "sync" && (
+            <div className="space-y-4">
+              <div className="card overflow-hidden">
+                <div className="px-5 py-3 border-b border-line bg-panel flex items-center justify-between">
+                  <span className="font-display font-bold text-sm">الخادم المركزي — مجلد server/ (Express + MySQL 8 + WebSocket)</span>
+                  <Chip s="ساري" />
+                </div>
+                <pre className="codeblock" dir="ltr">{`server/
+├─ package.json            # npm install && npm run migrate && npm start
+├─ .env.example            # DB + JWT + حجم حزمة الاتصالات (100+ مستخدم)
+├─ src/
+│  ├─ index.js             # Express + JWT + WS Hub (بث لحظي لكل الأجهزة)
+│  ├─ db.js                # حزمة اتصالات + منفّذ Migrations مرقّم
+│  └─ syncEngine.js        # دمج «الأحدث يفوز» + Tombstones + Gen
+└─ migrations/             # تُنفَّذ بالترتيب وتُسجَّل في schema_migrations
+   ├─ 0001_core_schema.sql       # الأنظمة الأساسية + محفزات حماية
+   ├─ 0002_activity_engine.sql   # قاعدة تكيفية: 21 نظاماً بجداول مرنة JSON
+   ├─ 0003_sync_realtime.sql     # sync_records / sync_ops / tombstones / generations
+   ├─ 0004_hr_assets.sql         # الموارد البشرية + الأصول وإجراء الإهلاك السنوي
+   └─ 0005_alter_patterns.sql    # أنماط إضافة/تعديل أي جدول أو عمود (آمنة للتكرار)`}</pre>
+              </div>
+              <div className="card overflow-hidden">
+                <div className="px-5 py-3 border-b border-line bg-panel">
+                  <span className="font-display font-bold text-sm">عقد المزامنة اللحظية (مطابق في المتصفح والخادم)</span>
+                </div>
+                <pre className="codeblock" dir="ltr">{`1) دمج على مستوى السجل — الأحدث يفوز:
+   كل صف يحمل updatedAt؛ INSERT … ON DUPLICATE KEY UPDATE
+   يقبل الصف الأحدث فقط → لا يمحُ جهازٌ بياناتَ جهاز آخر أبداً.
+
+2) نشر الحذف — Tombstones:
+   مفتاح فريد (coll, record_id) → المحذوف يختفي من كل الأجهزة ولا يعود.
+
+3) الاستبدال الشامل — رقم الجيل Gen:
+   الاستعادة/إعادة التهيئة ترفع generations.current وتبث لقطة كاملة،
+   فتستبدل كل الأجهزة المتصلة نسختها القديمة تلقائياً.
+
+4) البث اللحظي:
+   المتصفح: BroadcastChannel (جرّب نافذتين متجاورتين!)
+   الخادم: WebSocket Hub + سحب تفاضلي GET /sync/pull?since=seq
+
+5) تحمل 100+ مستخدم متزامن:
+   حزمة اتصالات MySQL بحجم 40 + طابور 200 + فهارس updated_at
+   + دمج كل دفعة في معاملة واحدة + Rate Limit لكل جهاز.
+   التحقّق من شاشة: إدارة النظام ← مراقبة النشاط ← فحص التزامن والحمل.`}</pre>
+              </div>
             </div>
           )}
           {doc === "api" && (

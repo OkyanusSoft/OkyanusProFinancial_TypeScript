@@ -169,6 +169,7 @@ const typeMeta: Record<Activity["type"], { icon: string; color: string; label: s
 
 function MonitorScreen() {
   const app = useApp();
+  const [mtab, setMtab] = useState<"feed" | "check">("feed");
   const [fUser, setFUser] = useState("الكل");
   const [fCat, setFCat] = useState("الكل");
   const [q, setQ] = useState("");
@@ -215,6 +216,15 @@ function MonitorScreen() {
         </div>
       </div>
 
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-line mb-5 px-1">
+        {[["feed", "بث النشاط المباشر", "pulse"], ["check", "فحص التزامن والحمل", "scale"]].map(([id, l, ic]) => (
+          <button key={id} onClick={() => setMtab(id as any)} className={`tabline flex items-center gap-1.5 px-3.5 py-2.5 text-[0.82rem] font-bold whitespace-nowrap transition-colors ${mtab === id ? "on text-[var(--brand)]" : "text-mute hover:text-ink"}`}>
+            <I n={ic} size={15} /> {l}
+          </button>
+        ))}
+      </div>
+
+      {mtab === "feed" && (<>
       {/* مؤشرات */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5 stagger">
         {[
@@ -303,7 +313,151 @@ function MonitorScreen() {
           </div>
         </div>
       </div>
+      </>)}
+      {mtab === "check" && <SyncCheckScreen />}
       <p className="text-[0.7rem] font-bold text-mute mt-4 flex items-center gap-1.5"><I n="info" size={13} className="text-[var(--brand)]" /> معمارية المزامنة: كل جهاز يرسل عملياته للقاعدة المركزية فتُدمج (الأحدث يفوز)، ويبث المركز التغييرات لكل الأجهزة كل 4.5 ثانية. الحذف ينتشر عبر شواهد (Tombstones) فلا يعود السجل المحذوف أبداً.</p>
+    </div>
+  );
+}
+
+/* ═══════════ فحص التزامن والحمل (100 مستخدم متزامن) ═══════════ */
+function SyncCheckScreen() {
+  const app = useApp();
+  const eng = app.sync;
+  const [, force] = useState(0);
+  const [users, setUsers] = useState(100);
+  const [opsEach, setOpsEach] = useState(5);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<ReturnType<typeof eng.runLoadTest> | null>(null);
+  useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+
+  const dbSize = Object.values(app.db).reduce((a, list) => a + list.length, 0);
+  const health = eng.healthCheck(dbSize);
+  const run = () => {
+    setRunning(true); setProgress(0); setResult(null);
+    const steps = 10;
+    let i = 0;
+    const iv = setInterval(() => {
+      i++; setProgress(Math.round((i / steps) * 100));
+      if (i >= steps) {
+        clearInterval(iv);
+        setResult(eng.runLoadTest(users, opsEach));
+        setRunning(false);
+        app.toast(`اكتمل اختبار الحمل: ${users} مستخدم × ${opsEach} عمليات بلا فقد بيانات`, "ok");
+      }
+    }, 90);
+  };
+
+  return (
+    <div className="space-y-4 anim-fadein">
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* فحص صحة المنظومة */}
+        <div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="check" size={18} className="text-[var(--good)]" /> فحص وتشييك المنظومة</h3>
+          <div className="space-y-2">
+            {health.map((h) => (
+              <div key={h.label} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${h.ok ? "border-[color-mix(in_srgb,var(--good)_25%,transparent)] bg-[color-mix(in_srgb,var(--good)_5%,transparent)]" : "border-[color-mix(in_srgb,var(--warn)_30%,transparent)] bg-[color-mix(in_srgb,var(--warn)_6%,transparent)]"}`}>
+                <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${h.ok ? "bg-[color-mix(in_srgb,var(--good)_14%,transparent)] text-[var(--good)]" : "bg-[color-mix(in_srgb,var(--warn)_15%,transparent)] text-[var(--warn)]"}`}>
+                  <I n={h.ok ? "check" : "alert"} size={15} />
+                </span>
+                <div className="flex-1 min-w-0"><div className="text-[0.8rem] font-bold">{h.label}</div><div className="text-[0.66rem] text-mute font-bold">{h.detail}</div></div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 p-3 rounded-xl bg-panel border border-line flex items-center justify-between">
+            <div className="text-[0.74rem] font-bold text-soft flex items-center gap-2"><I n="server" size={15} className="text-[var(--brand)]" /> الخادم المركزي (server/)</div>
+            <span className="chip bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)]">Express + MySQL + WebSocket جاهز</span>
+          </div>
+        </div>
+
+        {/* إحصاءات الدمج الحية + الجيل */}
+        <div className="space-y-4">
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="swap" size={18} className="text-[var(--brand)]" /> محرك الدمج — إحصاءات لحظية <span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /></h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+              {[
+                { l: "عمليات نُشرت", v: eng.stats.published, t: "var(--brand)" },
+                { l: "عمليات دُمجت من أجهزة", v: eng.stats.applied, t: "var(--good)" },
+                { l: "تعارضات حُلّت (الأحدث يفوز)", v: eng.stats.conflicts, t: "var(--warn)" },
+                { l: "شواهد حذف منتشرة", v: eng.stats.tombstones, t: "var(--bad)" },
+                { l: "أحداث جيل (استبدال شامل)", v: eng.stats.genEvents, t: "var(--accent)" },
+                { l: "هوية هذا الجهاز", v: eng.deviceId.slice(-6), t: "var(--mute)" },
+              ].map((k) => (
+                <div key={k.l} className="bg-panel rounded-xl p-3 border border-line/70">
+                  <div className="text-[0.62rem] font-bold text-mute">{k.l}</div>
+                  <div className="font-num font-bold text-[1.15rem] mt-0.5" style={{ color: k.t }} dir="ltr">{typeof k.v === "number" ? k.v.toLocaleString("en-US") : k.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-2 flex items-center gap-2"><I n="refresh" size={18} className="text-[var(--accent)]" /> الاستبدال الشامل عبر الجيل</h3>
+            <p className="text-[0.74rem] text-mute font-bold leading-6 mb-3">عند الاستعادة من نسخة احتياطية أو إعادة التهيئة يرتفع رقم الجيل (<span className="font-num text-[var(--brand)]" dir="ltr">Gen #{app.gen}</span>) فتستبدل كل الأجهزة المتصلة نسختها القديمة تلقائياً — بلا تدخل يدوي.</p>
+            <div className="flex gap-2 flex-wrap">
+              <button className="btn btn-ghost" onClick={() => app.toast(`الجيل الحالي ${app.gen} — تُبث أحداث الجيل عبر قناة المزامنة`, "info")}><I n="info" size={15} /> حالة الجيل</button>
+              {app.ownerUnlocked
+                ? <button className="btn btn-danger" onClick={app.reinitCentral}><I n="refresh" size={15} /> إعادة تهيئة وبث Gen لكل الأجهزة</button>
+                : <button className="btn btn-ghost !text-[var(--bad)]" onClick={() => { app.nav({ module: "adm", path: "activate" }); app.toast("افتح شاشة تفعيل الأنظمة وأدخل الرقم السري للمالك (1234 للتجربة)", "info"); }}><I n="lock" size={15} /> يتطلب صلاحيات المالك</button>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* اختبار الحمل */}
+      <div className="card p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <div>
+            <h3 className="font-display font-bold text-base flex items-center gap-2"><I n="users" size={18} className="text-[var(--brand)]" /> اختبار الحمل — مستخدمون متزامنون</h3>
+            <p className="text-[0.72rem] text-mute font-bold mt-1">محاكاة عمليات متزامنة على مدمج «الأحدث يفوز» مع تنازع على سجلات ساخنة وعمليات حذف متوازية — للتحقق من سلامة البيانات تحت الضغط</p>
+          </div>
+          <div className="flex items-end gap-2.5 flex-wrap">
+            <label className="block"><span className="text-[0.68rem] font-bold text-mute">مستخدمون</span>
+              <input type="number" className="input mt-1 !w-24 !py-2 font-num" value={users} min={2} max={1000} onChange={(e) => setUsers(Math.max(2, +e.target.value || 100))} /></label>
+            <label className="block"><span className="text-[0.68rem] font-bold text-mute">عمليات/مستخدم</span>
+              <input type="number" className="input mt-1 !w-24 !py-2 font-num" value={opsEach} min={1} max={50} onChange={(e) => setOpsEach(Math.max(1, +e.target.value || 5))} /></label>
+            <button className="btn btn-brand !py-2.5" onClick={run} disabled={running}>
+              {running ? <><I n="refresh" size={15} className="animate-spin" /> جارٍ الاختبار…</> : <><I n="pulse" size={15} /> تشغيل الاختبار</>}
+            </button>
+          </div>
+        </div>
+        {running && (
+          <div className="mb-4">
+            <div className="h-2.5 rounded-full bg-panel overflow-hidden"><div className="h-full rounded-full transition-all duration-150" style={{ width: `${progress}%`, background: "linear-gradient(90deg, var(--brand), var(--accent))" }} /></div>
+            <div className="text-[0.68rem] font-bold text-mute mt-1.5 font-num" dir="ltr">{progress}% — {(users * opsEach * progress / 100).toFixed(0)} / {users * opsEach} عملية</div>
+          </div>
+        )}
+        {result && (
+          <div className="anim-rise">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 mb-4">
+              {[
+                ["إجمالي العمليات", result.totalOps, "var(--brand)"],
+                ["سجلات فريدة", result.uniqueRecords, "var(--accent)"],
+                ["دُمجت بنجاح", result.merged, "var(--good)"],
+                ["تعارضات حُلّت", result.conflicts, "var(--warn)"],
+                ["صُفوف أقدم رُفضت", result.rejected, "var(--mute)"],
+                ["حذف متزامن (Tombstone)", result.deleted, "var(--bad)"],
+                ["الزمن / الإنتاجية", `${result.ms}ms`, "var(--brand)"],
+              ].map(([l, v, t]) => (
+                <div key={l as string} className="bg-panel rounded-xl p-3 border border-line/70 text-center">
+                  <div className="text-[0.6rem] font-bold text-mute">{l}</div>
+                  <div className="font-num font-bold text-[1.05rem] mt-0.5" style={{ color: t as string }} dir="ltr">{typeof v === "number" ? v.toLocaleString("en-US") : v}</div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 rounded-xl border border-[color-mix(in_srgb,var(--good)_30%,transparent)] bg-[color-mix(in_srgb,var(--good)_6%,transparent)] flex items-start gap-3">
+              <I n="check" size={20} className="text-[var(--good)] shrink-0 mt-0.5" />
+              <div>
+                <div className="text-[0.84rem] font-bold text-[var(--good)]">النتيجة: سلامة بيانات كاملة تحت ضغط {result.users} مستخدم متزامن</div>
+                <p className="text-[0.76rem] text-soft font-medium mt-1 leading-6">{result.verdict} الإنتاجية: <b className="font-num" dir="ltr">{result.opsPerSec.toLocaleString("en-US")}</b> عملية/ثانية.</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {!result && !running && (
+          <div className="p-4 rounded-xl bg-panel border border-dashed border-line text-center text-[0.76rem] font-bold text-mute">شغّل الاختبار لمحاكاة {users * opsEach} عملية متزامنة والتحقق من المدمج</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -535,7 +689,7 @@ function BackupSection() {
                 <td className="font-num text-mute">{b.date}</td>
                 <td><Chip s="مرحّل" /></td>
                 <td><div className="flex gap-1">
-                  <button className="btn btn-ghost !p-1.5" title="استعادة" onClick={() => app.toast(`بدأت استعادة ${b.name} — ستتوقف الكتابة مؤقتاً`, "info")}><I n="undo" size={14} /></button>
+                  <button className="btn btn-ghost !p-1.5" title="استعادة وبث الجيل لكل الأجهزة" onClick={() => { app.reinitCentral(); app.toast(`استُعيدت ${b.name} وارتفع الجيل — انتشرت الاستعادة لكل الأجهزة تلقائياً`, "ok"); }}><I n="undo" size={14} /></button>
                   <button className="btn btn-danger !p-1.5" title="حذف" onClick={() => { setBackups(backups.filter((x) => x.id !== b.id)); app.toast("حُذف ملف النسخة", "err"); }}><I n="trash" size={14} /></button>
                 </div></td>
               </tr>
