@@ -65,7 +65,6 @@ const TAIL_TREE: NavNode[] = [
       { id: "activate", label: "تفعيل الأنظمة والأنشطة" },
       { id: "monitor", label: "مراقبة النشاط (بث لحظي)" },
       { id: "users", label: "المستخدمون والصلاحيات" },
-      { id: "roles", label: "الأدوار الوظيفية" },
       { id: "settings", label: "الإعدادات العامة" },
       { id: "prefs", label: "التفضيلات" },
     ],

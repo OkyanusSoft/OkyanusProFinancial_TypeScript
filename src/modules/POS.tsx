@@ -6,8 +6,12 @@ interface CartLine { item: string; name: string; qty: number; price: number }
 
 export default function POS() {
   const app = useApp();
-  const act = app.activities.find((a) => a.id === app.primaryActivity);
-  const mode = act?.posMode === "restaurant" ? "restaurant" : "retail";
+  /* النمط يتحول تلقائياً: تفعيل نظام المطاعم ← مطاعم وطاولات، تعطيله ← سوبر ماركت وتجزئة */
+  const restOn = app.activeSystems.includes("restaurants");
+  const act = restOn
+    ? app.activities.find((a) => a.id === "restaurants")
+    : app.activities.find((a) => a.id === app.primaryActivity && a.id !== "restaurants") || app.activities.find((a) => a.id === app.primaryActivity);
+  const mode = restOn ? "restaurant" : "retail";
   const term = act?.terminology;
   const vatRate = app.settings.vat;
 
@@ -27,7 +31,9 @@ export default function POS() {
         </div>
         <div className="flex items-center gap-2">
           <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">النشاط: {act?.name}</span>
-          <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]">{mode === "restaurant" ? "طاولات" : "تجزئة"}</span>
+          <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]">
+            <I n="swap" size={11} /> {restOn ? "المطاعم مفعّل ← نمط الطاولات" : "المطاعم معطّل ← نمط التجزئة"}
+          </span>
         </div>
       </div>
       {mode === "restaurant" ? <RestaurantPOS /> : <RetailPOS />}

@@ -4,6 +4,7 @@ import {
   COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
   SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, DEVICES, ACTIVITY_SEED,
+  MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS,
   ACTIVITIES, HR_EMPLOYEES, HR_ATTENDANCE, HR_REWARDS, HR_WARNINGS, HR_LEAVES, ASSETS, OWNER_PIN,
   type AnyR, type InvDoc, type Invoice, type Journal, type Account,
   type Activity, type Device, type Tombstone, type ActivityDef,
@@ -62,8 +63,11 @@ export interface Settings {
   negStock: boolean; lowStockAlert: boolean; requireCC: boolean; fiscalStart: string;
   prefixes: Record<string, string>;
   suspense: Record<string, string>;
-  dbCfg: { host: string; port: number; user: string; pass: string; name: string; engine: string };
+  dbCfg: { host: string; port: number; user: string; pass: string; name: string; engine: string; charset: string; tz: string; ssl: boolean; pool: number; queue: number; timeout: number };
   deviceName: string;
+  api: { baseUrl: string; wsPath: string; jwtExp: string; refresh: boolean; cors: string; rateLimit: number };
+  front: { syncSec: number; sessionMin: number; offline: boolean; density: "مريحة" | "مضغوطة"; sound: boolean; autoSave: boolean };
+  backup: { fullDaily: boolean; diffHours: number; gzip: boolean; encrypt: boolean; retainDays: number; path: string; autoLocal: boolean };
 }
 
 export interface Prefs { theme: string; font: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
@@ -111,6 +115,20 @@ interface AppCtx {
   can: (module: string, action: string) => boolean;
   togglePerm: (role: string, module: string, action: string) => void;
   perms: Record<string, Record<string, string[]>>;
+  /* مصفوفة الصلاحيات الرباعية: نظام / شاشات / تقارير / أزرار */
+  matrix: Record<string, PermRole>;
+  setModulePerm: (role: string, mod: string, on: boolean) => void;
+  setScreenPerm: (role: string, key: string, on: boolean) => void;
+  setAllScreens: (role: string, mod: string, on: boolean) => void;
+  setReportAction: (role: string, rep: string, act: string, on: boolean) => void;
+  setButtonPerm: (role: string, mod: string, act: string, on: boolean) => void;
+  setAllButtons: (role: string, mod: string, on: boolean) => void;
+  grantAll: (role: string) => void;
+  revokeAll: (role: string) => void;
+  permCounts: (role: string) => { modules: number; screens: number; reports: number; buttons: number; total: number };
+  /* النسخ الاحتياطي الحقيقي */
+  downloadSnapshot: (label: string) => void;
+  restoreSnapshot: (file: File) => void;
   accounts: Account[];
   addAccount: (a: Account) => boolean;
   nextAccountCode: (parentCode: string) => string;
@@ -162,6 +180,35 @@ const DEF_PERMS: Record<string, Record<string, string[]>> = {
   "مدقق خارجي": Object.fromEntries(PERM_MODULES.map((m) => [m, ["عرض", "تصدير تقارير"]])),
 };
 
+/* ═══════ مصفوفة الصلاحيات الرباعية (نظام / شاشات / تقارير / أزرار) ═══════ */
+export interface PermRole {
+  modules: Record<string, boolean>;            /* مستوى النظام: دخول الوحدات كاملة */
+  screens: Record<string, boolean>;            /* مستوى الشاشة: مفتاح «الوحدة:الشاشة» */
+  reports: Record<string, string[]>;           /* مستوى التقارير: إجراءات لكل تقرير */
+  buttons: Record<string, string[]>;           /* مستوى الأزرار: إجراءات لكل وحدة */
+}
+const mkPerm = (mods: Record<string, boolean>, btns: Record<string, string[]>, repMods: string[]): PermRole => ({
+  modules: mods,
+  screens: Object.fromEntries(Object.entries(MODULE_SCREENS).flatMap(([mid, m]) => m.screens.map((s) => [`${mid}:${s.id}`, !!mods[mid]]))),
+  reports: Object.fromEntries(REPORTS.map((r) => [r.id, repMods.includes(r.module) ? [...REPORT_ACTIONS] : mods[r.module] ? ["عرض"] : []])),
+  buttons: btns,
+});
+const ALL_MODS = Object.fromEntries(Object.keys(MODULE_SCREENS).map((m) => [m, true]));
+const ALL_BTNS = Object.fromEntries(Object.keys(MODULE_SCREENS).map((m) => [m, [...BUTTON_ACTIONS]]));
+const ALL_REPS = Object.keys(MODULE_SCREENS);
+const DEF_MATRIX: Record<string, PermRole> = {
+  "مدير النظام": mkPerm(ALL_MODS, ALL_BTNS, ALL_REPS),
+  "محاسب رئيسي": mkPerm({ ...ALL_MODS, adm: true }, { ...ALL_BTNS, adm: ["تصدير"] }, ALL_REPS),
+  "أمين مخزن": mkPerm({ dash: true, inv: true, pos: true, pur: true, sal: true },
+    { inv: ["إضافة", "تعديل", "ترحيل", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد"], pos: ["ترحيل", "طباعة"] },
+    ["inv", "pos"]),
+  "مسؤولة مشتريات": mkPerm({ dash: true, inv: true, pur: true, gl: true },
+    { pur: [...BUTTON_ACTIONS], inv: ["إضافة", "ترحيل"], gl: ["إضافة"] }, ["pur"]),
+  "مسؤول مبيعات": mkPerm({ dash: true, sal: true, pos: true, inv: true },
+    { sal: [...BUTTON_ACTIONS], pos: ["ترحيل", "طباعة"] }, ["sal"]),
+  "مدقق خارجي": mkPerm(ALL_MODS, {}, ALL_REPS),
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   /* القاعدة تُحمَّل من التخزين المركزي المشترك (تبقى بعد التحديث وتُشارك بين النوافذ) */
   const [db, setDb] = useState(() => engine.loadDb(initDb));
@@ -173,8 +220,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lowStockAlert: true, requireCC: true, fiscalStart: "2026-01-01",
     prefixes: { SIN: "SIN", PIN: "PIN", SRT: "SRT", GRN: "GRN", ISS: "ISS", TR: "TR", ADJ: "ADJ", JC: "JC", JE: "JE", RC: "RC", PV: "PV", PR: "PR", QT: "QT" },
     suspense: { salesCash: "41111", salesCredit: "41112", purchases: "11311", vatOut: "21211", vatIn: "21212", customers: "11211", suppliers: "21111", cogs: "31511", cash: "11111", bank: "11121" },
-    dbCfg: { host: "localhost", port: 3306, user: "erp_admin", pass: "", name: "okyanus_ifs", engine: "InnoDB" },
+    dbCfg: { host: "localhost", port: 3306, user: "erp_admin", pass: "", name: "okyanus_ifs", engine: "InnoDB", charset: "utf8mb4", tz: "Asia/Aden", ssl: false, pool: 40, queue: 200, timeout: 30 },
     deviceName: "جهاز الإدارة الرئيسي",
+    api: { baseUrl: "http://localhost:4000", wsPath: "/ws", jwtExp: "8h", refresh: true, cors: "*", rateLimit: 240 },
+    front: { syncSec: 4.5, sessionMin: 30, offline: true, density: "مريحة", sound: true, autoSave: true },
+    backup: { fullDaily: true, diffHours: 6, gzip: true, encrypt: true, retainDays: 30, path: "/var/backups/okyanus-ifs/", autoLocal: true },
   });
   const [prefs, setPrefsState] = useState<Prefs>({ theme: "azure", font: 100, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" });
   const [session, setSession] = useState<Session | null>(null);
@@ -186,6 +236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     { id: 3, kind: "info", title: "نسخة احتياطية", body: "اكتملت النسخة التفاضلية بنجاح (186 MB) الساعة 02:00.", time: "02:00" },
   ]);
   const [perms, setPerms] = useState(DEF_PERMS);
+  const [matrix, setMatrix] = useState<Record<string, PermRole>>(DEF_MATRIX);
 
   /* ═══════ الأنظمة المتخصصة والأنشطة ═══════ */
   const [activeSystems, setActiveSystems] = useState<string[]>(["restaurants", "hospitals", "construction"]);
@@ -567,17 +618,106 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast(`حُدّث طلب الشراء إلى «${status}»`);
   };
 
-  /* ── الصلاحيات ── */
+  /* ── محرك الصلاحيات الرباعي (نظام / شاشات / تقارير / أزرار) ── */
+  const emptyPerm = (): PermRole => ({ modules: {}, screens: {}, reports: {}, buttons: {} });
+  const updMatrix = (role: string, fn: (r: PermRole) => PermRole) =>
+    setMatrix((old) => ({ ...old, [role]: fn(old[role] || emptyPerm()) }));
+  const permAudit = (role: string, level: string, target: string, on: boolean) =>
+    logLocal("النظام", `${on ? "منح" : "سحب"} صلاحية [${level}] «${target}» للدور «${role}»`, "update");
+
   const can = (module: string, action: string) => {
-    const role = session?.role || "مدير النظام";
-    return (perms[role]?.[module] || []).includes(action);
+    const r = matrix[session?.role || ""] || matrix["مدقق خارجي"];
+    if (!r || !r.modules[module]) return false;
+    if (action === "عرض") return true;
+    return (r.buttons[module] || []).includes(action);
   };
-  const togglePerm = (role: string, module: string, action: string) =>
+  /* توافقية مع الواجهات القديمة */
+  const togglePerm = (role: string, module: string, action: string) => {
     setPerms((old) => {
       const cur = old[role]?.[module] || [];
       const next = cur.includes(action) ? cur.filter((a) => a !== action) : [...cur, action];
       return { ...old, [role]: { ...(old[role] || {}), [module]: next } };
     });
+    if (action === "عرض") setModulePerm(role, module, !(matrix[role]?.modules[module]));
+    else setButtonPerm(role, module, action, !(matrix[role]?.buttons[module] || []).includes(action));
+  };
+
+  const setModulePerm = (role: string, mod: string, on: boolean) => {
+    updMatrix(role, (r) => ({
+      ...r, modules: { ...r.modules, [mod]: on },
+      /* إغلاق الوحدة يسقط شاشاتها وأزرارها تلقائياً */
+      screens: on ? r.screens : Object.fromEntries(Object.entries(r.screens).map(([k, v]) => [k, k.startsWith(mod + ":") ? false : v])),
+    }));
+    permAudit(role, "النظام", MODULE_SCREENS[mod]?.label || mod, on);
+  };
+  const setScreenPerm = (role: string, key: string, on: boolean) => {
+    updMatrix(role, (r) => ({ ...r, screens: { ...r.screens, [key]: on } }));
+    const [mid, sid] = key.split(":");
+    const sc = MODULE_SCREENS[mid]?.screens.find((s) => s.id === sid);
+    permAudit(role, "الشاشات", `${MODULE_SCREENS[mid]?.label || mid} ← ${sc?.label || sid}`, on);
+  };
+  const setAllScreens = (role: string, mod: string, on: boolean) => {
+    updMatrix(role, (r) => ({ ...r, screens: { ...r.screens, ...Object.fromEntries((MODULE_SCREENS[mod]?.screens || []).map((s) => [`${mod}:${s.id}`, on])) } }));
+    permAudit(role, "الشاشات", `كل شاشات ${MODULE_SCREENS[mod]?.label || mod}`, on);
+  };
+  const setReportAction = (role: string, rep: string, act: string, on: boolean) => {
+    updMatrix(role, (r) => {
+      const cur = r.reports[rep] || [];
+      return { ...r, reports: { ...r.reports, [rep]: on ? [...new Set([...cur, act])] : cur.filter((a) => a !== act) } };
+    });
+    permAudit(role, "التقارير", `${REPORTS.find((x) => x.id === rep)?.name || rep} — ${act}`, on);
+  };
+  const setButtonPerm = (role: string, mod: string, act: string, on: boolean) => {
+    updMatrix(role, (r) => {
+      const cur = r.buttons[mod] || [];
+      return { ...r, buttons: { ...r.buttons, [mod]: on ? [...new Set([...cur, act])] : cur.filter((a) => a !== act) } };
+    });
+    permAudit(role, "الأزرار", `${MODULE_SCREENS[mod]?.label || mod} — ${act}`, on);
+  };
+  const setAllButtons = (role: string, mod: string, on: boolean) => {
+    updMatrix(role, (r) => ({ ...r, buttons: { ...r.buttons, [mod]: on ? [...BUTTON_ACTIONS] : [] } }));
+    permAudit(role, "الأزرار", `كل أزرار ${MODULE_SCREENS[mod]?.label || mod}`, on);
+  };
+  const grantAll = (role: string) => { setMatrix((old) => ({ ...old, [role]: mkPerm({ ...ALL_MODS }, JSON.parse(JSON.stringify(ALL_BTNS)), ALL_REPS) })); permAudit(role, "شاملة", "منح كل الصلاحيات", true); };
+  const revokeAll = (role: string) => { setMatrix((old) => ({ ...old, [role]: emptyPerm() })); permAudit(role, "شاملة", "سحب كل الصلاحيات", false); };
+  const permCounts = (role: string) => {
+    const r = matrix[role] || emptyPerm();
+    const modules = Object.values(r.modules).filter(Boolean).length;
+    const screens = Object.values(r.screens).filter(Boolean).length;
+    const reports = Object.values(r.reports).reduce((a, x) => a + x.length, 0);
+    const buttons = Object.values(r.buttons).reduce((a, x) => a + x.length, 0);
+    return { modules, screens, reports, buttons, total: modules + screens + reports + buttons };
+  };
+
+  /* ── النسخ الاحتياطي الحقيقي: تنزيل لقطة JSON واستعادتها مع بث Gen ── */
+  const downloadSnapshot = (label: string) => {
+    const snap = { app: "okyanus_ifs", name: "النظام المالي المتكامل", v: SYSTEM.version, gen, ts: Date.now(), label, db: dbRef.current, accounts };
+    const blob = new Blob([JSON.stringify(snap)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `OkyanusIFS_Backup_G${gen}_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+    logLocal("النظام", `تنزيل نسخة احتياطية كاملة (${label}) — جيل المزامنة ${gen}`, "create");
+    toast("نُزّلت النسخة الاحتياطية الكاملة بصيغة JSON", "ok");
+  };
+  const restoreSnapshot = (file: File) => {
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const snap = JSON.parse(String(rd.result));
+        if (!snap || !snap.db) throw new Error("bad");
+        const restored = engine.loadDb(snap.db);
+        setDb(restored);
+        if (Array.isArray(snap.accounts) && snap.accounts.length) setAccounts(snap.accounts);
+        const g = gen + 1;
+        setGen(g);
+        engine.publishGen(dbRef.current, `استعادة النسخة ${file.name}`);
+        logLocal("النظام", `استعادة نسخة احتياطية من «${file.name}» — ارتفع الجيل إلى ${g} وبُث الاستبدال لكل الأجهزة`, "update");
+        toast("اكتملت الاستعادة وبُث جيل جديد — استُبدلت النسخ القديمة على كل الأجهزة", "ok");
+      } catch { toast("ملف النسخة الاحتياطية غير صالح", "err"); }
+    };
+    rd.readAsText(file);
+  };
 
   /* ── التنسيقات ── */
   const fmtN = (n: number) => {
@@ -597,18 +737,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ═══════ الأنظمة المتخصصة: تفعيل وتهيئة ═══════ */
   const toggleSystem = (id: string) => {
-    setActiveSystems((old) => {
-      const on = old.includes(id);
-      const next = on ? old.filter((x) => x !== id) : [...old, id];
-      const a = ACTIVITIES.find((x) => x.id === id);
-      if (!on && a && !old.includes(id)) {
-        setPrimaryActivityState((p) => p || id);
-        toast(`فُعّل نظام «${a.name}» وشُكّلت قوائمه وبياناته`, "ok");
-      } else if (on && a) {
-        toast(`عُطّل نظام «${a.name}» وأُخفيت قوائمه`, "info");
-      }
-      return next;
-    });
+    const a = ACTIVITIES.find((x) => x.id === id);
+    const on = activeSystems.includes(id);
+    const next = on ? activeSystems.filter((x) => x !== id) : [...activeSystems, id];
+    setActiveSystems(next);
+    if (!on && a) {
+      setPrimaryActivityState((p) => p || id);
+      logLocal("الأنشطة", `تفعيل نظام «${a.name}» من لوحة المالك — شُكّلت قوائمه وبياناته`, "create");
+      toast(`فُعّل نظام «${a.name}» وشُكّلت قوائمه وبياناته${a.id === "restaurants" ? " — تحولت نقاط البيع لنمط المطاعم والطاولات" : ""}`, "ok");
+    } else if (on && a) {
+      if (primaryActivity === id) setPrimaryActivityState(next[0] || "");
+      logLocal("الأنشطة", `تعطيل نظام «${a.name}»`, "delete");
+      toast(`عُطّل نظام «${a.name}»${a.id === "restaurants" ? " — تحولت نقاط البيع فوراً لنمط متاجر التجزئة" : " وأُخفيت قوائمه"}`, "info");
+    }
   };
   const setPrimaryActivity = (id: string) => {
     const a = ACTIVITIES.find((x) => x.id === id);
@@ -958,6 +1099,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addInvDoc, voidInvDoc, addInvoice, voidInvoice, payInvoice,
       addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
+      matrix, setModulePerm, setScreenPerm, setAllScreens, setReportAction, setButtonPerm, setAllButtons,
+      grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot,
       accounts, addAccount, nextAccountCode: (p: string) => nextAccountCode(accounts, p),
       activity, devices, tombstones, gen, deviceId, mergeSync, sync: engine, reinitCentral,
       activities: ACTIVITIES, activeSystems, primaryActivity, toggleSystem, setPrimaryActivity,

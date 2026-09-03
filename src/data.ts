@@ -380,6 +380,42 @@ export const CHANGELOG = [
   { v: "2.8.0", date: "2025-02-27", tag: "ميزات جديدة", items: ["دليل حسابات هرمي من 5 مستويات (نمط يمين سوفت التجاري)", "إقفال الفترات المالية مع حماية الكتابة", "شاشة تفضيلات متكاملة (خطوط، اتجاه، تنسيقات)"] },
 ];
 
+/* ═══════ الكتالوج الأمني: شاشات النظام والتقارير وأزرار الإجراءات ═══════
+   تُبنى منه مصفوفة الصلاحيات الرباعية (نظام / شاشات / تقارير / أزرار) */
+export const MODULE_SCREENS: Record<string, { label: string; screens: { id: string; label: string }[] }> = {
+  dash: { label: "لوحة التحكم", screens: [{ id: "dash", label: "لوحة التحكم الرئيسية" }] },
+  inv: { label: "المخازن والمستودعات", screens: [{ id: "base", label: "البيانات الأساسية (4 أدلة)" }, { id: "docs", label: "السندات المخزنية (6 أنواع)" }, { id: "pos", label: "شاشة البيع المباشر" }] },
+  pur: { label: "المشتريات والموردون", screens: [{ id: "base", label: "إدارة الموردين والتصنيفات" }, { id: "req", label: "طلبات الشراء" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المشتريات" }, { id: "credit", label: "فواتير المشتريات الآجل" }] },
+  sal: { label: "المبيعات والعملاء", screens: [{ id: "base", label: "إدارة العملاء والتصنيفات" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المبيعات" }, { id: "ret", label: "مرتجعات المبيعات" }] },
+  pos: { label: "نقاط البيع", screens: [{ id: "retail", label: "نمط متاجر التجزئة (باركود وسلة)" }, { id: "rest", label: "نمط المطاعم (الطاولات)" }, { id: "shifts", label: "ورديات الكاشير" }] },
+  gl: { label: "الحسابات العامة", screens: [{ id: "base", label: "الأدلة والفترات والعملات (10 شاشات)" }, { id: "docs", label: "القيود والسندات المالية (5 أنواع)" }, { id: "rep", label: "التقارير المالية (4 تقارير)" }] },
+  hr: { label: "الموارد البشرية", screens: [{ id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
+  ast: { label: "الأصول الثابتة", screens: [{ id: "reg", label: "سجل الأصول" }, { id: "dep", label: "الإهلاك بالقسط الثابت" }, { id: "rep", label: "تقارير الأصول" }] },
+  adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "prefs", label: "التفضيلات" }] },
+  help: { label: "المساعدة", screens: [{ id: "guide", label: "دليل المستخدم ووثائق المطورين" }] },
+};
+
+export const REPORTS: { id: string; name: string; module: string }[] = [
+  { id: "rep-inv-bal", name: "أرصدة المخازن", module: "inv" },
+  { id: "rep-inv-move", name: "حركة الأصناف", module: "inv" },
+  { id: "rep-inv-card", name: "بطاقة صنف", module: "inv" },
+  { id: "rep-inv-watch", name: "مراقبة المخزون", module: "inv" },
+  { id: "rep-inv-count", name: "جرد المخزون", module: "inv" },
+  { id: "rep-pur", name: "تقارير المشتريات", module: "pur" },
+  { id: "rep-sal", name: "تقارير المبيعات (يومي/شهري/سنوي)", module: "sal" },
+  { id: "rep-gl-stmt", name: "كشف حساب", module: "gl" },
+  { id: "rep-gl-trial", name: "ميزان المراجعة", module: "gl" },
+  { id: "rep-gl-bs", name: "الميزانية العمومية", module: "gl" },
+  { id: "rep-gl-pl", name: "الأرباح والخسائر", module: "gl" },
+  { id: "rep-gl-coa", name: "دليل الحسابات", module: "gl" },
+  { id: "rep-hr-pay", name: "كشف الرواتب الشهري", module: "hr" },
+  { id: "rep-hr-att", name: "تقرير الحضور والانصراف", module: "hr" },
+  { id: "rep-ast-reg", name: "سجل الأصول الثابتة", module: "ast" },
+  { id: "rep-ast-dep", name: "جدول الإهلاك السنوي", module: "ast" },
+];
+export const REPORT_ACTIONS = ["عرض", "Excel", "PDF", "طباعة"];
+export const BUTTON_ACTIONS = ["إضافة", "تعديل", "حذف", "ترحيل", "اعتماد", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد", "إقفال"];
+
 export const SIDEBAR_BGS = [
   { id: "ocean", name: "أعماق المحيط", style: "linear-gradient(168deg,#05263d,#0a5c8f)" },
   { id: "abyss", name: "الليل القطبي", style: "linear-gradient(168deg,#060b16,#0f3050)" },
