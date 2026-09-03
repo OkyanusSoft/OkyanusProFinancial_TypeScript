@@ -4,8 +4,9 @@ import {
   COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
   SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, DEVICES, ACTIVITY_SEED,
+  ACTIVITIES, HR_EMPLOYEES, HR_ATTENDANCE, HR_REWARDS, HR_WARNINGS, HR_LEAVES, ASSETS, OWNER_PIN,
   type AnyR, type InvDoc, type Invoice, type Journal, type Account,
-  type Activity, type Device, type Tombstone,
+  type Activity, type Device, type Tombstone, type ActivityDef,
 } from "./data";
 export type { AnyR, Activity, Device, Tombstone } from "./data";
 
@@ -115,6 +116,23 @@ interface AppCtx {
   activity: Activity[]; devices: Device[]; tombstones: Tombstone[];
   gen: number; deviceId: string;
   mergeSync: (coll: CollKey, incoming: AnyR[]) => void;
+  /* الأنظمة المتخصصة والأنشطة */
+  activities: ActivityDef[];
+  activeSystems: string[]; primaryActivity: string;
+  toggleSystem: (id: string) => void; setPrimaryActivity: (id: string) => void;
+  ownerUnlocked: boolean; unlockOwner: (pin: string) => boolean; lockOwner: () => void;
+  specData: Record<string, AnyR[]>;
+  saveSpec: (key: string, row: AnyR) => void; removeSpec: (key: string, id: string, label?: string) => void;
+  postSpecToGL: (key: string, row: AnyR, amount: number, label: string) => { ok: boolean; msg: string };
+  posSale: (lines: { item: string; qty: number; price: number }[], mode: "cash" | "card") => { ok: boolean; msg: string };
+  /* الموارد البشرية */
+  hr: { employees: AnyR[]; attendance: AnyR[]; rewards: AnyR[]; warnings: AnyR[]; leaves: AnyR[]; payroll: AnyR[] };
+  setHr: (patch: Partial<AppCtx["hr"]>) => void;
+  runPayroll: () => { ok: boolean; msg: string };
+  /* الأصول الثابتة */
+  assets: AnyR[]; setAssets: (a: AnyR[]) => void;
+  depreciationOf: (a: AnyR) => number;
+  postDepreciation: () => { ok: boolean; msg: string };
   sidebarBgs: typeof SIDEBAR_BGS;
   SYSTEM: typeof SYSTEM;
 }
@@ -164,6 +182,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     { id: 3, kind: "info", title: "نسخة احتياطية", body: "اكتملت النسخة التفاضلية بنجاح (186 MB) الساعة 02:00.", time: "02:00" },
   ]);
   const [perms, setPerms] = useState(DEF_PERMS);
+
+  /* ═══════ الأنظمة المتخصصة والأنشطة ═══════ */
+  const [activeSystems, setActiveSystems] = useState<string[]>(["restaurants", "hospitals", "construction"]);
+  const [primaryActivity, setPrimaryActivityState] = useState("restaurants");
+  const [ownerUnlocked, setOwnerUnlocked] = useState(false);
+  const [specData, setSpecData] = useState<Record<string, AnyR[]>>(() => {
+    const init: Record<string, AnyR[]> = {};
+    ACTIVITIES.forEach((a) => a.entities.forEach((e) => { init[`${a.id}:${e.id}`] = e.seed; }));
+    return init;
+  });
+  const [hr, setHrState] = useState({ employees: HR_EMPLOYEES, attendance: HR_ATTENDANCE, rewards: HR_REWARDS, warnings: HR_WARNINGS, leaves: HR_LEAVES, payroll: [] as AnyR[] });
+  const [assets, setAssets] = useState(ASSETS);
 
   /* ═══════ محرك المزامنة المركزية اللحظية (Merge Sync) ═══════ */
   const [activity, setActivity] = useState<Activity[]>(ACTIVITY_SEED);
@@ -525,6 +555,152 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return `${Number(d)} ${names[Number(m) - 1]} ${y}`;
   };
 
+  /* ═══════ الأنظمة المتخصصة: تفعيل وتهيئة ═══════ */
+  const toggleSystem = (id: string) => {
+    setActiveSystems((old) => {
+      const on = old.includes(id);
+      const next = on ? old.filter((x) => x !== id) : [...old, id];
+      const a = ACTIVITIES.find((x) => x.id === id);
+      if (!on && a && !old.includes(id)) {
+        setPrimaryActivityState((p) => p || id);
+        toast(`فُعّل نظام «${a.name}» وشُكّلت قوائمه وبياناته`, "ok");
+      } else if (on && a) {
+        toast(`عُطّل نظام «${a.name}» وأُخفيت قوائمه`, "info");
+      }
+      return next;
+    });
+  };
+  const setPrimaryActivity = (id: string) => {
+    const a = ACTIVITIES.find((x) => x.id === id);
+    if (!activeSystems.includes(id)) setActiveSystems((old) => [...old, id]);
+    setPrimaryActivityState(id);
+    if (a) toast(`أصبح النشاط الأساسي: «${a.name}» — تكيّفت المصطلحات ونمط نقاط البيع`, "ok");
+  };
+  const unlockOwner = (pin: string) => {
+    if (pin === OWNER_PIN) { setOwnerUnlocked(true); return true; }
+    return false;
+  };
+  const lockOwner = () => setOwnerUnlocked(false);
+
+  /* ═══════ الوحدات المتخصصة: حفظ / حذف / ترحيل ═══════ */
+  const saveSpec = (key: string, row: AnyR) => {
+    const stamped: AnyR = { ...row, updatedAt: Date.now() };
+    setSpecData((old) => {
+      const list = old[key] || [];
+      const i = list.findIndex((r) => r.id === stamped.id);
+      return { ...old, [key]: i >= 0 ? list.map((r, j) => (j === i ? stamped : r)) : [...list, stamped] };
+    });
+    logLocal("الأنشطة", `حفظ سجل «${String(stamped.name || stamped.code || stamped.id)}» في وحدة متخصصة — دُمج مركزياً`, "update");
+  };
+  const removeSpec = (key: string, id: string, label?: string) => {
+    setSpecData((old) => ({ ...old, [key]: (old[key] || []).filter((r) => r.id !== id) }));
+    addTombstone("specData" as any, `${key}:${id}`, label || id);
+    toast(`حُذف «${label || id}» من الوحدة المتخصصة ونُشر الحذف`, "err");
+  };
+  const postSpecToGL = (key: string, row: AnyR, amount: number, label: string) => {
+    if (!amount || amount <= 0) return { ok: false, msg: "لا توجد قيمة قابلة للترحيل" };
+    const actId = key.split(":")[0];
+    const act = ACTIVITIES.find((a) => a.id === actId);
+    const credit = act?.glCredit || "41411";
+    const no = `JE-2026-${1100 + db.journals.length}`;
+    const j = {
+      id: no, no, date: "2026-03-29", desc: `ترحيل ${label} — ${String(row.name || row.code || row.id)}`,
+      kind: "يومية", user: session?.user || "النظام", status: "مرحّل", source: `نظام ${act?.name || "متخصص"}`,
+      lines: [
+        { account: settings.suspense.cash, debit: amount, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
+        { account: credit, debit: 0, credit: amount, currency: "YER", rate: 1, costCenter: "CC-01" },
+      ],
+    } as any;
+    setDb((old) => ({ ...old, journals: [...old.journals, j] }));
+    logLocal("المالية", `ترحيل قيمة ${label} (${Math.round(amount).toLocaleString("en-US")}) إلى الحسابات العامة بقيد متوازن`, "create");
+    toast(`رُحّلت قيمة ${label} (${Math.round(amount).toLocaleString("en-US")} ر.ي) بقيد متوازن إلى الحساب ${credit}`, "ok");
+    return { ok: true, msg: "تم الترحيل" };
+  };
+
+  /* ═══════ نقاط البيع: بيع فوري مع أثر مخزني ومحاسبي ═══════ */
+  const posSale = (lines: { item: string; qty: number; price: number }[], mode: "cash" | "card") => {
+    if (!lines.length) return { ok: false, msg: "أضف أصنافاً أولاً" };
+    const subtotal = lines.reduce((a, l) => a + l.qty * l.price, 0);
+    const vat = subtotal * (settings.vat / 100);
+    const total = subtotal + vat;
+    const no = `POS-2026-${String(900 + db.sales.length)}`;
+    const inv = {
+      id: no, no, date: "2026-03-29", partner: "", payType: "نقدي" as const, currency: "YER", rate: 1,
+      costCenter: "CC-01", status: "مرحّلة", vat: settings.vat,
+      lines: lines.map((l) => ({ item: l.item, qty: l.qty, price: l.price, disc: 0 })),
+      posMode: mode,
+    } as any;
+    setDb((old) => {
+      const items = old.items.map((it: AnyR) => {
+        const l = lines.find((x) => x.item === it.id);
+        if (!l) return it;
+        const qty = { ...(it.qty as Record<string, number>) };
+        qty["WH-01"] = (qty["WH-01"] || 0) - l.qty;
+        return { ...it, qty };
+      });
+      const je = {
+        id: `JE-${no}`, no: `JE-${no}`, date: "2026-03-29", desc: `قيد نقطة بيع ${no} (${mode === "cash" ? "نقدي" : "بطاقة"})`,
+        kind: "يومية", user: session?.user || "الكاشير", status: "مرحّل", source: "نظام نقاط البيع",
+        lines: [
+          { account: mode === "cash" ? settings.suspense.cash : settings.suspense.bank, debit: total, credit: 0, currency: "YER", rate: 1, costCenter: "CC-012" },
+          { account: "41111", debit: 0, credit: subtotal, currency: "YER", rate: 1, costCenter: "CC-012" },
+          { account: "21211", debit: 0, credit: vat, currency: "YER", rate: 1 },
+        ],
+      };
+      return { ...old, items, sales: [...old.sales, inv], journals: [...old.journals, je] };
+    });
+    logLocal("المبيعات", `بيع نقطة بيع ${no} — ${Math.round(total).toLocaleString("en-US")} ر.ي (${mode === "cash" ? "نقدي" : "بطاقة"})`, "create");
+    toast(`تم البيع ${no} بإجمالي ${Math.round(total).toLocaleString("en-US")} ر.ي وخصم المخزون وترحيل القيد`, "ok");
+    return { ok: true, msg: no };
+  };
+
+  /* ═══════ الموارد البشرية: كشف الرواتب المرحَّل ═══════ */
+  const setHr = (patch: Partial<typeof hr>) => setHrState((old) => ({ ...old, ...patch }));
+  const runPayroll = () => {
+    const month = "2026-03";
+    const rows = hr.employees.filter((e) => e.status !== "منتهي").map((e) => ({
+      id: `PAY-${e.id}-${month}`, code: `PAY-${e.id}`, emp: e.id, name: e.name, month,
+      basic: e.salary, bonus: hr.rewards.filter((r) => r.emp === e.id && r.status === "مصروفة").reduce((a, r) => a + r.amount, 0),
+      total: e.salary + hr.rewards.filter((r) => r.emp === e.id && r.status === "مصروفة").reduce((a, r) => a + r.amount, 0),
+      status: "مرحَّل",
+    }));
+    const totalAmt = rows.reduce((a, r) => a + r.total, 0);
+    const no = `JE-2026-${1200 + db.journals.length}`;
+    const je = {
+      id: no, no, date: "2026-03-29", desc: `مسيرات رواتب ${month} — ${rows.length} موظف`,
+      kind: "صرف", user: session?.user || "النظام", status: "مرحّل", source: "نظام الموارد البشرية",
+      lines: [
+        { account: "31111", debit: totalAmt, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
+        { account: settings.suspense.bank, debit: 0, credit: totalAmt, currency: "YER", rate: 1 },
+      ],
+    } as any;
+    setHrState((old) => ({ ...old, payroll: [...rows, ...old.payroll] }));
+    setDb((old) => ({ ...old, journals: [...old.journals, je] }));
+    logLocal("الموارد", `ترحيل مسيرات رواتب ${month} بإجمالي ${Math.round(totalAmt).toLocaleString("en-US")} ر.ي`, "create");
+    toast(`رُحّل كشف رواتب ${month} (${rows.length} موظف — ${Math.round(totalAmt).toLocaleString("en-US")} ر.ي) بقيد متوازن`, "ok");
+    return { ok: true, msg: "تم ترحيل الرواتب" };
+  };
+
+  /* ═══════ الأصول الثابتة: قسط ثابت + قيد سنوي ═══════ */
+  const depreciationOf = (a: AnyR) => Math.max(0, (Number(a.cost) - Number(a.salvage)) / (Number(a.life) || 1));
+  const postDepreciation = () => {
+    const active = assets.filter((a) => a.status === "في الخدمة");
+    const totalAmt = active.reduce((s, a) => s + depreciationOf(a), 0);
+    const no = `JE-2026-${1300 + db.journals.length}`;
+    const je = {
+      id: no, no, date: "2026-03-29", desc: `قسط إهلاك سنوي — ${active.length} أصل (طريقة القسط الثابت)`,
+      kind: "يومية", user: session?.user || "النظام", status: "مرحّل", source: "نظام الأصول",
+      lines: [
+        { account: "31311", debit: totalAmt, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
+        { account: "11421", debit: 0, credit: totalAmt, currency: "YER", rate: 1 },
+      ],
+    } as any;
+    setDb((old) => ({ ...old, journals: [...old.journals, je] }));
+    logLocal("الأصول", `ترحيل قسط الإهلاك السنوي ${Math.round(totalAmt).toLocaleString("en-US")} ر.ي`, "create");
+    toast(`رُحّل قسط الإهلاك السنوي (${Math.round(totalAmt).toLocaleString("en-US")} ر.ي) بقيد متوازن`, "ok");
+    return { ok: true, msg: "تم ترحيل الإهلاك" };
+  };
+
   const exportCsv = (name: string, rows: (string | number)[][]) => {
     const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -637,6 +813,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       accounts, addAccount, nextAccountCode: (p: string) => nextAccountCode(accounts, p),
       activity, devices, tombstones, gen, deviceId, mergeSync,
+      activities: ACTIVITIES, activeSystems, primaryActivity, toggleSystem, setPrimaryActivity,
+      ownerUnlocked, unlockOwner, lockOwner, specData, saveSpec, removeSpec, postSpecToGL, posSale,
+      hr, setHr, runPayroll, assets, setAssets, depreciationOf, postDepreciation,
       sidebarBgs: SIDEBAR_BGS, SYSTEM,
     }}>
       {children}

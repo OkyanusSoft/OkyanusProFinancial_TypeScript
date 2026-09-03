@@ -66,6 +66,44 @@ export default function Dashboard() {
         <Stat icon="wallet" label="الذمم الدائنة (موردون)" value={Math.round(payables)} sub={`${db.suppliers.length} موردين — فواتير مشتريات آجل`} tone="var(--good)" delay={210} />
       </div>
 
+      {/* ═══ نبض النشاط — وحدات الأنظمة المتخصصة المفعّلة ═══ */}
+      {app.activeSystems.length > 0 && (
+        <Reveal>
+          <div className="card p-5 relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand))" }} />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-bold text-base flex items-center gap-2"><I n="pulse" size={19} className="text-[var(--good)]" /> نبض النشاط — الأنظمة المتخصصة المفعّلة</h3>
+              <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)]"><I n="check" size={12} /> {app.activeSystems.length} نظام مفعّل • يتغير تلقائياً مع النشاط</span>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {app.activities.filter((a) => app.activeSystems.includes(a.id)).map((a) => {
+                const rows = a.entities.flatMap((e) => app.specData[`${a.id}:${e.id}`] || []);
+                const amount = a.entities.reduce((s, e) => {
+                  const af = e.amountField || "amount";
+                  return s + (app.specData[`${a.id}:${e.id}`] || []).reduce((x, r) => x + Number((r as any)[af] || (r as any).cost || (r as any).price || 0), 0);
+                }, 0);
+                const isPrimary = app.primaryActivity === a.id;
+                return (
+                  <button key={a.id} onClick={() => nav({ module: `spec:${a.id}`, path: "" })}
+                    className="card card-lift p-3.5 text-start relative overflow-hidden group">
+                    <span className="absolute top-0 inset-x-0 h-0.5" style={{ background: a.color }} />
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-9 h-9 rounded-lg grid place-items-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${a.color}, color-mix(in srgb, ${a.color} 60%, #000))` }}><I n={a.icon} size={17} /></span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-[0.82rem] truncate flex items-center gap-1.5">{a.name}{isPrimary && <span className="w-1.5 h-1.5 rounded-full bg-[var(--warn)] blink shrink-0" />}</div>
+                        <div className="font-num text-[0.68rem] text-mute font-bold mt-0.5">{rows.length} سجل</div>
+                      </div>
+                    </div>
+                    {amount > 0 && <div className="font-num font-bold text-[0.9rem] mt-2" style={{ color: a.color }}>{fmtN(amount)} <span className="text-[0.6rem] text-mute">ر.ي</span></div>}
+                    <div className="text-[0.62rem] font-bold text-[var(--brand)] mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><I n="arrow" size={11} /> فتح النظام</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Reveal>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-4">
         <Reveal className="lg:col-span-2">
           <div className="card p-5">
