@@ -9,11 +9,16 @@ import { Purchases, Sales } from "./modules/Trade";
 import GL from "./modules/GL";
 import Admin from "./modules/Admin";
 import Help from "./modules/Help";
+import POS from "./modules/POS";
+import HR from "./modules/HR";
+import Assets from "./modules/Assets";
+import { ActivationScreen, SpecModule } from "./modules/Spec";
 
 /* ═══ القائمة الرئيسية — الهيكلية المطلوبة حرفياً (3 مستويات) ═══ */
 type Leaf = { id: string; label: string };
 type Group = { label: string; icon: string; leaves: Leaf[] };
-const TREE: { id: string; label: string; icon: string; groups: Group[]; leaves?: Leaf[] }[] = [
+type NavNode = { id: string; label: string; icon: string; groups: Group[]; leaves?: Leaf[]; color?: string; sep?: boolean };
+const BASE_TREE: NavNode[] = [
   { id: "dash", label: "لوحة التحكم", icon: "dash", groups: [], leaves: [{ id: "", label: "لوحة التحكم" }] },
   {
     id: "inv", label: "المخازن والمستودعات", icon: "box", groups: [
@@ -37,6 +42,9 @@ const TREE: { id: string; label: string; icon: string; groups: Group[]; leaves?:
     ],
   },
   {
+    id: "pos", label: "نقاط البيع", icon: "receipt", groups: [], leaves: [{ id: "", label: "شاشة نقاط البيع" }],
+  },
+  {
     id: "gl", label: "الحسابات العامة", icon: "book", groups: [
       { label: "البيانات الأساسية", icon: "layers", leaves: [{ id: "base.periods", label: "الفترات المالية" }, { id: "base.close", label: "إقفال الفترات المالية" }, { id: "base.mid", label: "الحسابات الوسطية" }, { id: "base.cash", label: "بيانات الصناديق" }, { id: "base.banks", label: "البنوك والحسابات البنكية" }, { id: "base.cur", label: "إدارة العملات" }, { id: "base.pay", label: "شروط وطرق الدفع" }, { id: "base.cc", label: "دليل مراكز التكلفة" }, { id: "base.coa", label: "دليل الحسابات" }, { id: "base.ana", label: "الحسابات التحليلية" }] },
       { label: "الحركات", icon: "swap", leaves: [{ id: "mv.open", label: "سند قيد افتتاحي مالي" }, { id: "mv.req", label: "طلب سند قيد يومية" }, { id: "mv.je", label: "سند قيد يومية" }, { id: "mv.pv", label: "سند صرف" }, { id: "mv.rv", label: "سند قبض" }] },
@@ -44,10 +52,19 @@ const TREE: { id: string; label: string; icon: string; groups: Group[]; leaves?:
     ],
   },
   {
+    id: "hr", label: "الموارد البشرية", icon: "users", groups: [], leaves: [{ id: "", label: "شؤون الموظفين والرواتب" }],
+  },
+  {
+    id: "assets", label: "الأصول الثابتة", icon: "bld", groups: [], leaves: [{ id: "", label: "سجل الأصول والإهلاك" }],
+  },
+];
+/* الأنظمة المتخصصة (تُحقن ديناميكياً حسب النشاط المفعّل) تُدرج بين الأصول وإدارة النظام */
+const TAIL_TREE: NavNode[] = [
+  {
     id: "adm", label: "إدارة النظام", icon: "shield", groups: [], leaves: [
+      { id: "activate", label: "تفعيل الأنظمة والأنشطة" },
       { id: "monitor", label: "مراقبة النشاط (بث لحظي)" },
       { id: "users", label: "المستخدمون والصلاحيات" },
-      { id: "roles", label: "الأدوار الوظيفية" },
       { id: "settings", label: "الإعدادات العامة" },
       { id: "prefs", label: "التفضيلات" },
     ],
@@ -135,6 +152,12 @@ function Shell() {
   const bg = app.sidebarBgs.find((b) => b.id === prefs.sidebarBg)?.style;
   const toggleGroup = (key: string) => setOpenGroups((old) => old.includes(key) ? old.filter((k) => k !== key) : [...old, key]);
 
+  /* الأنظمة المفعّلة تُحقن في القائمة بين الأصول الثابتة وإدارة النظام */
+  const activeSpec = app.activities.filter((a) => app.activeSystems.includes(a.id));
+  const specNodes: NavNode[] = activeSpec.map((a) => ({ id: `spec:${a.id}`, label: `نظام ${a.name}`, icon: a.icon, color: a.color, groups: [], leaves: [{ id: "", label: `نظام ${a.name}` }] }));
+  const specLabel: NavNode[] = activeSpec.length ? [{ id: "_speclabel", label: "الأنظمة حسب طبيعة النشاط", icon: "layers", groups: [], sep: true }] : [];
+  const TREE: NavNode[] = [...BASE_TREE, ...specLabel, ...specNodes, ...TAIL_TREE];
+
   const current = TREE.find((n) => n.id === route.module);
   const leafLabel = current?.groups.flatMap((g) => g.leaves).concat(current?.leaves || []).find((l) => l.id === route.path)?.label || current?.label || "";
 
@@ -161,6 +184,12 @@ function Shell() {
             {collapsed && <button onClick={() => setCollapsed(false)} className="w-full grid place-items-center py-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors mb-1" aria-label="توسيع"><I n="chevS" size={17} /></button>}
             {TREE.map((m) => {
               const isOn = route.module === m.id;
+              if (m.sep) return !collapsed ? (
+                <div key={m.id} className="px-2.5 pt-3.5 pb-1 flex items-center gap-2">
+                  <span className="text-[0.62rem] font-bold text-white/40 tracking-wide whitespace-nowrap">{m.label}</span>
+                  <span className="flex-1 h-px bg-white/10" />
+                </div>
+              ) : <div key={m.id} className="h-2" />;
               return (
                 <div key={m.id}>
                   <button
@@ -279,8 +308,12 @@ function Shell() {
               {route.module === "inv" && <Inventory />}
               {route.module === "pur" && <Purchases />}
               {route.module === "sal" && <Sales />}
+              {route.module === "pos" && <POS />}
               {route.module === "gl" && <GL />}
-              {route.module === "adm" && <Admin />}
+              {route.module === "hr" && <HR />}
+              {route.module === "assets" && <Assets />}
+              {route.module.startsWith("spec:") && <SpecModule activityId={route.module.slice(5)} />}
+              {route.module === "adm" && (route.path === "activate" ? <ActivationScreen /> : <Admin />)}
               {route.module === "help" && <Help />}
             </div>
           </main>

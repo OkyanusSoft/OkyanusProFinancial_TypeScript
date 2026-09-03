@@ -95,6 +95,9 @@ export const ACCOUNTS: Account[] = [
   { code: "413", name: "مرتجعات المبيعات", en: "Sales Returns", level: 3, parent: "41", type: "إيرادات", posting: false },
   { code: "4131", name: "مرتجعات محلية", en: "Local Returns", level: 4, parent: "413", type: "إيرادات", posting: false },
   { code: "41311", name: "مرتجع مبيعات محلية", en: "Local Sales Returns", level: 5, parent: "4131", type: "إيرادات", posting: true },
+  { code: "414", name: "إيرادات الأنشطة المتخصصة", en: "Specialized Activities Revenue", level: 3, parent: "41", type: "إيرادات", posting: false },
+  { code: "4141", name: "إيرادات أنشطة متنوعة", en: "Misc. Activities Revenue", level: 4, parent: "414", type: "إيرادات", posting: false },
+  { code: "41411", name: "إيراد الأنشطة المتخصصة", en: "Specialized Activity Income", level: 5, parent: "4141", type: "إيرادات", posting: true },
 ];
 
 export const ANALYTICALS: AnyR[] = [
@@ -361,12 +364,57 @@ export const PERM_MODULES = ["لوحة التحكم", "المخازن", "الم�
 export const PERM_ACTIONS = ["عرض", "إنشاء", "تعديل", "حذف / إلغاء", "تصدير تقارير", "إقفال فترات"];
 
 export const CHANGELOG = [
+  { v: "3.1.0", date: "2026-03-29", tag: "معمارية ومزامنة", items: [
+    "الخادم المركزي server/: Express + MySQL 8 + WebSocket مع JWT وRate Limiting",
+    "نظام Migrations مرقّم آمن للتكرار: إضافة/تعديل أي جدول أو عمود لأي نشاط",
+    "قاعدة بيانات تكيفية: 21 نظاماً متخصصاً بجداول مرنة (JSON) دون تغيير المخطط",
+    "مزامنة دمج مركزي لحظية حقيقية بين النوافذ (الأحدث يفوز — لا حذف لبيانات أي جهاز)",
+    "نشر الحذف عبر Tombstones + الاستبدال الشامل عبر رقم الجيل Gen",
+    "شاشة فحص التزامن والحمل: فحص صحة المنظومة واختبار 100 مستخدم متزامن",
+    "هوية جهاز ثابتة مع تسمية من الإعدادات ونبضات كل 5 ثوانٍ",
+  ]},
   { v: "3.0.0", date: "2026-03-29", tag: "إصدار رئيسي", items: ["إعادة تسمية النظام إلى «النظام المالي المتكامل» مع هوية بصرية جديدة", "هيكلة قوائم من ثلاثة مستويات تغطي كل شاشة وتقاريرها", "توليد أرقام وترميز تلقائي لكل السندات والفواتير", "استيراد بيانات جماعي (CSV) مع معاينة وتحقق من التكرار", "سلة محذوفات مع استعادة وحذف نهائي (صيانة البيانات)", "فاتورة مشتريات آجل مع سجل دفعات وتسوية", "الحسابات الوسطية وبيانات الصناديق كإعدادات تكامل محاسبي"] },
   { v: "2.9.2", date: "2025-11-02", tag: "إصلاحات", items: ["إصلاح انحراف التقريب في فواتير العملات الأجنبية", "معالجة تعليق شاشة الجرد عند تجاوز 5,000 سطر", "تحسين زمن استجابة ميزان المراجعة بنسبة 64%"] },
   { v: "2.9.0", date: "2025-08-20", tag: "ميزات جديدة", items: ["إضافة سندات التحويل بين المخازن مع تسعير تلقائي", "حدود ائتمانية للعملاء مع تنبيهات فورية", "تصدير التقارير إلى Excel وPDF"] },
   { v: "2.8.4", date: "2025-05-11", tag: "أمان", items: ["ترقية مصادقة JWT إلى OAuth2 مع تحديث تلقائي للرموز", "سجل تدقيق كامل لكل عمليات الحذف والإلغاء", "تشفير كلمات المرور بخوارزمية Argon2id"] },
   { v: "2.8.0", date: "2025-02-27", tag: "ميزات جديدة", items: ["دليل حسابات هرمي من 5 مستويات (نمط يمين سوفت التجاري)", "إقفال الفترات المالية مع حماية الكتابة", "شاشة تفضيلات متكاملة (خطوط، اتجاه، تنسيقات)"] },
 ];
+
+/* ═══════ الكتالوج الأمني: شاشات النظام والتقارير وأزرار الإجراءات ═══════
+   تُبنى منه مصفوفة الصلاحيات الرباعية (نظام / شاشات / تقارير / أزرار) */
+export const MODULE_SCREENS: Record<string, { label: string; screens: { id: string; label: string }[] }> = {
+  dash: { label: "لوحة التحكم", screens: [{ id: "dash", label: "لوحة التحكم الرئيسية" }] },
+  inv: { label: "المخازن والمستودعات", screens: [{ id: "base", label: "البيانات الأساسية (4 أدلة)" }, { id: "docs", label: "السندات المخزنية (6 أنواع)" }, { id: "pos", label: "شاشة البيع المباشر" }] },
+  pur: { label: "المشتريات والموردون", screens: [{ id: "base", label: "إدارة الموردين والتصنيفات" }, { id: "req", label: "طلبات الشراء" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المشتريات" }, { id: "credit", label: "فواتير المشتريات الآجل" }] },
+  sal: { label: "المبيعات والعملاء", screens: [{ id: "base", label: "إدارة العملاء والتصنيفات" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المبيعات" }, { id: "ret", label: "مرتجعات المبيعات" }] },
+  pos: { label: "نقاط البيع", screens: [{ id: "retail", label: "نمط متاجر التجزئة (باركود وسلة)" }, { id: "rest", label: "نمط المطاعم (الطاولات)" }, { id: "shifts", label: "ورديات الكاشير" }] },
+  gl: { label: "الحسابات العامة", screens: [{ id: "base", label: "الأدلة والفترات والعملات (10 شاشات)" }, { id: "docs", label: "القيود والسندات المالية (5 أنواع)" }, { id: "rep", label: "التقارير المالية (4 تقارير)" }] },
+  hr: { label: "الموارد البشرية", screens: [{ id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
+  ast: { label: "الأصول الثابتة", screens: [{ id: "reg", label: "سجل الأصول" }, { id: "dep", label: "الإهلاك بالقسط الثابت" }, { id: "rep", label: "تقارير الأصول" }] },
+  adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "prefs", label: "التفضيلات" }] },
+  help: { label: "المساعدة", screens: [{ id: "guide", label: "دليل المستخدم ووثائق المطورين" }] },
+};
+
+export const REPORTS: { id: string; name: string; module: string }[] = [
+  { id: "rep-inv-bal", name: "أرصدة المخازن", module: "inv" },
+  { id: "rep-inv-move", name: "حركة الأصناف", module: "inv" },
+  { id: "rep-inv-card", name: "بطاقة صنف", module: "inv" },
+  { id: "rep-inv-watch", name: "مراقبة المخزون", module: "inv" },
+  { id: "rep-inv-count", name: "جرد المخزون", module: "inv" },
+  { id: "rep-pur", name: "تقارير المشتريات", module: "pur" },
+  { id: "rep-sal", name: "تقارير المبيعات (يومي/شهري/سنوي)", module: "sal" },
+  { id: "rep-gl-stmt", name: "كشف حساب", module: "gl" },
+  { id: "rep-gl-trial", name: "ميزان المراجعة", module: "gl" },
+  { id: "rep-gl-bs", name: "الميزانية العمومية", module: "gl" },
+  { id: "rep-gl-pl", name: "الأرباح والخسائر", module: "gl" },
+  { id: "rep-gl-coa", name: "دليل الحسابات", module: "gl" },
+  { id: "rep-hr-pay", name: "كشف الرواتب الشهري", module: "hr" },
+  { id: "rep-hr-att", name: "تقرير الحضور والانصراف", module: "hr" },
+  { id: "rep-ast-reg", name: "سجل الأصول الثابتة", module: "ast" },
+  { id: "rep-ast-dep", name: "جدول الإهلاك السنوي", module: "ast" },
+];
+export const REPORT_ACTIONS = ["عرض", "Excel", "PDF", "طباعة"];
+export const BUTTON_ACTIONS = ["إضافة", "تعديل", "حذف", "ترحيل", "اعتماد", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد", "إقفال"];
 
 export const SIDEBAR_BGS = [
   { id: "ocean", name: "أعماق المحيط", style: "linear-gradient(168deg,#05263d,#0a5c8f)" },
@@ -458,3 +506,225 @@ export const ACTIVITY_SEED: Activity[] = _seed.map(([min, di, action, type], i) 
     device: d.name, deviceId: d.id, category: d.category, action, type,
   };
 }).sort((a, b) => b.ts - a.ts);
+
+/* ════════════════════════════════════════════════════════════
+   الأنظمة المتخصصة حسب طبيعة النشاط (21 نظاماً) — بنية تكيفية
+   كل وحدة متخصصة تُعرَّف بالحقول وتُخزن في سجلات مرنة
+   ════════════════════════════════════════════════════════════ */
+export interface SpecField { k: string; label: string; type?: "text" | "number" | "date" | "select"; opts?: string[]; amount?: boolean; req?: boolean; span?: boolean }
+export interface SpecEntity { id: string; label: string; icon: string; fields: SpecField[]; seed: AnyR[]; statusField?: string; statuses?: string[]; amountField?: string }
+export interface ActivityDef {
+  id: string; name: string; icon: string; color: string; desc: string;
+  posMode: "retail" | "restaurant" | "none";
+  terminology: { pos: string; customer: string; item: string; sale: string };
+  glCredit: string; entities: SpecEntity[];
+}
+const F = (k: string, label: string, type: SpecField["type"] = "text", opts?: string[], amount?: boolean, req?: boolean, span?: boolean): SpecField =>
+  ({ k, label, type, opts, amount, req, span });
+const E = (id: string, label: string, icon: string, fields: SpecField[], seed: AnyR[], statusField?: string, statuses?: string[], amountField?: string): SpecEntity =>
+  ({ id, label, icon, fields, seed, statusField, statuses, amountField });
+
+export const ACTIVITIES: ActivityDef[] = [
+  { id: "factories", name: "المصانع والإنتاج", icon: "server", color: "#6366f1", posMode: "none", desc: "أوامر الإنتاج، خطوط التجميع، وتكاليف التصنيع", glCredit: "41411",
+    terminology: { pos: "الإنتاج", customer: "العميل الصناعي", item: "المنتج", sale: "أمر إنتاج" },
+    entities: [
+      E("wo", "أوامر الإنتاج", "receipt", [F("no", "رقم الأمر", "text", undefined, false, true), F("product", "المنتج", "text", undefined, false, true), F("qty", "الكمية", "number", undefined, false, true), F("cost", "التكلفة", "number", undefined, true), F("date", "تاريخ البدء", "date")],
+        [{ id: "WO-01", code: "WO-01", no: "WO-2026-01", product: "عبوات بلاستيك 1لتر", qty: 5000, cost: 125000, date: "2026-03-02", status: "قيد الإنتاج" }, { id: "WO-02", code: "WO-02", no: "WO-2026-02", product: "أغطية محكمة", qty: 8000, cost: 64000, date: "2026-03-10", status: "مكتمل" }],
+        "status", ["مخطط", "قيد الإنتاج", "مكتمل", "متوقف"], "cost"),
+      E("lines", "خطوط الإنتاج", "swap", [F("name", "اسم الخط", "text", undefined, false, true, true), F("capacity", "الطاقة اليومية", "number"), F("supervisor", "المشرف")],
+        [{ id: "LN-01", code: "LN-01", name: "خط الحقن A", capacity: 2000, supervisor: "م. خالد", status: "يعمل" }, { id: "LN-02", code: "LN-02", name: "خط التجميع B", capacity: 3500, supervisor: "م. سالم", status: "صيانة" }],
+        "status", ["يعمل", "صيانة", "متوقف"]),
+    ] },
+  { id: "restaurants", name: "المطاعم", icon: "bld", color: "#f59e0b", posMode: "restaurant", desc: "طاولات، طلبات مطبخ، وفواتير مطاعم", glCredit: "41411",
+    terminology: { pos: "الكاشير", customer: "الزبون", item: "الطبق", sale: "طلب" },
+    entities: [
+      E("menu", "قائمة الأصناف", "tag", [F("name", "الطبق", "text", undefined, false, true, true), F("cat", "التصنيف", "select", ["مقبلات", "أطباق رئيسية", "مشروبات", "حلويات"]), F("price", "السعر", "number", undefined, true, true)],
+        [{ id: "MN-01", code: "MN-01", name: "مندي لحم", cat: "أطباق رئيسية", price: 2500, status: "متاح" }, { id: "MN-02", code: "MN-02", name: "شاورما دجاج", cat: "أطباق رئيسية", price: 1200, status: "متاح" }, { id: "MN-03", code: "MN-03", name: "عصير مانجو", cat: "مشروبات", price: 500, status: "نفد" }],
+        "status", ["متاح", "نفد"]),
+      E("kitchen", "طلبات المطبخ", "receipt", [F("table", "الطاولة", "text", undefined, false, true), F("items", "الأصناف", "text", undefined, false, true, true), F("total", "الإجمالي", "number", undefined, true)],
+        [{ id: "KT-01", code: "KT-01", table: "طاولة 4", items: "مندي لحم ×2، سلطة", total: 5300, status: "قيد التحضير" }, { id: "KT-02", code: "KT-02", table: "طاولة 7", items: "شاورما ×3", total: 3600, status: "جاهز" }],
+        "status", ["جديد", "قيد التحضير", "جاهز", "مُقدَّم"], "total"),
+    ] },
+  { id: "hotels", name: "الفنادق", icon: "bld", color: "#0ea5e9", posMode: "restaurant", desc: "حجوزات الغرف، النزلاء، والفواتير الفندقية", glCredit: "41411",
+    terminology: { pos: "الاستقبال", customer: "النزيل", item: "الغرفة", sale: "حجز" },
+    entities: [
+      E("book", "حجوزات الغرف", "cal", [F("guest", "النزيل", "text", undefined, false, true), F("room", "الغرفة", "text", undefined, false, true), F("in", "تاريخ الدخول", "date", undefined, false, true), F("out", "تاريخ الخروج", "date"), F("amount", "قيمة الحجز", "number", undefined, true)],
+        [{ id: "HB-01", code: "HB-01", guest: "أحمد الشامي", room: "204", in: "2026-03-20", out: "2026-03-25", amount: 75000, status: "مقيم" }, { id: "HB-02", code: "HB-02", guest: "منى السقاف", room: "310", in: "2026-03-28", out: "2026-04-02", amount: 90000, status: "مؤكد" }],
+        "status", ["مؤكد", "مقيم", "غادر", "ملغي"], "amount"),
+    ] },
+  { id: "hospitals", name: "المستشفيات", icon: "pulse", color: "#ef4444", posMode: "none", desc: "المرضى، الأقسام، والفواتير الطبية", glCredit: "41211",
+    terminology: { pos: "الاستقبال", customer: "المريض", item: "الخدمة", sale: "فاتورة طبية" },
+    entities: [
+      E("pat", "سجل المرضى", "users", [F("name", "اسم المريض", "text", undefined, false, true, true), F("dept", "القسم", "select", ["باطنية", "جراحة", "أطفال", "نساء", "عيون"]), F("phone", "الهاتف"), F("balance", "الرصيد", "number", undefined, true)],
+        [{ id: "PT-01", code: "PT-01", name: "أحمد محمد الشامي", dept: "باطنية", phone: "777-102-334", balance: 62000, status: "منوّم" }, { id: "PT-02", code: "PT-02", name: "سالم الحضرمي", dept: "جراحة", phone: "733-881-210", balance: 48500, status: "منوّم" }],
+        "status", ["منوّم", "خارجي", "خروج"], "balance"),
+      E("op", "العمليات الجراحية", "pulse", [F("patient", "المريض", "text", undefined, false, true), F("type", "نوع العملية", "text", undefined, false, true), F("cost", "التكلفة", "number", undefined, true), F("date", "التاريخ", "date")],
+        [{ id: "OP-01", code: "OP-01", patient: "سالم الحضرمي", type: "استئصال زائدة", cost: 120000, date: "2026-03-22", status: "ناجحة" }],
+        "status", ["مجدولة", "جارية", "ناجحة"], "cost"),
+    ] },
+  { id: "clinics", name: "العيادات الطبية", icon: "pulse", color: "#ec4899", posMode: "none", desc: "مواعيد العيادات والكشوفات", glCredit: "41211",
+    terminology: { pos: "الاستقبال", customer: "المريض", item: "الكشف", sale: "كشف" },
+    entities: [
+      E("apt", "مواعيد العيادة", "cal", [F("patient", "المريض", "text", undefined, false, true), F("doctor", "الطبيب", "text", undefined, false, true), F("date", "الموعد", "date", undefined, false, true), F("fee", "الأجرة", "number", undefined, true)],
+        [{ id: "AP-01", code: "AP-01", patient: "فاطمة العمودي", doctor: "د. لمى", date: "2026-03-30", fee: 5000, status: "مؤكد" }, { id: "AP-02", code: "AP-02", patient: "خالد باوزير", doctor: "د. نبيل", date: "2026-03-30", fee: 7000, status: "بالانتظار" }],
+        "status", ["بالانتظار", "مؤكد", "مكتمل", "ملغي"], "fee"),
+    ] },
+  { id: "construction", name: "المقاولات", icon: "bld", color: "#8b5cf6", posMode: "none", desc: "المشاريع، المستخلصات، والعقود", glCredit: "41411",
+    terminology: { pos: "الموقع", customer: "المالك", item: "البند", sale: "مستخلص" },
+    entities: [
+      E("proj", "المشاريع", "bld", [F("name", "المشروع", "text", undefined, false, true, true), F("owner", "المالك"), F("value", "قيمة العقد", "number", undefined, true), F("progress", "نسبة الإنجاز %", "number")],
+        [{ id: "PR-01", code: "PR-01", name: "برج المكلا السكني", owner: "مؤسسة الإعمار", value: 45000000, progress: 62, status: "جارٍ" }, { id: "PR-02", code: "PR-02", name: "ترميم مدرسة النور", owner: "وزارة التربية", value: 8500000, progress: 100, status: "مسلَّم" }],
+        "status", ["جارٍ", "متوقف", "مسلَّم"], "value"),
+      E("ipc", "المستخلصات", "receipt", [F("project", "المشروع", "text", undefined, false, true), F("no", "رقم المستخلص", "text", undefined, false, true), F("amount", "القيمة", "number", undefined, true), F("date", "التاريخ", "date")],
+        [{ id: "IP-01", code: "IP-01", project: "برج المكلا", no: "IPC-04", amount: 5600000, date: "2026-03-15", status: "معتمد" }],
+        "status", ["مقدَّم", "معتمد", "مدفوع"], "amount"),
+    ] },
+  { id: "gas", name: "محطات البترول", icon: "pulse", color: "#22c55e", posMode: "retail", desc: "المضخات، الخزانات، وبيع الوقود", glCredit: "41111",
+    terminology: { pos: "المضخة", customer: "العميل", item: "الوقود", sale: "تعبئة" },
+    entities: [
+      E("tank", "الخزانات", "server", [F("name", "الخزان", "text", undefined, false, true), F("fuel", "الوقود", "select", ["بنزين 95", "بنزين 91", "ديزل"]), F("cap", "السعة (لتر)", "number"), F("level", "الرصيد الحالي", "number")],
+        [{ id: "TK-01", code: "TK-01", name: "خزان A1", fuel: "بنزين 95", cap: 40000, level: 28000, status: "جيد" }, { id: "TK-02", code: "TK-02", name: "خزان D1", fuel: "ديزل", cap: 30000, level: 4000, status: "منخفض" }],
+        "status", ["جيد", "منخفض", "فارغ"]),
+    ] },
+  { id: "utilities", name: "محطات الكهرباء والمياه", icon: "pulse", color: "#eab308", posMode: "none", desc: "العدادات، المشتركين، والفواتير الخدمية", glCredit: "41411",
+    terminology: { pos: "التحصيل", customer: "المشترك", item: "الخدمة", sale: "فاتورة خدمية" },
+    entities: [
+      E("meter", "العدادات والمشتركون", "globe", [F("name", "المشترك", "text", undefined, false, true), F("type", "الخدمة", "select", ["كهرباء", "مياه"]), F("meter", "رقم العداد"), F("bill", "الفاتورة", "number", undefined, true)],
+        [{ id: "MT-01", code: "MT-01", name: "حي السلام", type: "كهرباء", meter: "EL-8841", bill: 12500, status: "مسددة" }, { id: "MT-02", code: "MT-02", name: "مصنع الثلج", type: "مياه", meter: "WT-2210", bill: 8400, status: "مستحقة" }],
+        "status", ["مسددة", "مستحقة", "متأخرة"], "bill"),
+    ] },
+  { id: "travel", name: "السفريات والسياحة", icon: "globe", color: "#14b8a6", posMode: "retail", desc: "التذاكر، الحجوزات، والباقات السياحية", glCredit: "41411",
+    terminology: { pos: "الحجوزات", customer: "المسافر", item: "التذكرة", sale: "حجز" },
+    entities: [
+      E("ticket", "تذاكر الطيران", "clip", [F("passenger", "المسافر", "text", undefined, false, true), F("route", "المسار", "text", undefined, false, true), F("date", "تاريخ السفر", "date", undefined, false, true), F("price", "السعر", "number", undefined, true)],
+        [{ id: "TT-01", code: "TT-01", passenger: "عمر بامؤمن", route: "عدن → القاهرة", date: "2026-04-05", price: 95000, status: "مؤكد" }],
+        "status", ["مؤكد", "بانتظار", "صادر", "ملغي"], "price"),
+      E("pkg", "الباقات السياحية", "globe", [F("name", "الباقة", "text", undefined, false, true, true), F("days", "عدد الأيام", "number"), F("price", "السعر", "number", undefined, true)],
+        [{ id: "PK-01", code: "PK-01", name: "رحلة سقطرى 5 أيام", days: 5, price: 180000, status: "متاحة" }],
+        "status", ["متاحة", "محجوزة"], "price"),
+    ] },
+  { id: "sports", name: "النوادي الرياضية", icon: "users", color: "#84cc16", posMode: "retail", desc: "الاشتراكات، الأعضاء، والحصص التدريبية", glCredit: "41411",
+    terminology: { pos: "الاستقبال", customer: "العضو", item: "الاشتراك", sale: "اشتراك" },
+    entities: [
+      E("member", "الأعضاء والاشتراكات", "users", [F("name", "العضو", "text", undefined, false, true), F("plan", "الباقة", "select", ["شهري", "ربع سنوي", "سنوي"]), F("fee", "الرسوم", "number", undefined, true), F("expiry", "تاريخ الانتهاء", "date")],
+        [{ id: "MB-01", code: "MB-01", name: "طارق الوزير", plan: "سنوي", fee: 60000, expiry: "2027-01-15", status: "نشط" }, { id: "MB-02", code: "MB-02", name: "هدى العامري", plan: "شهري", fee: 8000, expiry: "2026-04-10", status: "نشط" }],
+        "status", ["نشط", "منتهٍ", "موقوف"], "fee"),
+    ] },
+  { id: "tailoring", name: "الخياطة", icon: "edit", color: "#a855f7", posMode: "retail", desc: "طلبات التفصيل والقياسات", glCredit: "41411",
+    terminology: { pos: "المحل", customer: "الزبون", item: "القطعة", sale: "طلب تفصيل" },
+    entities: [
+      E("order", "طلبات التفصيل", "edit", [F("customer", "الزبون", "text", undefined, false, true), F("item", "القطعة", "select", ["ثوب", "بدلة", "قميص", "فستان"]), F("measure", "القياسات", "text", undefined, false, true, true), F("price", "السعر", "number", undefined, true), F("due", "تاريخ التسليم", "date")],
+        [{ id: "TL-01", code: "TL-01", customer: "سالم الحضرمي", item: "ثوب", measure: "طول 150، كتف 48", price: 12000, due: "2026-04-01", status: "قيد التفصيل" }],
+        "status", ["قيد التفصيل", "جاهز", "مسلَّم"], "price"),
+    ] },
+  { id: "gold", name: "الذهب والمجوهرات", icon: "coins", color: "#f59e0b", posMode: "retail", desc: "المشغولات، الأوزان، والعيارات", glCredit: "41111",
+    terminology: { pos: "المعرض", customer: "العميل", item: "المشغول", sale: "بيع ذهب" },
+    entities: [
+      E("piece", "المشغولات الذهبية", "coins", [F("name", "المشغول", "text", undefined, false, true), F("karat", "العيار", "select", ["24", "22", "21", "18"]), F("weight", "الوزن (جرام)", "number"), F("price", "السعر", "number", undefined, true)],
+        [{ id: "GD-01", code: "GD-01", name: "أسورة عريضة", karat: "21", weight: 24.5, price: 1420000, status: "معروض" }, { id: "GD-02", code: "GD-02", name: "خاتم سوليتير", karat: "18", weight: 6.2, price: 540000, status: "محجوز" }],
+        "status", ["معروض", "محجوز", "مبيع"], "price"),
+    ] },
+  { id: "carrental", name: "تأجير السيارات والصيانة", icon: "truck", color: "#3b82f6", posMode: "retail", desc: "الأسطول، عقود التأجير، وأوامر الصيانة", glCredit: "41411",
+    terminology: { pos: "المكتب", customer: "المستأجر", item: "السيارة", sale: "عقد تأجير" },
+    entities: [
+      E("fleet", "الأسطول", "truck", [F("car", "السيارة", "text", undefined, false, true), F("plate", "اللوحة"), F("rate", "أجرة اليوم", "number", undefined, true)],
+        [{ id: "FL-01", code: "FL-01", car: "هيونداي إلنترا 2024", plate: "12345/عدن", rate: 25000, status: "متاحة" }, { id: "FL-02", code: "FL-02", car: "تويوتا هايس 2023", plate: "67890/عدن", rate: 40000, status: "مؤجرة" }],
+        "status", ["متاحة", "مؤجرة", "صيانة"]),
+      E("maint", "أوامر الصيانة", "gear", [F("car", "السيارة", "text", undefined, false, true), F("job", "الإصلاح", "text", undefined, false, true), F("cost", "التكلفة", "number", undefined, true)],
+        [{ id: "MN-11", code: "MN-11", car: "هيونداي إلنترا", job: "تغيير زيت وفلاتر", cost: 18000, status: "جارٍ" }],
+        "status", ["جارٍ", "جاهز", "مسلَّم"], "cost"),
+    ] },
+  { id: "exchange", name: "الصرافة والحوالات", icon: "swap", color: "#06b6d4", posMode: "retail", desc: "أسعار الصرف، الحوالات، وعمليات البيع والشراء", glCredit: "41411",
+    terminology: { pos: "الصراف", customer: "العميل", item: "العملة", sale: "حوالة" },
+    entities: [
+      E("rem", "الحوالات", "swap", [F("sender", "المرسل", "text", undefined, false, true), F("receiver", "المستفيد", "text", undefined, false, true), F("amount", "المبلغ", "number", undefined, true), F("fee", "العمولة", "number", undefined, true)],
+        [{ id: "RM-01", code: "RM-01", sender: "أحمد الشامي", receiver: "سالم الحضرمي", amount: 250000, fee: 2500, status: "مسلَّمة" }],
+        "status", ["قيد الإرسال", "مسلَّمة", "ملغاة"], "amount"),
+    ] },
+  { id: "institutes", name: "المعاهد والمراكز التعليمية", icon: "file", color: "#8b5cf6", posMode: "retail", desc: "المتدربون، الدورات، والرسوم", glCredit: "41411",
+    terminology: { pos: "التسجيل", customer: "المتدرب", item: "الدورة", sale: "تسجيل" },
+    entities: [
+      E("course", "الدورات", "file", [F("name", "الدورة", "text", undefined, false, true, true), F("trainer", "المدرب"), F("fee", "الرسوم", "number", undefined, true), F("seats", "المقاعد", "number")],
+        [{ id: "CR-01", code: "CR-01", name: "دبلوم محاسبة", trainer: "أ. سمير", fee: 45000, seats: 30, status: "مفتوح" }, { id: "CR-02", code: "CR-02", name: "لغة إنجليزية IELTS", trainer: "أ. أمل", fee: 30000, seats: 25, status: "مكتمل" }],
+        "status", ["مفتوح", "مكتمل", "ملغي"], "fee"),
+    ] },
+  { id: "schools", name: "المدارس", icon: "file", color: "#22c55e", posMode: "none", desc: "الطلاب، الصفوف، والمصروفات الدراسية", glCredit: "41411",
+    terminology: { pos: "القبول", customer: "الطالب", item: "الصف", sale: "تسجيل طالب" },
+    entities: [
+      E("student", "الطلاب", "users", [F("name", "الطالب", "text", undefined, false, true, true), F("grade", "الصف", "select", ["أول", "ثاني", "ثالث", "رابع", "خامس", "سادس"]), F("fee", "الرسوم", "number", undefined, true), F("guardian", "ولي الأمر")],
+        [{ id: "ST-01", code: "ST-01", name: "محمد أحمد", grade: "ثالث", fee: 85000, guardian: "أحمد محمد", status: "مسجَّل" }, { id: "ST-02", code: "ST-02", name: "سارة خالد", grade: "خامس", fee: 90000, guardian: "خالد سالم", status: "مسجَّل" }],
+        "status", ["مسجَّل", "منسحب", "موقوف"], "fee"),
+    ] },
+  { id: "universities", name: "الجامعات", icon: "file", color: "#3b82f6", posMode: "none", desc: "الطلبة الجامعيون، التخصصات، والساعات المعتمدة", glCredit: "41411",
+    terminology: { pos: "القبول والتسجيل", customer: "الطالب", item: "التخصص", sale: "تسجيل جامعي" },
+    entities: [
+      E("univ", "الطلبة الجامعيون", "users", [F("name", "الطالب", "text", undefined, false, true, true), F("major", "التخصص", "select", ["طب", "هندسة", "حاسب آلي", "إدارة أعمال"]), F("credits", "الساعات", "number"), F("fee", "الرسوم", "number", undefined, true)],
+        [{ id: "UN-01", code: "UN-01", name: "عمر بامؤمن", major: "هندسة", credits: 18, fee: 350000, status: "منتظم" }],
+        "status", ["منتظم", "مؤجل", "موقوف"], "fee"),
+    ] },
+  { id: "mobilefix", name: "صيانة الجولات", icon: "gear", color: "#f97316", posMode: "retail", desc: "أجهزة العملاء وأوامر الإصلاح", glCredit: "41411",
+    terminology: { pos: "الاستقبال", customer: "العميل", item: "الجهاز", sale: "أمر صيانة" },
+    entities: [
+      E("fix", "أوامر الصيانة", "gear", [F("customer", "العميل", "text", undefined, false, true), F("device", "الجهاز", "text", undefined, false, true), F("issue", "العطل", "text", undefined, false, true, true), F("cost", "التكلفة", "number", undefined, true)],
+        [{ id: "FX-01", code: "FX-01", customer: "طارق الوزير", device: "iPhone 14", issue: "تبديل شاشة", cost: 35000, status: "قيد الإصلاح" }],
+        "status", ["قيد الإصلاح", "جاهز", "مسلَّم"], "cost"),
+    ] },
+  { id: "shares", name: "الأسهم والمساهمون", icon: "chart", color: "#6366f1", posMode: "none", desc: "المساهمون، الأسهم، وتوزيعات الأرباح", glCredit: "41411",
+    terminology: { pos: "السجل", customer: "المساهم", item: "السهم", sale: "توزيع أرباح" },
+    entities: [
+      E("holder", "المساهمون", "chart", [F("name", "المساهم", "text", undefined, false, true, true), F("shares", "عدد الأسهم", "number", undefined, false, true), F("value", "القيمة", "number", undefined, true)],
+        [{ id: "SH-01", code: "SH-01", name: "أروى المقطري", shares: 5000, value: 2500000, status: "نشط" }, { id: "SH-02", code: "SH-02", name: "سمير الحداد", shares: 3000, value: 1500000, status: "نشط" }],
+        "status", ["نشط", "مجمَّد"], "value"),
+    ] },
+  { id: "halls", name: "الصالات والمناسبات", icon: "bld", color: "#ec4899", posMode: "restaurant", desc: "حجوزات الصالات والمناسبات", glCredit: "41411",
+    terminology: { pos: "الحجوزات", customer: "العميل", item: "الصالة", sale: "حجز مناسبة" },
+    entities: [
+      E("hall", "حجوزات الصالات", "cal", [F("client", "العميل", "text", undefined, false, true), F("hall", "الصالة", "select", ["القاعة الكبرى", "قاعة الياسمين", "قاعة المرجان"]), F("date", "تاريخ المناسبة", "date", undefined, false, true), F("amount", "القيمة", "number", undefined, true)],
+        [{ id: "HL-01", code: "HL-01", client: "أسرة الشامي", hall: "القاعة الكبرى", date: "2026-04-20", amount: 350000, status: "مؤكد" }],
+        "status", ["مؤكد", "مبدئي", "ملغي", "منتهٍ"], "amount"),
+    ] },
+  { id: "archive", name: "الأرشفة", icon: "clip", color: "#64748b", posMode: "none", desc: "الوثائق والأرشفة الإلكترونية", glCredit: "41411",
+    terminology: { pos: "الأرشيف", customer: "الجهة", item: "الوثيقة", sale: "توثيق" },
+    entities: [
+      E("doc", "الوثائق المؤرشفة", "clip", [F("title", "عنوان الوثيقة", "text", undefined, false, true, true), F("cat", "التصنيف", "select", ["عقود", "فواتير", "مراسلات", "قرارات"]), F("date", "التاريخ", "date"), F("ref", "المرجع")],
+        [{ id: "DC-01", code: "DC-01", title: "عقد إيجار المقر", cat: "عقود", date: "2026-01-10", ref: "AR-2026-001", status: "مؤرشف" }],
+        "status", ["مؤرشف", "قيد المراجعة", "منتهي"]),
+    ] },
+];
+
+/* ── بيانات الموارد البشرية ── */
+export const HR_EMPLOYEES: AnyR[] = [
+  { id: "EMP-01", code: "EMP-01", name: "سمير الحداد", job: "محاسب رئيسي", dept: "المالية", branch: "BR-01", salary: 180000, phone: "777-111-001", join: "2022-03-01", status: "نشط" },
+  { id: "EMP-02", code: "EMP-02", name: "عادل الحميري", job: "أمين مخزن", dept: "المخازن", branch: "BR-01", salary: 120000, phone: "733-222-002", join: "2023-06-15", status: "نشط" },
+  { id: "EMP-03", code: "EMP-03", name: "هدى العامري", job: "مسؤولة مشتريات", dept: "المشتريات", branch: "BR-02", salary: 140000, phone: "711-333-003", join: "2023-01-10", status: "نشط" },
+  { id: "EMP-04", code: "EMP-04", name: "طارق الوزير", job: "مسؤول مبيعات", dept: "المبيعات", branch: "BR-02", salary: 130000, phone: "770-444-004", join: "2024-02-20", status: "إجازة" },
+  { id: "EMP-05", code: "EMP-05", name: "لمى العطاس", job: "صيدلانية", dept: "المبيعات", branch: "BR-02", salary: 160000, phone: "736-555-005", join: "2024-08-05", status: "نشط" },
+];
+export const HR_ATTENDANCE: AnyR[] = [
+  { id: "AT-01", code: "AT-01", emp: "EMP-01", date: "2026-03-29", in: "07:55", out: "16:10", hours: 8.25, status: "حاضر" },
+  { id: "AT-02", code: "AT-02", emp: "EMP-02", date: "2026-03-29", in: "08:15", out: "16:30", hours: 8.25, status: "حاضر" },
+  { id: "AT-03", code: "AT-03", emp: "EMP-03", date: "2026-03-29", in: "09:05", out: "—", hours: 0, status: "متأخر" },
+  { id: "AT-04", code: "AT-04", emp: "EMP-05", date: "2026-03-29", in: "07:50", out: "16:00", hours: 8.1, status: "حاضر" },
+];
+export const HR_REWARDS: AnyR[] = [
+  { id: "RW-01", code: "RW-01", emp: "EMP-01", reason: "إنجاز الإقفال السنوي قبل الموعد", amount: 25000, date: "2026-02-10", status: "مصروفة" },
+  { id: "RW-02", code: "RW-02", emp: "EMP-05", reason: "أفضل موظفة مبيعات — فبراير", amount: 15000, date: "2026-03-05", status: "معتمدة" },
+];
+export const HR_WARNINGS: AnyR[] = [
+  { id: "WN-01", code: "WN-01", emp: "EMP-03", reason: "تكرار التأخر عن الدوام", level: "إنذار أول", date: "2026-03-29", status: "مسجَّل" },
+];
+export const HR_LEAVES: AnyR[] = [
+  { id: "LV-01", code: "LV-01", emp: "EMP-04", from: "2026-03-25", to: "2026-04-02", days: 8, type: "سنوية", status: "معتمدة" },
+  { id: "LV-02", code: "LV-02", emp: "EMP-02", from: "2026-04-10", to: "2026-04-11", days: 2, type: "طارئة", status: "بانتظار الموافقة" },
+];
+
+/* ── بيانات الأصول الثابتة ── */
+export const ASSETS: AnyR[] = [
+  { id: "FA-01", code: "FA-01", name: "جهاز أشعة رقمي", group: "معدات طبية", cost: 4500000, salvage: 500000, life: 10, purchase: "2024-01-15", location: "المستشفى — قسم الأشعة", status: "في الخدمة" },
+  { id: "FA-02", code: "FA-02", name: "سيارة نقل مبردة", group: "وسائل نقل", cost: 2800000, salvage: 400000, life: 8, purchase: "2025-03-01", location: "المخزن الرئيسي", status: "في الخدمة" },
+  { id: "FA-03", code: "FA-03", name: "مولد كهرباء 500KVA", group: "معدات", cost: 3200000, salvage: 300000, life: 12, purchase: "2023-06-10", location: "المقر الرئيسي", status: "في الخدمة" },
+  { id: "FA-04", code: "FA-04", name: "أثاث مكتبي متكامل", group: "أثاث", cost: 600000, salvage: 60000, life: 5, purchase: "2025-09-20", location: "الإدارة العامة", status: "في الخدمة" },
+];
+
+/* ── رقم سري لصاحب النظام (شاشة تفعيل الأنظمة) ── */
+export const OWNER_PIN = "1234";
