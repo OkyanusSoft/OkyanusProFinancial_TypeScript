@@ -143,15 +143,30 @@ export function PFoot({ user }: { user: string }) {
 }
 
 /* ── غلاف سند كامل ── */
-export function DocSheet({ docTitle, no, date, status, subtitle, meta, children, totals, note, user, signLabels }: {
+export function DocSheet({ docTitle, no, date, status, subtitle, meta, children, totals, note, user, signLabels, stampText, stampSub, amountBox }: {
   docTitle: string; no: string; date: string; status: string; subtitle?: string;
   meta: [string, ReactNode][]; children: ReactNode; totals?: { items: [string, string][]; grand: [string, string] };
   note?: string; user: string; signLabels?: string[];
+  stampText?: string; stampSub?: string; amountBox?: { num: string; words: string };
 }) {
   return (
     <div className="print-doc">
       <PHead docTitle={docTitle} no={no} date={date} status={status} subtitle={subtitle} />
+      <div className="p-rule" />
+      {stampText && (
+        <div className="p-stampwrap">
+          <div className="p-stamp" style={{ color: docTitle.includes("قبض") ? "#15803d" : "#b45309" }}>
+            {stampText}<small>{stampSub}</small>
+          </div>
+        </div>
+      )}
       <PMeta rows={meta} />
+      {amountBox && (
+        <div className="p-amountbox">
+          <div><span>المبلغ رقماً</span><b dir="ltr">{amountBox.num}</b></div>
+          <div><span>المبلغ بالحروف</span><b>{amountBox.words}</b></div>
+        </div>
+      )}
       {children}
       {totals && <PTotals items={totals.items} grand={totals.grand} />}
       <PNote text={note} />
@@ -195,6 +210,33 @@ export function ReportSheet({ title, subtitle, filters, summary, children, user 
       <PFoot user={user} />
     </div>
   );
+}
+
+/* ═══════ التفقيط — كتابة المبلغ بالحروف العربية للسندات المالية ═══════ */
+const TF_ONES = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة", "عشرة", "أحد عشر", "اثنا عشر", "ثلاثة عشر", "أربعة عشر", "خمسة عشر", "ستة عشر", "سبعة عشر", "ثمانية عشر", "تسعة عشر"];
+const TF_TENS = ["", "", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"];
+const TF_HUND = ["", "مائة", "مائتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"];
+const TF_SCALE: [string, string, string][] = [["", "", ""], ["ألف", "ألفان", "آلاف"], ["مليون", "مليونان", "ملايين"], ["مليار", "ملياران", "مليارات"]];
+export function tafqit(n: number): string {
+  n = Math.floor(Math.abs(n));
+  if (n === 0) return "صفر";
+  let out = "", si = 0;
+  while (n > 0) {
+    const g = n % 1000; n = Math.floor(n / 1000);
+    if (g) {
+      let t = "";
+      const h = Math.floor(g / 100), r = g % 100;
+      if (h) t = TF_HUND[h];
+      if (r) t += (t ? " و" : "") + (r < 20 ? TF_ONES[r] : TF_TENS[Math.floor(r / 10)] + (r % 10 ? " و" + TF_ONES[r % 10] : ""));
+      const [s1, s2, sp] = TF_SCALE[si];
+      let seg: string;
+      if (si === 0) seg = t;
+      else if (g === 1) seg = s1; else if (g === 2) seg = s2; else seg = t + " " + (g <= 10 ? sp : s1);
+      out = out ? seg + " و" + out : seg;
+    }
+    si++;
+  }
+  return out;
 }
 
 /* ═══════ طابعة السجلات العامة — أي دليل أو قائمة سجلات ═══════ */
