@@ -443,9 +443,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     /* ── التكامل المحاسبي: قيد مزدوج متوازن على حسابات المخزن والمجموعة ──
-       توريد/افتتاحي : من ح/ مخزون المجموعة ← إلى ح/ المشتريات (تجميع لكل مجموعة)
-       صرف           : من ح/ تكلفة مبيعات المجموعة ← إلى ح/ المخزن المرتبط
-       تحويل         : من ح/ مخزن الوجهة ← إلى ح/ المخزن المصدر                */
+       توريد   : من ح/ مخزون المجموعة ← إلى ح/ الطرف (مورد آجل / صندوق / عميل مرتجع)
+       افتتاحي : من ح/ مخزون المجموعة ← إلى ح/ رأس المال (أو أرباح مرحلة / مقاصة)
+       صرف     : من ح/ تكلفة مبيعات المجموعة ← إلى ح/ المخزن المرتبط
+       تحويل   : من ح/ مخزن الوجهة ← إلى ح/ المخزن المصدر                      */
     const whAccOf = (code: string) => ((db.warehouses.find((w: any) => w.id === code) as any)?.account as string) || settings.suspense.purchases;
     /* حساب المجموعة المرتبط بالصنف — مع الوقوع على الحساب الوسطي عند غياب الربط */
     const grpAcc = (itemId: string, field: "stockAccount" | "cogsAccount" | "salesAccount", fallback: string) => {
@@ -484,14 +485,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       d.type === "صرف" || totalVal < 0 ? [
         ...aggBy("cogsAccount", settings.suspense.cogs).map(({ account, val }) => ({ account, debit: val, credit: 0, currency: "YER", rate: 1 })),
         { account: from, debit: 0, credit: v, currency: "YER", rate: 1 },
-      ] : [
-        ...aggBy("stockAccount", settings.suspense.purchases).map(({ account, val }) => ({ account, debit: val, credit: 0, currency: "YER", rate: 1 })),
-        { account: partyAcc, debit: 0, credit: v, currency: "YER", rate: 1 },
-      ];
+      ] : (() => {
+        /* القيد الافتتاحي: من حـ/ المخزون ← إلى حـ/ رأس المال (أو أرباح مرحلة / حساب مقاصة) */
+        const creditAcc = d.type === "قيد افتتاحي" ? ((d as any).clearAccount as string) || "22111" : partyAcc;
+        return [
+          ...aggBy("stockAccount", settings.suspense.purchases).map(({ account, val }) => ({ account, debit: val, credit: 0, currency: "YER", rate: 1 })),
+          { account: creditAcc, debit: 0, credit: v, currency: "YER", rate: 1 },
+        ];
+      })();
+    const clearAccName = d.type === "قيد افتتاحي" ? accounts.find((a) => a.code === (((d as any).clearAccount as string) || "22111"))?.name : undefined;
     const jeNo = nextNo(settings.prefixes.JE);
     const je = jeLines.length ? {
       id: jeNo, no: jeNo, date: d.date, user: session?.user || "—", status: "مرحّل",
-      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref}${d.subType ? ` (${d.subType})` : ""}${partyName ? ` — الطرف: ${partyName}` : ""}`,
+      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref}${d.subType ? ` (${d.subType})` : ""}${partyName ? ` — الطرف: ${partyName}` : ""}${clearAccName ? ` — إلى ح/ ${clearAccName}` : ""}`,
       kind: "يومية", source: `سند ${d.type} مخزني`, lines: jeLines,
     } : null;
 
