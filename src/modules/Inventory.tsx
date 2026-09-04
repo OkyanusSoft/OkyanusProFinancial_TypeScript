@@ -161,7 +161,7 @@ function MoveScreen({ kind }: { kind: string }) {
 
   return (
     <>
-      <DocList docs={docs} title={meta.full} desc={meta.desc} icon={meta.icon} cols={cols}
+      <DocList docs={docs} title={meta.full} desc={meta.desc} icon={meta.icon} cols={cols} module="inv"
         onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} onPrint={(d) => printInvDoc(app, d, meta.full)} />
 
       {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
@@ -189,11 +189,14 @@ function MoveScreen({ kind }: { kind: string }) {
               </tbody>
             </table>
             {view.note && <p className="text-[0.78rem] font-bold text-soft bg-panel rounded-lg p-3 border border-line">ملاحظة: {view.note}</p>}
-            {view.status !== "ملغي" && (
-              <div className="flex justify-end mt-4">
+            <div className="flex flex-wrap justify-end gap-2 mt-4">
+              {view.status !== "ملغي" && app.can("inv", "حذف") && (
                 <button className="btn btn-danger" onClick={() => { app.voidInvDoc(view.id); setView(null); }}><I n="undo" size={15} /> التراجع عن السند وعكس الكميات</button>
-              </div>
-            )}
+              )}
+              {app.can("inv", "طباعة") && (
+                <button className="btn btn-brand" onClick={() => printInvDoc(app, view, meta.full)}><I n="print" size={15} /> طباعة السند</button>
+              )}
+            </div>
           </>
         )}
       </Modal>
