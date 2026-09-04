@@ -29,9 +29,9 @@ type BusMsg =
   | { kind: "state"; from: string; key: string; val: unknown }
   | { kind: "hello"; from: string; device: DeviceRec };
 
-/* الإصدار v5: يُرفع عند أي تغيير هيكلي في شكل البيانات ليبدأ كل جهاز بحالة نظيفة متوافقة
-   (v5 = تصفير الحركات: قيود/فواتير/سندات/حركات موارد بشرية فارغة، مستخدم واحد مدير النظام) */
-const V = "v5";
+/* الإصدار v6: يُرفع عند أي تغيير هيكلي في شكل البيانات ليبدأ كل جهاز بحالة نظيفة متوافقة
+   (v6 = تحديث البيانات الأساسية: الفروع عمران/ذمار، المخازن، الأقسام، والحسابات المرتبطة بها) */
+const V = "v6";
 const DB_KEY = `okyanus_ifs_central_${V}`;
 const ACT_KEY = `okyanus_ifs_activity_${V}`;
 const DEV_KEY = `okyanus_ifs_devices_${V}`;

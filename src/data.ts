@@ -31,7 +31,7 @@ export const ACCOUNTS: Account[] = [
   { code: "111", name: "النقدية والبنوك", en: "Cash & Banks", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1111", name: "الصناديق النقدية", en: "Cash Boxes", level: 4, parent: "111", type: "أصول", posting: false },
   { code: "11111", name: "الصندوق الرئيسي", en: "Main Cash Box", level: 5, parent: "1111", type: "أصول", posting: true },
-  { code: "11112", name: "صندوق فرع عدن", en: "Aden Branch Box", level: 5, parent: "1111", type: "أصول", posting: true },
+  { code: "11112", name: "صندوق فرع عمران", en: "Amran Branch Box", level: 5, parent: "1111", type: "أصول", posting: true },
   { code: "1112", name: "البنوك", en: "Banks", level: 4, parent: "111", type: "أصول", posting: false },
   { code: "11121", name: "بنك الكريمي — جاري", en: "Kuraimi Bank - Current", level: 5, parent: "1112", type: "أصول", posting: true },
   { code: "11122", name: "بنك التضامن — توفير", en: "Tadhamon Bank", level: 5, parent: "1112", type: "أصول", posting: true },
@@ -43,8 +43,8 @@ export const ACCOUNTS: Account[] = [
   { code: "113", name: "المخزون", en: "Inventory", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1131", name: "مخزون البضائع", en: "Goods Stock", level: 4, parent: "113", type: "أصول", posting: false },
   { code: "11311", name: "المخزون الرئيسي — صنعاء", en: "Main Stock - Sanaa", level: 5, parent: "1131", type: "أصول", posting: true },
-  { code: "11312", name: "مخزون فرع عدن", en: "Aden Branch Stock", level: 5, parent: "1131", type: "أصول", posting: true },
-  { code: "11313", name: "مخزون العبور — المكلا", en: "Mukalla Transit Stock", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11312", name: "مخزون فرع عمران", en: "Amran Branch Stock", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11313", name: "مخزون فرع ذمار", en: "Dhamar Branch Stock", level: 5, parent: "1131", type: "أصول", posting: true },
   { code: "114", name: "الأصول الثابتة", en: "Fixed Assets", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1141", name: "المعدات والتجهيزات", en: "Equipment", level: 4, parent: "114", type: "أصول", posting: false },
   { code: "11411", name: "معدات طبية", en: "Medical Equipment", level: 5, parent: "1141", type: "أصول", posting: true },
@@ -139,8 +139,8 @@ export const GROUPS: AnyR[] = [
 
 export const WAREHOUSES: AnyR[] = [
   { id: "WH-01", code: "WH-01", name: "المخزن الرئيسي — صنعاء", keeper: "عادل الحميري", location: "حزيز، المنطقة الصناعية", capacity: "12,000 موقع", active: true, account: "11311" },
-  { id: "WH-02", code: "WH-02", name: "مخزن الفرع — عدن", keeper: "سميرة النجار", location: "المعلا، شارع الملكة أروى", capacity: "4,500 موقع", active: true, account: "11312" },
-  { id: "WH-03", code: "WH-03", name: "مخزن العبور — المكلا", keeper: "فهد باشراحيل", location: "خور المكلا", capacity: "2,200 موقع", active: true, account: "11313" },
+  { id: "WH-02", code: "WH-02", name: "مخزن الفرع — عمران", keeper: "سميرة النجار", location: "عمران، الشارع العام", capacity: "4,500 موقع", active: true, account: "11312" },
+  { id: "WH-03", code: "WH-03", name: "مخزن الفرع — ذمار", keeper: "فهد باشراحيل", location: "ذمار، شارع صنعاء", capacity: "2,200 موقع", active: true, account: "11313" },
 ];
 
 /* الكميات تبدأ من الصفر — تدخل عبر سند قيد افتتاحي مخزني أو سند توريد */
@@ -177,14 +177,14 @@ export const CUSTOMERS: AnyR[] = [
 /* الأرصدة الافتتاحية صفر — تدخل عبر سند قيد افتتاحي مالي أو سند قبض */
 export const CASHBOXES: AnyR[] = [
   { id: "CB-01", code: "CB-01", name: "الصندوق الرئيسي", currency: "YER", open: 0, keeper: "عادل الحميري", account: "11111", active: true },
-  { id: "CB-02", code: "CB-02", name: "صندوق فرع عدن", currency: "YER", open: 0, keeper: "نبيل السباعي", account: "11112", active: true },
+  { id: "CB-02", code: "CB-02", name: "صندوق فرع عمران", currency: "YER", open: 0, keeper: "إبراهيم المنصور", account: "11112", active: true },
   { id: "CB-03", code: "CB-03", name: "صندوق النقد الأجنبي", currency: "USD", open: 0, keeper: "سمير الحداد", account: "11121", active: true },
 ];
 
 export const COST_CENTERS: AnyR[] = [
   { id: "CC-01", code: "CC-01", name: "الإدارة العامة", parent: "", manager: "م.وائل الشرفي" },
-  { id: "CC-02", code: "CC-02", name: "فرع عدن", parent: "", manager: "أ. نبيل السباعي" },
-  { id: "CC-03", code: "CC-03", name: "فرع المكلا", parent: "", manager: "أ. فهد باشراحيل" },
+  { id: "CC-02", code: "CC-02", name: "فرع عمران", parent: "", manager: "إبراهيم المنصور" },
+  { id: "CC-03", code: "CC-03", name: "فرع ذمار", parent: "", manager: "عبدالقادر الكحلاني" },
   { id: "CC-011", code: "CC-011", name: "قسم المشتريات", parent: "CC-01", manager: "أ. هدى العامري" },
   { id: "CC-012", code: "CC-012", name: "قسم المبيعات", parent: "CC-01", manager: "أ. طارق الوزير" },
   { id: "CC-021", code: "CC-021", name: "صيدلية الفرع", parent: "CC-02", manager: "د. لمى العطاس" },
@@ -192,8 +192,8 @@ export const COST_CENTERS: AnyR[] = [
 
 export const BRANCHES: AnyR[] = [
   { id: "BR-01", code: "BR-01", name: "المركز الرئيسي — صنعاء", manager: "م.وائل الشرفي", phone: "01-448-210", main: true },
-  { id: "BR-02", code: "BR-02", name: "فرع عدن", manager: "أ. نبيل السباعي", phone: "02-331-908", main: false },
-  { id: "BR-03", code: "BR-03", name: "فرع المكلا", manager: "أ. فهد باشراحيل", phone: "05-662-774", main: false },
+  { id: "BR-02", code: "BR-02", name: "فرع عمران", manager: "إبراهيم المنصور", phone: "07-331-908", main: false },
+  { id: "BR-03", code: "BR-03", name: "فرع ذمار", manager: "عبدالقادر الكحلاني", phone: "06-662-774", main: false },
 ];
 
 export const DEPARTMENTS: AnyR[] = [
@@ -201,7 +201,7 @@ export const DEPARTMENTS: AnyR[] = [
   { id: "DP-02", code: "DP-02", name: "إدارة المشتريات", branch: "BR-01", head: "هدى العامري" },
   { id: "DP-03", code: "DP-03", name: "إدارة المبيعات", branch: "BR-01", head: "طارق الوزير" },
   { id: "DP-04", code: "DP-04", name: "إدارة المخازن", branch: "BR-01", head: "عادل الحميري" },
-  { id: "DP-05", code: "DP-05", name: "قسم الصيدلية — عدن", branch: "BR-02", head: "د. لمى العطاس" },
+  { id: "DP-05", code: "DP-05", name: "قسم الصيدلية — صنعاء", branch: "BR-01", head: "د. لمى العطاس" },
 ];
 
 /* مستخدم واحد فقط — مدير النظام، لبدء إدخال البيانات الحقيقية */
@@ -408,14 +408,14 @@ const _seed: _Seed[] = [
   [8.0 * 60, 2, "سند قبض RC-2026-0105 — دفعة مستشفى النور 130,000", "create"],
   [7.3 * 60, 5, "تحديث بيانات موظف — قسم المختبرات", "update"],
   [6.8 * 60, 0, "فاتورة نقاط البيع PV-2026-0241 (نقدي)", "create"],
-  [6.1 * 60, 3, "تحويل مخزني TR-0007 — من الرئيسي إلى فرع عدن", "create"],
+  [6.1 * 60, 3, "تحويل مخزني TR-0007 — من الرئيسي إلى فرع عمران", "create"],
   [5.6 * 60, 2, "قيد إيجار المقر الرئيسي — الربع الأول", "create"],
   [5.0 * 60, 1, "فاتورة مبيعات SIN-2026-0245 (آجل) — ابن سينا", "create"],
   [4.4 * 60, 4, "عروض أسعار شراء PQ-2026-0022 — ميديكال بلس", "create"],
   [3.9 * 60, 2, "قسط استهلاك المعدات الطبية — مارس", "create"],
   [3.3 * 60, 0, "فاتورة نقاط البيع PV-2026-0242 (نقدي)", "create"],
   [2.8 * 60, 5, "مسير رواتب — مراجعة الحضور والانصراف", "update"],
-  [2.2 * 60, 3, "جرد دوري JC-0001 — مخزن فرع عدن", "create"],
+  [2.2 * 60, 3, "جرد دوري JC-0001 — مخزن فرع عمران", "create"],
   [1.7 * 60, 1, "مرتجع مبيعات SRT-2026-0017 — صيدلية الأمل", "create"],
   [1.2 * 60, 2, "قيد خدمات طبية — تحليلي: أحمد الشامي 45,000", "create"],
   [0.7 * 60, 4, "سند صرف PV-2026-0106 — سداد دفعة لمؤسسة الخليج", "create"],

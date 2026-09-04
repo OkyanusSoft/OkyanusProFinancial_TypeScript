@@ -12,7 +12,7 @@ export const LOGIN_BGS = [
 ];
 
 const COMPANIES = ["شركة أوكيانوس للتجارة والاستثمار", "مستشفى أوكيانوس التخصصي", "مجموعة المحيط الطبية"];
-const BRANCHES = ["المركز الرئيسي — صنعاء", "فرع عدن", "فرع المكلا"];
+const BRANCHES = ["المركز الرئيسي — صنعاء", "فرع عمران", "فرع ذمار"];
 const YEARS = ["2026", "2025", "2024"];
 
 export default function Login() {
