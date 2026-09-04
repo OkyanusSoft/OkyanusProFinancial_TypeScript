@@ -211,7 +211,16 @@ const DEF_MATRIX: Record<string, PermRole> = {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   /* القاعدة تُحمَّل من التخزين المركزي المشترك (تبقى بعد التحديث وتُشارك بين النوافذ) */
-  const [db, setDb] = useState(() => engine.loadDb(initDb));
+  const [db, setDb] = useState(() => {
+    const d = engine.loadDb(initDb);
+    /* استكمال ربط المجموعات بالحسابات للنسخ المحفوظة قبل هذه الميزة — دون مسح أي تعديل */
+    d.groups = (d.groups as AnyR[]).map((g: AnyR) => {
+      const s = GROUPS.find((x) => x.id === g.id);
+      if (!s) return g;
+      return { ...g, stockAccount: g.stockAccount || s.stockAccount, cogsAccount: g.cogsAccount || s.cogsAccount, salesAccount: g.salesAccount || s.salesAccount };
+    });
+    return d;
+  });
   const [accounts, setAccounts] = useState<Account[]>(ACCOUNTS);
   const [trash, setTrash] = useState<{ coll: CollKey; row: AnyR; at: string }[]>([]);
   const [seq, setSeq] = useState<Record<string, number>>({ SIN: 260, PIN: 120, SRT: 18, GRN: 8, ISS: 22, TR: 4, ADJ: 4, JC: 2, JE: 1010, RC: 107, PV: 107, PR: 36, QT: 48, OB: 2, FYE: 2, REQ: 5 });
@@ -433,31 +442,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if ((d.type === "صرف" || delta < 0) && cur < 0) return { ok: false, msg: `الكمية غير كافية للصنف ${it.name} — الرصيد سيصبح ${cur}` };
       }
     }
-    /* ── التكامل المحاسبي: قيد مزدوج متوازن على حساب المخزن المرتبط ──
-       توريد/افتتاحي : من ح/ المخزن المرتبط ← إلى ح/ المشتريات
-       صرف           : من ح/ تكلفة المبيعات ← إلى ح/ المخزن المرتبط
-       تحويل         : من ح/ مخزن الوجهة ← إلى ح/ المخزن المصدر              */
+    /* ── التكامل المحاسبي: قيد مزدوج متوازن على حسابات المخزن والمجموعة ──
+       توريد/افتتاحي : من ح/ مخزون المجموعة ← إلى ح/ المشتريات (تجميع لكل مجموعة)
+       صرف           : من ح/ تكلفة مبيعات المجموعة ← إلى ح/ المخزن المرتبط
+       تحويل         : من ح/ مخزن الوجهة ← إلى ح/ المخزن المصدر                */
     const whAccOf = (code: string) => ((db.warehouses.find((w: any) => w.id === code) as any)?.account as string) || settings.suspense.purchases;
+    /* حساب المجموعة المرتبط بالصنف — مع الوقوع على الحساب الوسطي عند غياب الربط */
+    const grpAcc = (itemId: string, field: "stockAccount" | "cogsAccount" | "salesAccount", fallback: string) => {
+      const it: any = db.items.find((x) => x.id === itemId);
+      const g: any = it ? db.groups.find((x) => x.id === it.group) : undefined;
+      return (g?.[field] as string) || fallback;
+    };
     const totalVal = d.lines.reduce((s, l) => s + l.qty * l.cost, 0);
     const v = Math.abs(totalVal);
     const from = whAccOf(d.warehouse);
     const to = d.toWarehouse ? whAccOf(d.toWarehouse) : from;
+    /* تجميع قيم البنود حسب حساب المجموعة — السند متعدد المجموعات يولّد سطراً لكل حساب */
+    const aggBy = (field: "stockAccount" | "cogsAccount", fallback: string) => {
+      const m: Record<string, number> = {};
+      d.lines.forEach((l) => {
+        const acc = grpAcc(l.item, field, fallback);
+        m[acc] = (m[acc] || 0) + Math.abs(l.qty * l.cost);
+      });
+      return Object.entries(m).map(([account, val]) => ({ account, val }));
+    };
     const jeLines = v === 0 ? [] :
       d.type === "تحويل" ? (from === to ? [] : [
         { account: to, debit: v, credit: 0, currency: "YER", rate: 1 },
         { account: from, debit: 0, credit: v, currency: "YER", rate: 1 },
       ]) :
       d.type === "صرف" || totalVal < 0 ? [
-        { account: settings.suspense.cogs, debit: v, credit: 0, currency: "YER", rate: 1 },
+        ...aggBy("cogsAccount", settings.suspense.cogs).map(({ account, val }) => ({ account, debit: val, credit: 0, currency: "YER", rate: 1 })),
         { account: from, debit: 0, credit: v, currency: "YER", rate: 1 },
       ] : [
-        { account: from, debit: v, credit: 0, currency: "YER", rate: 1 },
+        ...aggBy("stockAccount", settings.suspense.purchases).map(({ account, val }) => ({ account, debit: val, credit: 0, currency: "YER", rate: 1 })),
         { account: settings.suspense.purchases, debit: 0, credit: v, currency: "YER", rate: 1 },
       ];
     const jeNo = nextNo(settings.prefixes.JE);
     const je = jeLines.length ? {
       id: jeNo, no: jeNo, date: d.date, user: session?.user || "—", status: "مرحّل",
-      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref} على حساب المخزن المرتبط`,
+      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref} على حسابات المجموعات المرتبطة`,
       kind: "يومية", source: `سند ${d.type} مخزني`, lines: jeLines,
     } : null;
 
@@ -528,6 +552,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (c?.creditLimit && c.balance + total > c.creditLimit)
         return { ok: false, msg: `تجاوز الحد الائتماني للعميل ${c.name} (${Math.round(c.balance + total)} / ${c.creditLimit}) — رُفض الترحيل` };
     }
+    /* ── التكامل المحاسبي: قيد مزدوج متوازن يُولَّد تلقائياً على حسابات المجموعات ──
+       مبيعات : من ح/ الصندوق أو ذمم العملاء ← إلى إيرادات مبيعات المجموعات + ضريبةOutput
+       مشتريات: من ح/ مخزون المجموعات + ضريبةInput ← إلى ح/ الصندوق أو المورد
+       مرتجع  : من ح/ مرتجع مبيعات محلية + ضريبةOutput ← إلى ح/ الصندوق أو العميل  */
+    const grpAccOf = (itemId: string, field: "stockAccount" | "salesAccount", fallback: string) => {
+      const it: any = db.items.find((x) => x.id === itemId);
+      const g: any = it ? db.groups.find((x) => x.id === it.group) : undefined;
+      return (g?.[field] as string) || fallback;
+    };
+    const sub = inv.lines.reduce((a, l) => a + l.qty * l.price * (1 - (l.disc || 0) / 100), 0);
+    const vatVal = total - sub;
+    const agg: Record<string, number> = {};
+    inv.lines.forEach((l) => {
+      const acc = kind === "purchases"
+        ? grpAccOf(l.item, "stockAccount", settings.suspense.purchases)
+        : grpAccOf(l.item, "salesAccount", inv.payType === "نقدي" ? settings.suspense.salesCash : settings.suspense.salesCredit);
+      agg[acc] = (agg[acc] || 0) + l.qty * l.price * (1 - (l.disc || 0) / 100);
+    });
+    const L = (account: string, debit: number, credit: number) => ({ account, debit, credit, currency: "YER", rate: 1 });
+    const jeLines =
+      kind === "sales" ? [
+        L(inv.payType === "نقدي" ? settings.suspense.cash : settings.suspense.customers, total, 0),
+        ...Object.entries(agg).map(([a, val]) => L(a, 0, val)),
+        L(settings.suspense.vatOut, 0, vatVal),
+      ] :
+      kind === "purchases" ? [
+        ...Object.entries(agg).map(([a, val]) => L(a, val, 0)),
+        L(settings.suspense.vatIn, vatVal, 0),
+        L(inv.payType === "نقدي" ? settings.suspense.cash : settings.suspense.suppliers, 0, total),
+      ] : [
+        L("41311", sub, 0),
+        L(settings.suspense.vatOut, vatVal, 0),
+        L(inv.payType === "نقدي" ? settings.suspense.cash : settings.suspense.customers, 0, total),
+      ];
+    const jeNo = nextNo(settings.prefixes.JE);
+    const je: any = {
+      id: jeNo, no: jeNo, date: inv.date, user: session?.user || "—", status: "مرحّل",
+      desc: `قيد تلقائي — فاتورة ${kind === "sales" ? "مبيعات" : kind === "purchases" ? "مشتريات" : "مرتجع مبيعات"} ${inv.no} على حسابات المجموعات (${inv.payType})`,
+      kind: "يومية", source: kind === "sales" ? "فاتورة مبيعات" : kind === "purchases" ? "فاتورة مشتريات" : "فاتورة مرتجع مبيعات", lines: jeLines,
+    };
     setDb((old) => {
       const items = (kind === "purchases" || kind === "returns")
         ? old.items.map((it: AnyR) => {
@@ -550,12 +614,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const pList = old[partners as CollKey].map((p: AnyR) =>
         p.id === inv.partner && inv.payType === "آجل" ? { ...p, balance: p.balance + total } : p
       );
-      return { ...old, items, [coll]: [...old[coll], inv as any], [partners]: pList };
+      return { ...old, items, [coll]: [...old[coll], inv as any], [partners]: pList, journals: [...old.journals, je] };
     });
-    /* بث لحظي: الفاتورة وأثرها يصلان للمدير والمحاسب خلال ثوانٍ */
+    /* بث لحظي: الفاتورة وقيدها المحاسبي وأثرها المخزني تصل للمدير والمحاسب خلال ثوانٍ */
     const now = Date.now();
     const partnersColl = (kind === "purchases" ? "suppliers" : "customers") as CollKey;
-    const patches: { coll: string; rows: AnyR[] }[] = [{ coll, rows: [{ ...inv, updatedAt: now } as any] }];
+    const patches: { coll: string; rows: AnyR[] }[] = [{ coll, rows: [{ ...inv, updatedAt: now } as any] }, { coll: "journals", rows: [{ ...je, updatedAt: now }] }];
     if (inv.payType === "آجل") {
       const p: any = db[partnersColl].find((x) => x.id === inv.partner);
       if (p) patches.push({ coll: partnersColl, rows: [{ ...p, balance: p.balance + total, updatedAt: now }] });
@@ -568,8 +632,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     engine.publishPatches(patches);
     engine.bumpDeviceOps();
-    toast(`رُحّلت الفاتورة ${inv.no} (${inv.payType}) ووُلّد أثرها المحاسبي والمخزني`);
-    pushNotif({ kind: "info", title: `فاتورة ${kind === "sales" ? "مبيعات" : kind === "purchases" ? "مشتريات" : "مرتجع"}`, body: `${inv.no} — ${Math.round(total).toLocaleString("en-US")} ر.ي (${inv.payType})` });
+    toast(`رُحّلت الفاتورة ${inv.no} (${inv.payType}) — قيد متوازن ${jeNo} على حسابات المجموعات + أثر مخزني فوري`);
+    pushNotif({ kind: "info", title: `فاتورة ${kind === "sales" ? "مبيعات" : kind === "purchases" ? "مشتريات" : "مرتجع"}`, body: `${inv.no} — ${Math.round(total).toLocaleString("en-US")} ر.ي (${inv.payType}) • قيد ${jeNo}` });
     return { ok: true, msg: `رُحّلت الفاتورة ${inv.no}` };
   };
 

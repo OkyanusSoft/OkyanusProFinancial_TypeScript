@@ -69,20 +69,52 @@ const whConf = (app: ReturnType<typeof useApp>): DirConf => ({
   ],
 });
 
-const groupsConf = (_app?: ReturnType<typeof useApp>): DirConf => ({
-  coll: "groups", title: "دليل المجموعات", icon: "layers", prefix: "GR", importKey: "groups",
-  desc: "تصنيف الأصناف إلى مجموعات لتحليل التقارير ومراقبة المخزون",
-  fields: [
-    { k: "code", label: "الكود", req: true, uniq: true },
-    { k: "name", label: "اسم المجموعة", req: true, uniq: true },
-    { k: "note", label: "ملاحظات", span: true },
-  ],
-  cols: [
-    { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
-    { k: "name", label: "المجموعة", render: (r) => <b>{r.name}</b> },
-    { k: "note", label: "ملاحظات" },
-  ],
-});
+const accChip = (app: ReturnType<typeof useApp>, code: string | undefined, tone: string) => {
+  if (!code) return <span className="chip bg-[color-mix(in_srgb,var(--mute)_14%,transparent)] text-[var(--mute)]">غير مرتبط</span>;
+  const a = app.accounts.find((x) => x.code === code);
+  return (
+    <span className="chip font-num !text-[0.62rem]" dir="ltr" style={{ background: `color-mix(in srgb, ${tone} 11%, transparent)`, color: tone }} title={a?.name}>
+      {code}
+    </span>
+  );
+};
+
+const groupsConf = (app: ReturnType<typeof useApp>): DirConf => {
+  const accOpts = app.accounts.filter((a) => a.posting).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` }));
+  return {
+    coll: "groups", title: "دليل المجموعات", icon: "layers", prefix: "GR", importKey: "groups",
+    desc: "تصنيف الأصناف وربط كل مجموعة بحساباتها المحاسبية: حساب المخزون، تكلفة المبيعات، والمبيعات — تُستخدم تلقائياً في قيود الحركات والفواتير (نمط الأنظمة القوية)",
+    fields: [
+      { k: "code", label: "الكود", req: true, uniq: true },
+      { k: "name", label: "اسم المجموعة", req: true, uniq: true },
+      { k: "stockAccount", label: "حساب المخزون (دليل الحسابات)", type: "select", req: true, opts: accOpts, hint: "يُرحَّل إليه التوريد والمشتريات لهذه المجموعة" },
+      { k: "cogsAccount", label: "حساب تكلفة المبيعات", type: "select", req: true, opts: accOpts, hint: "يُرحَّل إليه الصرف والجرد السالب وتكلفة المبيعات" },
+      { k: "salesAccount", label: "حساب الإيراد (المبيعات)", type: "select", req: true, opts: accOpts, hint: "يُرحَّل إليه إيراد فواتير هذه المجموعة" },
+      { k: "note", label: "ملاحظات", span: true },
+    ],
+    cols: [
+      { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+      { k: "name", label: "المجموعة", render: (r) => <b>{r.name}</b> },
+      { k: "items", label: "الأصناف", num: true, render: (r) => <span className="font-num">{app.db.items.filter((i) => i.group === r.id).length}</span> },
+      { k: "stockAccount", label: "ح/ المخزون", render: (r) => accChip(app, r.stockAccount as string, "var(--brand)") },
+      { k: "cogsAccount", label: "ح/ التكلفة", render: (r) => accChip(app, r.cogsAccount as string, "var(--warn)") },
+      { k: "salesAccount", label: "ح/ المبيعات", render: (r) => accChip(app, r.salesAccount as string, "var(--good)") },
+      { k: "note", label: "ملاحظات" },
+    ],
+    extra: () => {
+      const linked = app.db.groups.filter((g) => g.stockAccount && g.cogsAccount && g.salesAccount).length;
+      return (
+        <div className="card p-3.5 mb-4 flex items-center gap-3" style={{ background: "color-mix(in srgb, var(--brand) 6%, var(--surface))" }}>
+          <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] shrink-0"><I n="book" size={17} /></span>
+          <p className="text-[0.74rem] font-bold text-soft leading-5">
+            <span className="font-num text-[var(--brand)]">{linked}</span> من <span className="font-num">{app.db.groups.length}</span> مجموعة مكتملة الربط المحاسبي —
+            كل حركة على أصناف المجموعة (توريد، صرف، بيع) تولّد قيدها على حسابات المجموعة تلقائياً، وتُجمَّع الفواتير متعددة المجموعات بسطر محاسبي لكل حساب.
+          </p>
+        </div>
+      );
+    },
+  };
+};
 
 const itemsConf = (app: ReturnType<typeof useApp>): DirConf => ({
   coll: "items", title: "دليل الأصناف", icon: "box", prefix: "IT", importKey: "items",
@@ -90,7 +122,7 @@ const itemsConf = (app: ReturnType<typeof useApp>): DirConf => ({
   fields: [
     { k: "code", label: "كود الصنف", req: true, uniq: true },
     { k: "name", label: "اسم الصنف", req: true, span: true },
-    { k: "group", label: "المجموعة", type: "select", req: true, opts: app.db.groups.map((g) => ({ v: g.id, l: g.name })) },
+    { k: "group", label: "المجموعة", type: "select", req: true, opts: app.db.groups.map((g) => ({ v: g.id, l: g.name })), hint: "القيود المحاسبية تُرحَّل إلى حسابات المجموعة المرتبطة بها" },
     { k: "unit", label: "الوحدة", type: "select", req: true, opts: app.db.units.map((u) => ({ v: u.id, l: u.name })) },
     { k: "barcode", label: "الباركود", hint: "يُولّد تلقائياً إن تُرك فارغاً", placeholder: "6210001011" },
     { k: "cost", label: "التكلفة", type: "number", req: true },

@@ -100,6 +100,9 @@ export const ACCOUNTS: Account[] = [
   { code: "414", name: "إيرادات الأنشطة المتخصصة", en: "Specialized Activities Revenue", level: 3, parent: "41", type: "إيرادات", posting: false },
   { code: "4141", name: "إيرادات أنشطة متنوعة", en: "Misc. Activities Revenue", level: 4, parent: "414", type: "إيرادات", posting: false },
   { code: "41411", name: "إيراد الأنشطة المتخصصة", en: "Specialized Activity Income", level: 5, parent: "4141", type: "إيرادات", posting: true },
+  /* حسابات ربط المجموعات — تكلفة ومبيعات الأجهزة والمعدات */
+  { code: "31512", name: "تكلفة مبيعات الأجهزة والمعدات", en: "Devices COGS", level: 5, parent: "3151", type: "مصروفات", posting: true },
+  { code: "41113", name: "مبيعات الأجهزة والمعدات", en: "Devices Sales", level: 5, parent: "4111", type: "إيرادات", posting: true },
 ];
 
 export const ANALYTICALS: AnyR[] = [
@@ -120,13 +123,17 @@ export const UNITS: AnyR[] = [
   { id: "UN-07", code: "UN-07", name: "شريط", symbol: "شريط", active: true },
 ];
 
+/* كل مجموعة مرتبطة بثلاثة حسابات في الدليل المحاسبي (نمط الأنظمة القوية):
+   stockAccount: يُستخدم في قيود التوريد والمشتريات (مخزون المجموعة)
+   cogsAccount : يُستخدم في قيود الصرف والجرد والتكلفة عند البيع
+   salesAccount: يُستخدم في قيود إيرادات المبيعات والمرتجعات                    */
 export const GROUPS: AnyR[] = [
-  { id: "GR-01", code: "GR-01", name: "مضادات حيوية", note: "تتطلب وصفة طبية" },
-  { id: "GR-02", code: "GR-02", name: "مسكنات وخافضات حرارة", note: "الأعلى دوراناً" },
-  { id: "GR-03", code: "GR-03", name: "فيتامينات ومكملات", note: "" },
-  { id: "GR-04", code: "GR-04", name: "مستلزمات طبية", note: "استهلاكية" },
-  { id: "GR-05", code: "GR-05", name: "محاليل وحقن", note: "تخزين بارد" },
-  { id: "GR-06", code: "GR-06", name: "أجهزة قياس", note: "أصول دورانية" },
+  { id: "GR-01", code: "GR-01", name: "مضادات حيوية", note: "تتطلب وصفة طبية", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-02", code: "GR-02", name: "مسكنات وخافضات حرارة", note: "الأعلى دوراناً", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-03", code: "GR-03", name: "فيتامينات ومكملات", note: "", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-04", code: "GR-04", name: "مستلزمات طبية", note: "استهلاكية", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-05", code: "GR-05", name: "محاليل وحقن", note: "تخزين بارد", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-06", code: "GR-06", name: "أجهزة قياس", note: "أصول دورانية — حسابات مستقلة للتكلفة والمبيعات", stockAccount: "11311", cogsAccount: "31512", salesAccount: "41113" },
 ];
 
 export const WAREHOUSES: AnyR[] = [
@@ -430,7 +437,7 @@ export const SIDEBAR_BGS = [
 /* قوالب الاستيراد (عينة CSV لكل دليل) */
 export const IMPORT_SAMPLES: Record<string, { headers: string[]; rows: string[][] }> = {
   units: { headers: ["الاسم", "الرمز"], rows: [["دستة", "دستة"], ["جرام", "جرام"]] },
-  groups: { headers: ["الاسم", "ملاحظات"], rows: [["أدوية أطفال", "جرعات خاصة"], ["مضادات التهاب", ""]] },
+  groups: { headers: ["الكود", "اسم المجموعة", "حساب المخزون", "حساب تكلفة المبيعات", "حساب الإيراد", "ملاحظات"], rows: [["GR-07", "أدوية أطفال", "11311", "31511", "41111", "جرعات خاصة"], ["GR-08", "مضادات التهاب", "11311", "31511", "41111", ""]] },
   warehouses: { headers: ["الاسم", "الأمين", "الحساب", "الموقع", "السعة"], rows: [["مخزن الطوارئ", "أمن المخازن", "11311", "بدروم المقر", "800 موقع"]] },
   items: { headers: ["الاسم", "المجموعة", "الوحدة", "التكلفة", "السعر", "أدنى", "أقصى"], rows: [["أسبرين 81mg", "GR-02", "UN-02", "450", "650", "300", "2500"]] },
   suppliers: { headers: ["الاسم", "الهاتف", "المدينة", "التصنيف"], rows: [["شركة الأدوية الوطنية", "01-200-100", "صنعاء", "أدوية"]] },
