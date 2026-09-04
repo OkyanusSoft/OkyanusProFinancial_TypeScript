@@ -124,16 +124,17 @@ export function Reveal({ children, className = "", delay = 0 }: { children: Reac
 }
 
 /* ═══════════════ النافذة المنبثقة الموحّدة (ERP Dialog) ═══════════════
-   تُعرض عبر Portal في document.body — خارج أي سياق تكديس أو تحويل
-   في الصفحة الأصلية، وبترتيب طبقات صريح:
-     الطبقة 0 : خلفية التعتيم (Backdrop)      — الأدنى
-     الطبقة 1 : إطار النافذة (Frame)          — الوسطى
-     الطبقة 2 : المحتوى الداخلي (Content)     — الأعلى، فوق الإطار دائماً
-   هندسة التمرير: الإطار flex-col بحد أقصى للارتفاع، والجسم
-   flex-1 min-h-0 overflow-y-auto فلا يخرج المحتوى عن الإطار أبداً   */
-export function Modal({ open, onClose, title, icon, children, subtitle }: {
+   تُعرض عبر Portal في document.body — خارج أي سياق تكديس أو تحويل.
+   ترتيب الطبقات الصريح (الأدنى ← الأعلى):
+     z-0  خلفية التعتيم (Backdrop)
+     z-10 إطار النافذة (Frame) — صلْب لا شفافية فيه
+     z-20 الترويسة + المحتوى + التذييل — فوق الإطار دائماً
+   هندسة التمرير: الإطار flex-col بحدود صارمة للارتفاع؛ الجسم
+   flex-1 min-h-0 overflow-y-auto — لا يخرج أي محتوى عن الإطار،
+   والتذييل (أزرار الإجراءات) مثبّت دائماً فلا يُحجب أبداً.        */
+export function Modal({ open, onClose, title, icon, children, subtitle, footer }: {
   open: boolean; onClose: () => void; title: string; icon?: string; children: ReactNode;
-  wide?: boolean; subtitle?: string;
+  wide?: boolean; subtitle?: string; footer?: ReactNode;
 }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -142,31 +143,38 @@ export function Modal({ open, onClose, title, icon, children, subtitle }: {
   }, [open, onClose]);
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[90] isolate flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
-      {/* ── الطبقة 0: خلفية التعتيم (الأدنى) ── */}
-      <div className="absolute inset-0 z-0 bg-[#03101c]/72 backdrop-blur-[5px] anim-fadein" onClick={onClose} aria-hidden="true" />
-      {/* ── الطبقة 1: إطار النافذة (الوسطى) ── */}
-      <div className="relative z-10 isolate card anim-modal w-full max-w-[940px] max-h-[min(90vh,860px)] min-h-[300px] flex flex-col overflow-hidden shadow-2xl ring-1 ring-black/10">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
+      {/* ── z-0: خلفية التعتيم (الطبقة الأدنى) ── */}
+      <div className="absolute inset-0 z-0 anim-fadein" style={{ background: "rgba(3,13,24,0.74)" }} onClick={onClose} aria-hidden="true" />
+      {/* ── z-10: إطار النافذة (الطبقة الوسطى) — خلفية صلبة ── */}
+      <div className="relative z-10 anim-modal flex w-full max-w-[940px] flex-col overflow-hidden rounded-2xl border border-line shadow-2xl"
+        style={{ background: "var(--surface)", maxHeight: "min(90vh, 860px)", minHeight: "280px" }}>
         {/* شريط لوني علوي مميز */}
         <div className="h-[5px] shrink-0" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent) 55%, var(--brand))" }} />
-        {/* الترويسة الموحّدة */}
-        <div className="relative z-20 flex items-center gap-3.5 px-6 py-4 border-b border-line bg-surface shrink-0">
+        {/* ── z-20: الترويسة (فوق الإطار) ── */}
+        <div className="relative z-20 flex shrink-0 items-center gap-3.5 border-b border-line px-6 py-4" style={{ background: "var(--surface)" }}>
           {icon ? (
-            <span className="w-11 h-11 rounded-xl grid place-items-center shrink-0 shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))", color: "var(--brandink)" }}>
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))", color: "var(--brandink)" }}>
               <I n={icon} size={21} />
             </span>
           ) : null}
-          <div className="flex-1 min-w-0">
-            <h3 className="font-display font-bold text-[1.15rem] leading-tight truncate">{title}</h3>
-            <p className="text-[0.7rem] font-bold text-mute mt-0.5 truncate">{subtitle || "النظام المالي المتكامل — أوكيانوس سوفت"}</p>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-display text-[1.15rem] font-bold leading-tight">{title}</h3>
+            <p className="mt-0.5 truncate text-[0.7rem] font-bold text-mute">{subtitle || "النظام المالي المتكامل — أوكيانوس سوفت"}</p>
           </div>
-          <span className="hidden sm:flex chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] !text-[0.6rem] font-num shrink-0" dir="ltr">v{SYSTEM.version}</span>
-          <button onClick={onClose} className="w-9 h-9 grid place-items-center rounded-lg text-mute hover:text-[var(--bad)] hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] transition-all hover:rotate-90 duration-200 shrink-0" aria-label="إغلاق">
+          <span className="chip hidden shrink-0 bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] font-num !text-[0.6rem] text-[var(--brand)] sm:flex" dir="ltr">v{SYSTEM.version}</span>
+          <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-mute transition-all duration-200 hover:rotate-90 hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] hover:text-[var(--bad)]" aria-label="إغلاق">
             <I n="x" size={18} />
           </button>
         </div>
-        {/* ── الطبقة 2: المحتوى الداخلي (الأعلى) — min-h-0 لإصلاح التمرير ── */}
-        <div className="relative z-20 flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5 bg-surface" style={{ scrollbarWidth: "thin" }}>{children}</div>
+        {/* ── z-20: المحتوى الداخلي (الأعلى) — التمرير الداخلي فقط ── */}
+        <div className="relative z-20 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5" style={{ background: "var(--surface)", scrollbarWidth: "thin" }}>{children}</div>
+        {/* ── z-20: تذييل الإجراءات المثبّت — لا يُحجب أبداً ── */}
+        {footer && (
+          <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-3.5" style={{ background: "var(--panel)" }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body

@@ -282,7 +282,11 @@ export function Directory({ conf }: { conf: DirConf }) {
 
       {/* نافذة الإضافة/التعديل */}
       {form && (
-        <Modal open onClose={() => setForm(null)} title={isNew ? `إضافة — ${conf.title}` : `تعديل — ${form[nameF] || form.id}`} icon={conf.icon} wide>
+        <Modal open onClose={() => setForm(null)} title={isNew ? `إضافة — ${conf.title}` : `تعديل — ${form[nameF] || form.id}`} icon={conf.icon} wide
+          footer={<>
+            <button className="btn btn-ghost" onClick={() => setForm(null)}>إلغاء</button>
+            <button className="btn btn-brand" onClick={submit}><I n="save" size={15} /> {isNew ? "حفظ السجل الجديد" : "حفظ التعديلات"}</button>
+          </>}>
           <div className="grid md:grid-cols-2 gap-3.5">
             {conf.fields.map((f) => (
               <div key={f.k} className={f.span ? "md:col-span-2" : ""}>
@@ -310,15 +314,17 @@ export function Directory({ conf }: { conf: DirConf }) {
               </div>
             ))}
           </div>
-          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-line">
-            <button className="btn btn-ghost" onClick={() => setForm(null)}>إلغاء</button>
-            <button className="btn btn-brand" onClick={submit}><I n="save" size={15} /> {isNew ? "حفظ السجل الجديد" : "حفظ التعديلات"}</button>
-          </div>
         </Modal>
       )}
 
       {/* تأكيد الحذف */}
-      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash" subtitle="حذف آمن — ينشر شاهد الحذف (Tombstone) لكل أجهزة الشبكة">
+      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash" subtitle="حذف آمن — ينشر شاهد الحذف (Tombstone) لكل أجهزة الشبكة"
+        footer={<>
+          <button className="btn btn-ghost !px-6" onClick={() => setDel(null)}>تراجع</button>
+          <button className="btn btn-danger !px-6" onClick={() => { if (del) app.remove(conf.coll, del.id, String(del[nameF] ?? del.id)); setDel(null); }}>
+            <I n="trash" size={15} /> نقل إلى السلة
+          </button>
+        </>}>
         <div className="max-w-xl mx-auto text-center py-2">
           <span className="w-16 h-16 rounded-2xl grid place-items-center mx-auto mb-4 anim-pop" style={{ background: "color-mix(in srgb, var(--bad) 12%, transparent)", color: "var(--bad)" }}>
             <I n="alert" size={30} />
@@ -327,17 +333,16 @@ export function Directory({ conf }: { conf: DirConf }) {
             سيُنقل السجل «{String(del?.[nameF] ?? del?.id)}» إلى <b className="text-[var(--bad)]">سلة المحذوفات</b> مع إيقاف أثره فوراً.
           </p>
           <p className="text-[0.76rem] text-mute font-medium mt-1.5 leading-6">يمكنك استعادته لاحقاً من زر السلة، أو حذفه نهائياً من هناك (صيانة البيانات).</p>
-          <div className="flex justify-center gap-2.5 mt-6">
-            <button className="btn btn-ghost !px-6" onClick={() => setDel(null)}>تراجع</button>
-            <button className="btn btn-danger !px-6" onClick={() => { if (del) app.remove(conf.coll, del.id, String(del[nameF] ?? del.id)); setDel(null); }}>
-              <I n="trash" size={15} /> نقل إلى السلة
-            </button>
-          </div>
         </div>
       </Modal>
 
       {/* معاينة الاستيراد */}
-      <Modal open={imp} onClose={() => { setImp(false); setPending(null); }} wide title="معاينة البيانات المستوردة" icon="down">
+      <Modal open={imp} onClose={() => { setImp(false); setPending(null); }} wide title="معاينة البيانات المستوردة" icon="down"
+        subtitle="فحص التكرار والسلامة قبل الدمج في القاعدة المركزية"
+        footer={pending ? <>
+          <button className="btn btn-ghost" onClick={() => { setImp(false); setPending(null); }}>إلغاء</button>
+          <button className="btn btn-brand" onClick={commitImport}><I n="check" size={15} /> تأكيد الاستيراد</button>
+        </> : undefined}>
         {pending && (
           <>
             <div className="flex items-center gap-2 mb-3 text-[0.78rem] font-bold text-soft">
@@ -361,10 +366,6 @@ export function Directory({ conf }: { conf: DirConf }) {
                   })}
                 </tbody>
               </table>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button className="btn btn-ghost" onClick={() => { setImp(false); setPending(null); }}>إلغاء</button>
-              <button className="btn btn-brand" onClick={commitImport}><I n="check" size={15} /> تأكيد الاستيراد</button>
             </div>
           </>
         )}
