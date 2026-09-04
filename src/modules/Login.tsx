@@ -12,7 +12,7 @@ export const LOGIN_BGS = [
 ];
 
 const COMPANIES = ["شركة أوكيانوس للتجارة والاستثمار", "مستشفى أوكيانوس التخصصي", "مجموعة المحيط الطبية"];
-const BRANCHES = ["المركز الرئيسي — صنعاء", "فرع عدن", "فرع المكلا"];
+const BRANCHES = ["المركز الرئيسي — صنعاء", "فرع عمران", "فرع ذمار"];
 const YEARS = ["2026", "2025", "2024"];
 
 export default function Login() {
@@ -31,7 +31,7 @@ export default function Login() {
     if (Object.keys(e).length) { toast("تعذّر الدخول — أكمل الحقول المميّزة", "err"); return; }
     setLoading(true);
     setTimeout(() => {
-      login({ company: f.company, branch: f.branch, user: f.user === "admin" ? "م. أروى المقطري" : f.user, year: f.year, role: f.user === "admin" ? "مدير النظام" : "محاسب رئيسي" });
+      login({ company: f.company, branch: f.branch, user: f.user === "admin" ? "م.وائل الشرفي" : f.user, year: f.year, role: f.user === "admin" ? "مدير النظام" : "محاسب رئيسي" });
       toast(`مرحباً بك في ${SYSTEM.name} — تم فتح السنة المالية ${f.year}`, "ok");
     }, 1100);
   };

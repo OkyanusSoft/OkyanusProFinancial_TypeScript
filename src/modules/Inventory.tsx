@@ -166,6 +166,7 @@ function printInvDoc(app: ReturnType<typeof useApp>, d: AnyR, docTitle: string) 
         ["الحساب المرتبط", whAcc(d.warehouse)],
         ...(d.toWarehouse ? [["إلى مخزن", `${whName(d.toWarehouse)} (${whAcc(d.toWarehouse)})`] as [string, string]] : []),
         ...((() => { const p = d.partyKind === "supplier" ? app.db.suppliers.find((s) => s.id === d.party) : d.partyKind === "customer" ? app.db.customers.find((c) => c.id === d.party) : d.partyKind === "cashbox" ? app.db.cashboxes.find((c) => c.id === d.party) : undefined; return p ? [[d.partyKind === "supplier" ? "المورد وحسابه" : d.partyKind === "customer" ? "العميل وحسابه" : "الصندوق وحسابه", `${p.name} (${(p as any).account || "—"})`] as [string, string]] : []; })()),
+        ...(d.clearAccount ? [["القيد المقابل (دائن)", `${app.accounts.find((a) => a.code === d.clearAccount)?.name || d.clearAccount} (ح/ ${d.clearAccount})`] as [string, string]] : []),
         ...(d.extRef ? [["مرجع خارجي", d.extRef] as [string, string]] : []),
         ["المستخدم", d.user],
         ["عدد الأصناف", String(lines.length)],
@@ -206,7 +207,14 @@ function MoveScreen({ kind }: { kind: string }) {
     { k: "date", label: "التاريخ", num: true, render: (d, a) => a.fmtDate(d.date) },
     ...(kind !== "tr" && kind !== "open" ? [{ k: "subType", label: "نوع الحركة", render: (d: any) => d.subType ? <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] !text-[0.62rem]">{d.subType}</span> : <span className="text-mute">—</span> }] as ColDef[] : []),
     { k: "warehouse", label: kind === "tr" ? "من مخزن → إلى" : "المخزن", render: (d) => <b>{whName(d.warehouse)}{kind === "tr" && <span className="text-[var(--brand)]"> ← {whName(d.toWarehouse)}</span>}</b> },
-    { k: "party", label: "الطرف المقابل", render: (d: any) => { const p = partyOf(d); return p ? <span className="font-bold text-[0.78rem]">{p.name}<span className="block text-[0.6rem] text-mute font-num" dir="ltr">ح/ {(p as any).account || "—"}</span></span> : <span className="text-mute">—</span>; } },
+    { k: "party", label: "الطرف المقابل", render: (d: any) => {
+      if (d.clearAccount) {
+        const ca = app.accounts.find((x) => x.code === d.clearAccount);
+        return <span className="font-bold text-[0.78rem]">{ca?.name || d.clearAccount}<span className="block text-[0.6rem] text-[var(--good)] font-num" dir="ltr">ح/ {d.clearAccount}</span></span>;
+      }
+      const p = partyOf(d);
+      return p ? <span className="font-bold text-[0.78rem]">{p.name}<span className="block text-[0.6rem] text-mute font-num" dir="ltr">ح/ {(p as any).account || "—"}</span></span> : <span className="text-mute">—</span>;
+    } },
     { k: "lines", label: "الأصناف", num: true, render: (d) => <span className="font-num">{d.lines.length}</span> },
     { k: "value", label: "القيمة بالتكلفة", num: true, render: (d, a) => <b className="font-num">{a.fmtN(d.lines.reduce((s: number, l: any) => s + l.qty * l.cost, 0))}</b> },
     { k: "user", label: "المستخدم" },
@@ -228,6 +236,7 @@ function MoveScreen({ kind }: { kind: string }) {
               <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)]">{view.type}</span>
               {view.subType && <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]">{view.subType}</span>}
               {(() => { const p = view.partyKind === "supplier" ? app.db.suppliers.find((s) => s.id === view.party) : view.partyKind === "customer" ? app.db.customers.find((c) => c.id === view.party) : view.partyKind === "cashbox" ? app.db.cashboxes.find((c) => c.id === view.party) : undefined; return p ? <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)]">{view.partyKind === "supplier" ? "المورد" : view.partyKind === "customer" ? "العميل" : "الصندوق"}: {p.name} (ح/ {(p as any).account || "—"})</span> : null; })()}
+              {view.clearAccount && (() => { const ca = app.accounts.find((a) => a.code === view.clearAccount); return <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)]">القيد المقابل: {ca?.name || view.clearAccount} (ح/ {view.clearAccount})</span>; })()}
               {view.extRef && <span className="chip bg-[color-mix(in_srgb,var(--mute)_12%,transparent)] text-[var(--soft)] font-num" dir="ltr">مرجع: {view.extRef}</span>}
               <Chip s={view.status} />
               <span className="text-[0.74rem] font-bold text-mute flex items-center gap-1"><I n="cal" size={13} /> {app.fmtDate(view.date)} • {view.user}</span>
@@ -289,6 +298,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const [toWh, setToWh] = useState(app.db.warehouses[1]?.id || "WH-02");
   const [sub, setSub] = useState(subs[0]?.id || "");
   const [party, setParty] = useState("");
+  const [clearAcc, setClearAcc] = useState("22111"); /* القيد الافتتاحي: رأس المال افتراضياً */
   const [extRef, setExtRef] = useState("");
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<{ item: string; qty: string; cost: string; counted?: string }[]>([{ item: app.db.items[0]?.id || "", qty: "10", cost: String(app.db.items[0]?.cost || 0) }]);
@@ -312,6 +322,11 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
     partyKind === "supplier" ? app.db.suppliers.find((s) => s.id === party)?.name :
     partyKind === "customer" ? app.db.customers.find((c) => c.id === party)?.name :
     partyKind === "cashbox" ? app.db.cashboxes.find((c) => c.id === party)?.name : undefined;
+  /* خيارات الحساب الدائن للقيد الافتتاحي: رأس المال وأرباح المرحلة أولاً ثم بقية الحسابات الترحيلية */
+  const clearOpts = [
+    ...app.accounts.filter((a) => a.code === "22111" || a.code === "22211"),
+    ...app.accounts.filter((a) => a.posting && a.code !== "22111" && a.code !== "22211"),
+  ];
   const debitSide =
     kind === "tr" ? accInfo(whAcc(toWh)) :
     kind === "iss" ? accInfo(grpAcc("cogsAccount", app.settings.suspense.cogs)) :
@@ -319,6 +334,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const creditSide =
     kind === "tr" ? accInfo(whAcc(wh)) :
     kind === "iss" ? accInfo(whAcc(wh)) :
+    kind === "open" ? accInfo(clearAcc) :
     kind === "adj" || kind === "count" ? accInfo(totalVal >= 0 ? grpAcc("stockAccount", whAcc(wh)) : whAcc(wh)) :
     accInfo(partyAccCode);
   const debitSideNeg = kind === "adj" || kind === "count" ? accInfo(app.settings.suspense.cogs) : null;
@@ -336,7 +352,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
       return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
     });
     if (kind === "count" && finalLines.every((l) => l.qty === 0)) { app.toast("لا توجد فروقات جرد — الكميات المعدودة مطابقة للنظام ✓", "ok"); onClose(); return; }
-    const res = app.addInvDoc({ id: ref, type: meta.label, date, ref, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined, user: app.session?.user || "—", status: "مرحّل", lines: finalLines, note, subType: sub || undefined, partyKind, party: party || undefined, extRef: extRef || undefined } as InvDoc);
+    const res = app.addInvDoc({ id: ref, type: meta.label, date, ref, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined, user: app.session?.user || "—", status: "مرحّل", lines: finalLines, note, subType: sub || undefined, partyKind, party: party || undefined, extRef: extRef || undefined, clearAccount: kind === "open" ? clearAcc : undefined } as InvDoc);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -356,6 +372,14 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
           <select className="select mt-1" value={wh} onChange={(e) => setWh(e.target.value)}>
             {app.db.warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select></label>
+        {kind === "open" && (
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft flex items-center gap-1">القيد المقابل (دائن) <b className="text-[var(--bad)]">*</b></span>
+            <select className="select mt-1" value={clearAcc} onChange={(e) => setClearAcc(e.target.value)}>
+              {clearOpts.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+            </select>
+            <span className="text-[0.64rem] font-bold text-[var(--brand)] mt-1 flex items-center gap-1"><I n="book" size={11} /> {clearAcc === "22111" ? "رأس المال — الافتتاح القياسي" : clearAcc === "22211" ? "أرباح سنوات سابقة (مرحلة)" : "حساب مقاصة / مخصص"}</span>
+          </label>
+        )}
         {kind === "tr" && (
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">إلى مخزن</span>
             <select className="select mt-1" value={toWh} onChange={(e) => setToWh(e.target.value)}>
@@ -397,6 +421,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
               </div>
             ) : <span className="text-[0.74rem] font-bold text-[var(--warn)]">اربط المخزن/المجموعة بحساب أولاً</span>}
             {kind === "iss" && <div className="text-[0.62rem] text-mute font-bold mt-1.5">حساب تكلفة مبيعات مجموعة الصنف الأول — متعدد المجموعات يولّد سطراً لكل حساب</div>}
+            {kind === "open" && <div className="text-[0.62rem] text-mute font-bold mt-1.5">قيمة الرصيد الافتتاحي للأصناف — متعدد المجموعات يولّد سطراً لكل حساب مخزون</div>}
           </div>
           <div className="p-3.5">
             <div className="text-[0.62rem] font-bold text-[var(--good)] mb-1.5 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)]" /> دائن — إلى حـ/</div>

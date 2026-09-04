@@ -29,12 +29,14 @@ type BusMsg =
   | { kind: "state"; from: string; key: string; val: unknown }
   | { kind: "hello"; from: string; device: DeviceRec };
 
-/* الإصدار v4: يُرفع عند أي تغيير هيكلي في شكل البيانات ليبدأ كل جهاز بحالة نظيفة متوافقة */
-const DB_KEY = "okyanus_ifs_central_v4";
-const ACT_KEY = "okyanus_ifs_activity_v4";
-const DEV_KEY = "okyanus_ifs_devices_v4";
-const TOMB_KEY = "okyanus_ifs_tombstones_v4";
-const GEN_KEY = "okyanus_ifs_gen_v4";
+/* الإصدار v6: يُرفع عند أي تغيير هيكلي في شكل البيانات ليبدأ كل جهاز بحالة نظيفة متوافقة
+   (v6 = تحديث البيانات الأساسية: الفروع عمران/ذمار، المخازن، الأقسام، والحسابات المرتبطة بها) */
+const V = "v6";
+const DB_KEY = `okyanus_ifs_central_${V}`;
+const ACT_KEY = `okyanus_ifs_activity_${V}`;
+const DEV_KEY = `okyanus_ifs_devices_${V}`;
+const TOMB_KEY = `okyanus_ifs_tombstones_${V}`;
+const GEN_KEY = `okyanus_ifs_gen_${V}`;
 const ID_KEY = "okyanus_ifs_device_id";
 
 const read = <T,>(key: string, fallback: T): T => {
@@ -117,8 +119,8 @@ class SyncEngine {
   publishSpec(key: string, rows: AnyR[]) { this.send({ kind: "spec", from: this.deviceId, key, rows, ts: Date.now() }); }
   publishAccounts(rows: AnyR[]) { this.send({ kind: "accounts", from: this.deviceId, rows, ts: Date.now() }); }
   /* حالات كاملة صغيرة (موارد بشرية/أصول) — تبث وتُحفظ مركزياً */
-  publishState(key: string, val: unknown) { write(`okyanus_ifs_state_${key}`, val); this.send({ kind: "state", from: this.deviceId, key, val }); }
-  loadJson<T>(key: string, fallback: T): T { return read<T>(`okyanus_ifs_state_${key}`, fallback); }
+  publishState(key: string, val: unknown) { write(`okyanus_ifs_state_${V}_${key}`, val); this.send({ kind: "state", from: this.deviceId, key, val }); }
+  loadJson<T>(key: string, fallback: T): T { return read<T>(`okyanus_ifs_state_${V}_${key}`, fallback); }
   publishTombstone(coll: string, id: string) {
     const tombs = read<{ coll: string; id: string; ts: number }[]>(TOMB_KEY, []);
     if (!tombs.some((t) => t.coll === coll && t.id === id)) {

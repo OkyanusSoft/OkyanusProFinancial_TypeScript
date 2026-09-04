@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../store";
-import { I, Chip } from "../ui";
+import { I, Chip, Modal, Empty } from "../ui";
 import { Directory, type DirConf } from "../crud";
 import { printDirectory } from "../print";
-import { SIDEBAR_BGS, SYSTEM, ACTIVITY_CATS, MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS } from "../data";
+import { SIDEBAR_BGS, SYSTEM, ACTIVITY_CATS, MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS, QUICK_CATALOG } from "../data";
 import type { Activity } from "../data";
 import { LOGIN_BGS } from "./Login";
 
@@ -11,10 +11,150 @@ export default function Admin() {
   const app = useApp();
   const p = app.route.path || "users";
   if (p === "users") return <UsersScreen />;
+  if (p === "quick") return <QuickScreen />;
   if (p === "monitor") return <MonitorScreen />;
   if (p === "settings") return <SettingsScreen />;
   if (p === "prefs") return <PrefsScreen />;
   return <UsersScreen />;
+}
+
+/* ═══════════ الوصول السريع — المفضلات واختصارات لوحة التحكم ═══════════ */
+const DEFAULT_QUICK = [
+  { id: "inv:base.items", module: "inv", path: "base.items", label: "دليل الأصناف", icon: "box" },
+  { id: "inv:mv.grn", module: "inv", path: "mv.grn", label: "سند توريد مخزني", icon: "down" },
+  { id: "sal:mv.inv", module: "sal", path: "mv.inv", label: "فواتير المبيعات", icon: "tag" },
+  { id: "pur:mv.inv", module: "pur", path: "mv.inv", label: "فواتير المشتريات", icon: "truck" },
+  { id: "gl:rep.trial", module: "gl", path: "rep.trial", label: "ميزان المراجعة", icon: "scale" },
+  { id: "pos:", module: "pos", path: "", label: "نقاط البيع", icon: "coins" },
+];
+
+function QuickScreen() {
+  const app = useApp();
+  const q = app.settings.quick || { visible: true, items: [] as typeof DEFAULT_QUICK };
+  const [picker, setPicker] = useState(false);
+  const [search, setSearch] = useState("");
+  const setQuick = (patch: Partial<typeof q>) => app.setSettings({ ...app.settings, quick: { ...q, ...patch } });
+  const added = new Set(q.items.map((i) => i.id));
+  const cat = QUICK_CATALOG.filter((c) => !search || c.label.includes(search) || c.group.includes(search));
+  const groups = Array.from(new Set(cat.map((c) => c.group)));
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="star" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">الوصول السريع</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">اختصاراتك المفضلة — تظهر كشريط احترافي أعلى لوحة التحكم وتُفتح بضغطة واحدة</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button className="btn btn-ghost" onClick={() => { setQuick({ items: DEFAULT_QUICK }); app.toast("استُعيدت الاختصارات الافتراضية", "info"); }}><I n="refresh" size={15} /> استعادة الافتراضي</button>
+          <button className="btn btn-danger" onClick={() => { setQuick({ items: [] }); app.toast("أُفرغت قائمة الوصول السريع", "err"); }}><I n="trash" size={15} /> مسح الكل</button>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          {/* مفتاح الإظهار */}
+          <div className="card p-4 flex items-center gap-4" style={{ background: "color-mix(in srgb, var(--brand) 6%, var(--surface))" }}>
+            <span className="w-10 h-10 rounded-xl grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] shrink-0"><I n="eye" size={19} /></span>
+            <div className="flex-1">
+              <div className="font-display font-bold text-[0.95rem]">إظهار الشريط في لوحة التحكم</div>
+              <div className="text-[0.7rem] font-bold text-mute mt-0.5">{q.visible ? "الشريط ظاهر الآن أعلى مؤشرات لوحة التحكم" : "الشريط مخفي — فعّله ليظهر مجدداً"}</div>
+            </div>
+            <PSwitch on={q.visible} onClick={() => { setQuick({ visible: !q.visible }); app.toast(q.visible ? "أُخفي شريط الوصول السريع من لوحة التحكم" : "أُظهر شريط الوصول السريع في لوحة التحكم", "ok"); }} />
+          </div>
+
+          {/* الاختصارات الحالية */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-bold text-base flex items-center gap-2"><I n="star" size={17} className="text-[var(--warn)]" /> الاختصارات الحالية <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num">{q.items.length}</span></h3>
+              <button className="btn btn-brand !py-2" onClick={() => setPicker(true)}><I n="plus" size={15} /> إضافة اختصار</button>
+            </div>
+            {q.items.length === 0 ? (
+              <div className="py-10 text-center">
+                <I n="star" size={40} className="mx-auto text-mute opacity-40 mb-3" />
+                <p className="text-[0.82rem] font-bold text-mute">لا اختصارات بعد — أضف شاشاتك المفضلة لتصل إليها من لوحة التحكم مباشرة</p>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-2.5">
+                {q.items.map((it) => (
+                  <div key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-line bg-panel/60 hover:border-[color-mix(in_srgb,var(--brand)_40%,transparent)] transition-all group">
+                    <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)] shrink-0"><I n={it.icon} size={17} /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-[0.82rem] truncate">{it.label}</div>
+                      <div className="text-[0.62rem] font-bold text-mute font-num" dir="ltr">{it.module}{it.path ? ` / ${it.path}` : ""}</div>
+                    </div>
+                    <button className="w-7 h-7 rounded-lg grid place-items-center text-mute opacity-0 group-hover:opacity-100 hover:text-[var(--bad)] hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] transition-all"
+                      onClick={() => { setQuick({ items: q.items.filter((x) => x.id !== it.id) }); app.toast(`أُزيل «${it.label}» من الوصول السريع`, "err"); }} aria-label="إزالة">
+                      <I n="x" size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* معاينة حية */}
+        <div className="card p-5 h-fit sticky top-20">
+          <h3 className="font-display font-bold text-sm mb-3 flex items-center gap-2"><I n="dash" size={16} className="text-[var(--brand)]" /> معاينة لوحة التحكم</h3>
+          <div className="rounded-xl border border-line bg-[var(--bg)] p-3">
+            <div className="h-8 rounded-lg mb-2" style={{ background: "linear-gradient(120deg, var(--side1), var(--side2))" }} />
+            {q.visible && q.items.length > 0 ? (
+              <div className="rounded-lg border border-[color-mix(in_srgb,var(--brand)_25%,transparent)] bg-[var(--surface)] p-2 mb-2">
+                <div className="text-[0.55rem] font-bold text-[var(--brand)] mb-1.5 flex items-center gap-1"><I n="star" size={9} /> الوصول السريع</div>
+                <div className="flex gap-1.5 overflow-hidden">
+                  {q.items.slice(0, 4).map((it) => (
+                    <span key={it.id} className="shrink-0 flex items-center gap-1 px-1.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--brand)_8%,transparent)] text-[0.55rem] font-bold text-soft">
+                      <I n={it.icon} size={9} className="text-[var(--brand)]" /> {it.label.split(" ").slice(0, 2).join(" ")}
+                    </span>
+                  ))}
+                  {q.items.length > 4 && <span className="text-[0.55rem] font-bold text-mute shrink-0">+{q.items.length - 4}</span>}
+                </div>
+              </div>
+            ) : <div className="rounded-lg border border-dashed border-line p-2 mb-2 text-center text-[0.58rem] font-bold text-mute">الشريط {q.visible ? "فارغ" : "مخفي"}</div>}
+            <div className="grid grid-cols-4 gap-1.5">{[0, 1, 2, 3].map((i) => <div key={i} className="h-7 rounded-md bg-[var(--surface)] border border-line" />)}</div>
+          </div>
+          <p className="text-[0.68rem] font-bold text-mute mt-3 leading-5 flex items-start gap-1.5"><I n="info" size={13} className="shrink-0 mt-0.5 text-[var(--brand)]" /> كل تغيير يُحفظ فوراً باسمك ويُبث لكل الأجهزة المتصلة.</p>
+        </div>
+      </div>
+
+      {/* منتقي الاختصارات */}
+      <Modal open={picker} onClose={() => setPicker(false)} wide icon="star" title="إضافة اختصار إلى الوصول السريع" subtitle="اختر أي شاشة من شاشات النظام — تُضاف فوراً وتظهر في لوحة التحكم">
+        <div className="relative w-80 max-w-full mb-4">
+          <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
+          <input className="input !ps-9" placeholder="ابحث عن شاشة أو نظام…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div className="space-y-4 max-h-[52vh] overflow-auto pe-1" style={{ scrollbarWidth: "thin" }}>
+          {groups.map((g) => (
+            <div key={g}>
+              <div className="text-[0.68rem] font-bold text-mute mb-2 flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[var(--brand)]" /> {g}</div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {cat.filter((c) => c.group === g).map((c) => {
+                  const isAdded = added.has(`${c.module}:${c.path}`);
+                  return (
+                    <button key={`${c.module}:${c.path}`} disabled={isAdded}
+                      onClick={() => { setQuick({ items: [...q.items, { id: `${c.module}:${c.path}`, module: c.module, path: c.path, label: c.label, icon: c.icon }] }); app.toast(`أُضيف «${c.label}» إلى الوصول السريع`, "ok"); }}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-start transition-all ${isAdded ? "border-line opacity-45 cursor-not-allowed" : "border-line hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)] hover:bg-[color-mix(in_srgb,var(--brand)_5%,transparent)] cursor-pointer"}`}>
+                      <span className="w-8 h-8 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] shrink-0"><I n={c.icon} size={15} /></span>
+                      <span className="font-bold text-[0.78rem] flex-1 truncate">{c.label}</span>
+                      {isAdded ? <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !text-[0.58rem] !py-0">مضاف ✓</span> : <I n="plus" size={15} className="text-[var(--brand)] shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {cat.length === 0 && <Empty msg="لا نتائج مطابقة للبحث" />}
+        </div>
+        <div className="flex justify-end mt-4 pt-3 border-t border-line">
+          <button className="btn btn-brand" onClick={() => setPicker(false)}><I n="check" size={15} /> تم</button>
+        </div>
+      </Modal>
+    </div>
+  );
 }
 
 /* ═══════════ المستخدمون والصلاحيات — وحدة الأمن الكاملة ═══════════ */

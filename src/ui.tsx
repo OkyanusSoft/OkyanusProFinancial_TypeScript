@@ -5,6 +5,7 @@ import { SYSTEM } from "./data";
 /* ═══════════════ أيقونات SVG مرسومة يدوياً ═══════════════ */
 const P: Record<string, ReactNode> = {
   dash: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.8" /><path d="M13.5 17h7M17 13.5v7" /></>,
+  star: <path d="m12 3.6 2.5 5.1 5.6.8-4 4 .9 5.6L12 16.4l-5 2.7.9-5.6-4-4 5.6-.8L12 3.6Z" />,
   box: <><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="M4 7l8 4 8-4M12 11v10" /><path d="M8 5l8 4" /></>,
   truck: <><path d="M2.5 6h11v10h-11zM13.5 9h4l3 3v4h-7" /><circle cx="6.5" cy="17.5" r="1.8" /><circle cx="16.5" cy="17.5" r="1.8" /></>,
   tag: <><path d="M3.5 12V4.5a1 1 0 0 1 1-1H12l8.5 8.5-7.5 7.5L3.5 12Z" /><circle cx="8" cy="8" r="1.6" /></>,
