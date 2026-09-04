@@ -97,6 +97,7 @@ const TAIL_TREE: NavNode[] = [
     id: "adm", label: "إدارة النظام", icon: "shield", leaves: [
       { id: "users", label: "المستخدمون والصلاحيات" },
       { id: "quick", label: "الوصول السريع" },
+      { id: "agent", label: "الوكيل الذكي — التشخيص الذاتي" },
       { id: "monitor", label: "مراقبة النشاط" },
       { id: "activation", label: "تفعيل الأنظمة والأنشطة" },
       { id: "settings", label: "الإعدادات العامة" },

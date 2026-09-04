@@ -131,6 +131,8 @@ interface AppCtx {
   /* النسخ الاحتياطي الحقيقي */
   downloadSnapshot: (label: string) => void;
   restoreSnapshot: (file: File) => void;
+  resetFactory: () => void;
+  clearTombstones: () => void;
   accounts: Account[];
   addAccount: (a: Account) => boolean;
   nextAccountCode: (parentCode: string) => string;
@@ -837,12 +839,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (Array.isArray(snap.accounts) && snap.accounts.length) setAccounts(snap.accounts);
         const g = gen + 1;
         setGen(g);
-        engine.publishGen(dbRef.current, `استعادة النسخة ${file.name}`);
+        engine.publishGen(restored, `استعادة النسخة ${file.name}`); /* بث القاعدة المستعادة نفسها — لا النسخة القديمة */
         logLocal("النظام", `استعادة نسخة احتياطية من «${file.name}» — ارتفع الجيل إلى ${g} وبُث الاستبدال لكل الأجهزة`, "update");
         toast("اكتملت الاستعادة وبُث جيل جديد — استُبدلت النسخ القديمة على كل الأجهزة", "ok");
       } catch { toast("ملف النسخة الاحتياطية غير صالح", "err"); }
     };
     rd.readAsText(file);
+  };
+
+  /* ── استعادة البيانات الافتراضية المعتمدة (إعادة تهيئة النظام لبداية نظيفة) ── */
+  const resetFactory = () => {
+    const fresh: Record<string, AnyR[]> = JSON.parse(JSON.stringify(initDb));
+    engine.saveDb(fresh);
+    setDb(fresh);
+    setAccounts(ACCOUNTS);
+    const spec: Record<string, AnyR[]> = {};
+    ACTIVITIES.forEach((a) => a.entities.forEach((e) => { spec[`${a.id}:${e.id}`] = JSON.parse(JSON.stringify(e.seed)); }));
+    setSpecData(spec);
+    setHrState({ employees: HR_EMPLOYEES, attendance: [], rewards: [], warnings: [], leaves: [], payroll: [] });
+    setAssetsState(ASSETS);
+    setTombstones([]);
+    setSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+    const g = gen + 1;
+    setGen(g);
+    engine.publishGen(fresh, "استعادة البيانات الافتراضية المعتمدة");
+    logLocal("النظام", `استعادة البيانات الافتراضية المعتمدة — ارتفع الجيل إلى ${g} وبُث الاستبدال الشامل لكل الأجهزة`, "update");
+    toast("استُعيدت البيانات الافتراضية المعتمدة كاملة — النظام يبدأ من جديد وجميع الأجهزة محدّثة", "ok");
+  };
+
+  /* ── مسح شواهد الحذف (صيانة) ── */
+  const clearTombstones = () => {
+    setTombstones([]);
+    engine.publishTombstonesClear?.();
+    toast("مُسحت شواهد الحذف من سجل الصيانة", "info");
   };
 
   /* ── التنسيقات ── */
@@ -1181,6 +1210,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setTombstones((t) => [{ id: `TB-${Date.now()}`, coll: m.coll as any, recordId: m.id, label: m.id, by: "جهاز بعيد", ts: Date.now() }, ...t]);
       engine.stats.tombstones++;
+    } else if (m.kind === "tombs-clear") {
+      setTombstones([]); /* مسح شواهد الحذف انتشر من جهاز آخر */
     } else if (m.kind === "gen") {
       setDb(m.db as Record<CollKey, AnyR[]>); /* استبدال شامل — الجيل انتشر */
       setGen(m.gen);
@@ -1227,7 +1258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       matrix, setModulePerm, setScreenPerm, setAllScreens, setReportAction, setButtonPerm, setAllButtons,
-      grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot,
+      grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot, resetFactory, clearTombstones,
       accounts, addAccount, nextAccountCode: (p: string) => nextAccountCode(accounts, p),
       activity, devices, tombstones, gen, deviceId, mergeSync, sync: engine, reinitCentral,
       activities: ACTIVITIES, activeSystems, primaryActivity, toggleSystem, setPrimaryActivity,
