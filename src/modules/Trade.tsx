@@ -248,7 +248,10 @@ function PurchaseRequests() {
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">الكمية</span><input type="number" className="input mt-1 font-num" value={f.qty} onChange={(e) => { const it: any = app.db.items.find((i) => i.id === f.item); const q = +e.target.value; setF({ ...f, qty: q, est: q * (it?.cost || 0) }); }} /></label>
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">القيمة التقديرية</span><input type="number" className="input mt-1 font-num" value={f.est} onChange={(e) => setF({ ...f, est: +e.target.value })} /></label>
           </div>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} /></label>
+          <label className="block">
+            <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
+            <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} placeholder="اذكر تفاصيل طلب الشراء والغرض منه…" />
+          </label>
         </div>
       </Modal>
     </div>
@@ -442,6 +445,12 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
               <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{partnerName(view.partner)}</span>
               <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{view.date} • مركز: {view.costCenter}</span>
             </div>
+            {view.note && (
+              <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] bg-[color-mix(in_srgb,var(--brand)_5%,var(--panel))] p-3.5 mb-3">
+                <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--brand)] mb-1"><I n="file" size={13} /> الــبيــان</div>
+                <p className="text-[0.84rem] font-bold text-soft leading-6">{view.note}</p>
+              </div>
+            )}
             <table className="tbl mb-3">
               <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th></tr></thead>
               <tbody>{view.lines.map((l: any, i: number) => (
@@ -493,7 +502,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
 function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean }) {
   const app = useApp();
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
-  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, lines: [] as { item: string; qty: number; price: number; disc: number }[] });
+  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, note: "", lines: [] as { item: string; qty: number; price: number; disc: number }[] });
   const rate = (app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1;
   const it: any = app.db.items.find((i: any) => i.id === s.item);
   const lineTotal = (l: any) => l.qty * l.price * (1 - l.disc / 100);
@@ -511,7 +520,7 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
     const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
     const no = app.nextNo(prefix);
-    const res = app.addInvoice(kind, { id: no, no, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0 });
+    const res = app.addInvoice(kind, { id: no, no, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -546,6 +555,13 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
           </div>
         </div>
       </div>
+
+      {/* حقل البيان — كبير وكامل العرض */}
+      <label className="block mb-4">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان</span>
+        <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={s.note} onChange={(e) => setS({ ...s, note: e.target.value })}
+          placeholder={kind === "purchases" ? "مثال: فاتورة مشتريات من المورد … بموجب أمر شراء رقم … تشمل أصناف …" : kind === "returns" ? "مثال: مرتجع مبيعات من العميل … بسبب …" : "مثال: فاتورة مبيعات للعميل … تشمل أصناف …"} />
+      </label>
 
       <div className="rounded-xl border border-line bg-panel p-3 mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 items-end">

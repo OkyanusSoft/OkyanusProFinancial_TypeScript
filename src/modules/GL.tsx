@@ -695,8 +695,13 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
 
   return (
     <Modal open onClose={onClose} wide icon="book" title={JE_META[kind].newLabel + " جديد — رقم يُولّد تلقائياً"} subtitle="قيد مزدوج متعدد العملات — يُرفض الترحيل إذا لم يتوازن المدين والدائن">
+      {/* حقل البيان — كبير وكامل العرض */}
+      <label className="block mb-3">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
+        <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)}
+          placeholder={kind === "قبض" ? "مثال: سند قبض دفعة من العميل … بموجب …" : kind === "صرف" ? "مثال: سند صرف سداد مستحقات للمورد …" : "اذكر وصف القيد وطبيعة الحركة المحاسبية بوضوح…"} />
+      </label>
       <div className="grid md:grid-cols-4 gap-3 mb-4">
-        <label className="block md:col-span-2"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span><input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">مركز التكلفة</span>
           <select className="select mt-1" value={cc} onChange={(e) => setCc(e.target.value)}>{app.db.costCenters.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>

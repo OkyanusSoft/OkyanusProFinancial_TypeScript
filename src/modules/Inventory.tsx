@@ -254,7 +254,12 @@ function MoveScreen({ kind }: { kind: string }) {
                 ))}
               </tbody>
             </table>
-            {view.note && <p className="text-[0.78rem] font-bold text-soft bg-panel rounded-lg p-3 border border-line">ملاحظة: {view.note}</p>}
+            {view.note && (
+              <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] bg-[color-mix(in_srgb,var(--brand)_5%,var(--panel))] p-3.5">
+                <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--brand)] mb-1"><I n="file" size={13} /> الــبيــان</div>
+                <p className="text-[0.84rem] font-bold text-soft leading-6">{view.note}</p>
+              </div>
+            )}
             <div className="flex flex-wrap justify-end gap-2 mt-4">
               {view.status !== "ملغي" && app.can("inv", "حذف") && (
                 <button className="btn btn-danger" onClick={() => { app.voidInvDoc(view.id); setView(null); }}><I n="undo" size={15} /> التراجع عن السند وعكس الكميات</button>
@@ -340,6 +345,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const debitSideNeg = kind === "adj" || kind === "count" ? accInfo(app.settings.suspense.cogs) : null;
 
   const save = () => {
+    if (!note.trim()) { app.toast("حقل «البيان» إلزامي — اذكر تفاصيل الحركة وسببها", "err"); return; }
     const valid = lines.filter((l) => l.item && (+l.qty || 0) !== 0);
     if (valid.length === 0) { app.toast("أضف سطراً واحداً على الأقل بكمية غير صفرية", "err"); return; }
     if (kind === "tr" && wh === toWh) { app.toast("مخزنا المصدر والوجهة متطابقان — اختر مخزنين مختلفين", "err"); return; }
@@ -400,9 +406,14 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         )}
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">مرجع خارجي</span>
           <input className="input mt-1 font-num" dir="ltr" value={extRef} onChange={(e) => setExtRef(e.target.value)} placeholder={kind === "grn" ? "رقم فاتورة المورد…" : kind === "iss" ? "رقم فاتورة العميل…" : "رقم مرجعي…"} /></label>
-        <label className={`block ${kind === "tr" || partyKind ? "" : "md:col-span-2"}`}><span className="text-[0.74rem] font-bold text-soft">ملاحظة / السبب</span>
-          <input className="input mt-1" value={note} onChange={(e) => setNote(e.target.value)} placeholder="سبب الحركة…" /></label>
       </div>
+
+      {/* حقل البيان — كبير وكامل العرض في كل السندات المخزنية */}
+      <label className="block mb-4">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
+        <textarea className="input !text-[0.86rem] !leading-6" rows={3} value={note} onChange={(e) => setNote(e.target.value)}
+          placeholder={kind === "grn" ? "مثال: توريد بضاعة من المورد … بموجب فاتورة رقم … تشمل أصناف …" : kind === "iss" ? "مثال: صرف بضاعة للعميل … بموجب فاتورة رقم …" : kind === "tr" ? "مثال: تحويل بضاعة من المخزن الرئيسي إلى مخزن الفرع لتغطية الطلب…" : kind === "open" ? "مثال: إثبات الأرصدة الافتتاحية للمخزون بداية السنة المالية…" : "اذكر تفاصيل الحركة وسببها بوضوح…"} />
+      </label>
 
       {/* المعاينة الحية للقيد المحاسبي — من حـ/ … إلى حـ/ … */}
       <div className="mb-3 rounded-xl border border-[color-mix(in_srgb,var(--brand)_25%,transparent)] overflow-hidden">
