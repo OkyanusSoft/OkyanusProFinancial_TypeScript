@@ -97,7 +97,7 @@ export default function Login() {
               <LogoMark size={54} variant="glass" />
               <div>
                 <div className="font-display font-bold text-[1.5rem] leading-tight">{SYSTEM.name}</div>
-                <div className="text-[0.62rem] font-bold text-white/60 tracking-wider font-num" dir="ltr">OKYANUS IFS — INTEGRATED FINANCIAL SYSTEM</div>
+                <div className="text-[0.62rem] font-bold text-white/60 tracking-[0.16em] font-num" dir="ltr">INTEGRATED FINANCIAL SYSTEM</div>
               </div>
             </div>
 
