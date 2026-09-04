@@ -196,3 +196,46 @@ export function ReportSheet({ title, subtitle, filters, summary, children, user 
     </div>
   );
 }
+
+/* ═══════ طابعة السجلات العامة — أي دليل أو قائمة سجلات ═══════ */
+export interface PrintCol { h: string; v: (r: any) => ReactNode; w?: string }
+export function printDirectory(user: string, opts: {
+  title: string; subtitle?: string; columns: PrintCol[]; rows: any[];
+  filters?: [string, ReactNode][]; summary?: [string, ReactNode][];
+}) {
+  openPrint(
+    <ReportSheet title={opts.title} subtitle={opts.subtitle || `سجل كامل — ${opts.rows.length} سجل`} filters={opts.filters} summary={opts.summary} user={user}>
+      <PTable
+        head={["#", ...opts.columns.map((c) => c.h)]}
+        widths={["4%", ...opts.columns.map((c) => c.w)]}
+        rows={opts.rows.map((r, i) => [<b key="i">{i + 1}</b>, ...opts.columns.map((c, j) => <span key={j}>{c.v(r)}</span>)])}
+      />
+    </ReportSheet>
+  );
+}
+
+/* ═══════ طابعة مستندات التعاملات — فاتورة / عرض سعر / طلب ═══════ */
+export function printTradeDoc(user: string, d: {
+  docTitle: string; no: string; date: string; status: string;
+  meta: [string, ReactNode][];
+  lines: { name: string; qty: number | string; price: number | string; disc?: number | string; total: number | string }[];
+  totals?: { items: [string, string][]; grand: [string, string] };
+  note?: string; signLabels?: string[]; fmtN: (n: number) => string;
+}) {
+  openPrint(
+    <DocSheet docTitle={d.docTitle} no={d.no} date={d.date} status={d.status} meta={d.meta}
+      totals={d.totals} note={d.note} user={user} signLabels={d.signLabels}>
+      <PTable
+        head={["الصنف / البيان", "الكمية", "سعر الوحدة", "خصم %", "الإجمالي"]}
+        widths={["44%", "11%", "15%", "10%", "20%"]}
+        rows={d.lines.map((l) => [
+          <b key="n">{l.name}</b>,
+          <span key="q" dir="ltr">{l.qty}</span>,
+          <span key="p" dir="ltr">{l.price}</span>,
+          <span key="d" dir="ltr">{l.disc ?? "—"}</span>,
+          <b key="t" dir="ltr">{l.total}</b>,
+        ])}
+      />
+    </DocSheet>
+  );
+}

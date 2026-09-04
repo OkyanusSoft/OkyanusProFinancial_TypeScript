@@ -1,6 +1,82 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useApp, vReq, vDup, vNum, parseCsv, sampleCsv, type CollKey, type AnyR } from "./store";
 import { I, Modal, Empty, Chip } from "./ui";
+import { printDirectory } from "./print";
+
+/* ═══════ شريط أزرار الإجراءات — محكوم بالصلاحيات ═══════
+   عرض / تعديل / حذف / طباعة / ترحيل / اعتماد              */
+export type ActKey = "view" | "edit" | "del" | "print" | "post" | "approve";
+const ACT_META: Record<ActKey, { icon: string; label: string; perm: string; cls: string; on: string }> = {
+  view: { icon: "eye", label: "عرض", perm: "عرض", cls: "border-line text-soft hover:text-[var(--brand)] hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)]", on: "" },
+  edit: { icon: "edit", label: "تعديل", perm: "تعديل", cls: "border-line text-soft hover:text-[var(--accent)] hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]", on: "" },
+  print: { icon: "print", label: "طباعة", perm: "طباعة", cls: "border-line text-soft hover:text-[var(--brand)] hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)]", on: "" },
+  post: { icon: "check", label: "ترحيل", perm: "ترحيل", cls: "border-[color-mix(in_srgb,var(--good)_30%,transparent)] text-[var(--good)] hover:bg-[color-mix(in_srgb,var(--good)_10%,transparent)]", on: "" },
+  approve: { icon: "shield", label: "اعتماد", perm: "اعتماد", cls: "border-[color-mix(in_srgb,var(--warn)_35%,transparent)] text-[var(--warn)] hover:bg-[color-mix(in_srgb,var(--warn)_10%,transparent)]", on: "" },
+  del: { icon: "trash", label: "حذف", perm: "حذف", cls: "border-line text-soft hover:text-[var(--bad)] hover:border-[color-mix(in_srgb,var(--bad)_45%,transparent)]", on: "" },
+};
+
+export function ActionBtn({ k, onClick, allowed = true, lockedTitle, title }: {
+  k: ActKey; onClick: () => void; allowed?: boolean; lockedTitle?: string; title?: string;
+}) {
+  const m = ACT_META[k];
+  if (!allowed) return (
+    <button disabled title={lockedTitle || `صلاحية «${m.perm}» غير مخوّلة لدورك`}
+      className="flex items-center gap-1 px-2 py-1 rounded-lg border border-line/60 text-[0.62rem] font-bold text-mute/60 cursor-not-allowed bg-panel/40">
+      <I n="lock" size={11} /> {m.label}
+    </button>
+  );
+  return (
+    <button onClick={onClick} title={title || m.label}
+      className={`flex items-center gap-1 px-2 py-1 rounded-lg border bg-surface text-[0.62rem] font-bold transition-all hover:scale-[1.04] active:scale-95 ${m.cls}`}>
+      <I n={m.icon} size={12} /> {m.label}
+    </button>
+  );
+}
+
+/* استنتاج وحدة الصلاحيات من المجموعة */
+const COLL_MOD: Record<string, string> = {
+  units: "inv", warehouses: "inv", groups: "inv", items: "inv",
+  suppliers: "pur", pcats: "pur", customers: "sal",
+  banks: "gl", payterms: "gl", costcenters: "gl", cashboxes: "gl",
+  users: "adm", roles: "adm", branches: "adm", departments: "adm",
+  employees: "hr",
+};
+
+/* نافذة بطاقة السجل (عرض فقط + طباعة) */
+export function RecordView({ open, onClose, title, icon, row, fields, onPrint, onEdit, canEdit }: {
+  open: boolean; onClose: () => void; title: string; icon: string; row: AnyR | null;
+  fields: FieldDef[]; onPrint: () => void; onEdit?: () => void; canEdit?: boolean;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={`بطاقة — ${row ? String(row.name || row.code || row.id) : ""}`} icon={icon} wide>
+      {row && (
+        <>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span className="chip bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)] font-num" dir="ltr">{String(row.code || row.id)}</span>
+            <span className="chip bg-[color-mix(in_srgb,var(--mute)_12%,transparent)] text-[var(--soft)]">{title}</span>
+            {row.status && <Chip s={String(row.status)} />}
+          </div>
+          <div className="grid md:grid-cols-2 gap-x-5 gap-y-3 rounded-xl border border-line bg-panel/50 p-4">
+            {fields.map((f) => {
+              const v = row[f.k];
+              const disp = f.type === "select" ? (f.opts?.find((o) => String(o.v) === String(v))?.l ?? String(v ?? "—")) : (v === "" || v === undefined || v === null ? "—" : String(v));
+              return (
+                <div key={f.k} className={f.span ? "md:col-span-2" : ""}>
+                  <div className="text-[0.64rem] font-bold text-mute">{f.label}</div>
+                  <div className={`text-[0.86rem] font-bold mt-0.5 ${f.type === "number" || f.k === "code" ? "font-num" : ""}`} dir={f.type === "number" ? "ltr" : undefined}>{disp}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-line">
+            {canEdit && onEdit && <button className="btn btn-ghost" onClick={onEdit}><I n="edit" size={15} /> تعديل السجل</button>}
+            <button className="btn btn-brand" onClick={onPrint}><I n="print" size={15} /> طباعة البطاقة</button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
 
 /* ════════════════════════════════════════════════════════════
    محرّك الأدلة العام (Directory Engine)
@@ -27,15 +103,29 @@ export function Directory({ conf }: { conf: DirConf }) {
   const rows = app.db[conf.coll];
   const idF = conf.idField || "code";
   const nameF = conf.nameField || "name";
+  const mod = (conf as any).module || COLL_MOD[conf.coll] || null;
+  const allowed = (perm: string) => !mod || app.can(mod, perm);
   const [q, setQ] = useState("");
   const [form, setForm] = useState<AnyR | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [del, setDel] = useState<AnyR | null>(null);
+  const [view, setView] = useState<AnyR | null>(null);
   const [imp, setImp] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<AnyR[] | null>(null);
+
+  /* طباعة السجل الكامل أو بطاقة سجل واحد (قيم خام قابلة للطباعة) */
+  const rawVal = (r: AnyR, k: string) => { const v = r[k]; if (v === true) return "نعم"; if (v === false) return "لا"; if (v === "" || v === undefined || v === null) return "—"; return String(v); };
+  const printCols = conf.cols.map((c) => ({ h: c.label, v: (r: AnyR) => rawVal(r, c.k) }));
+  const printLog = () => printDirectory(app.session?.user || "—", {
+    title: conf.title, subtitle: conf.desc, columns: printCols, rows: filtered,
+    summary: [["عدد السجلات", String(filtered.length)], ["المجموعة", conf.coll]],
+  });
+  const printCard = (r: AnyR) => printDirectory(app.session?.user || "—", {
+    title: `بطاقة — ${conf.title}`, subtitle: String(r[nameF] ?? r.id), columns: printCols, rows: [r],
+  });
 
   const filtered = useMemo(() => rows.filter((r) =>
     !q || Object.values(r).some((v) => String(v ?? "").toLowerCase().includes(q.toLowerCase()))
@@ -133,6 +223,9 @@ export function Directory({ conf }: { conf: DirConf }) {
           <button className="btn btn-ghost" onClick={() => app.exportCsv(conf.title, [conf.cols.map((c) => c.label), ...filtered.map((r) => conf.cols.map((c) => { const v = r[c.k]; return typeof v === "object" ? JSON.stringify(v) : String(v ?? ""); }))])}>
             <I n="xlsx" size={15} /> تصدير Excel
           </button>
+          {allowed("طباعة")
+            ? <button className="btn btn-soft" onClick={printLog} title="طباعة السجل الكامل (A4)"><I n="print" size={15} /> طباعة السجل</button>
+            : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة السجل</button>}
           {trashItems.length > 0 && (
             <button className="btn btn-ghost !text-[var(--bad)]" onClick={() => setShowTrash(true)}>
               <I n="trash" size={15} /> السلة ({trashItems.length})
@@ -159,7 +252,7 @@ export function Directory({ conf }: { conf: DirConf }) {
         {filtered.length === 0 ? <Empty msg="لا توجد سجلات مطابقة — أضف سجلاً جديداً أو استورد البيانات" /> : (
           <div className="overflow-x-auto">
             <table className="tbl min-w-[760px]">
-              <thead><tr>{conf.cols.map((c) => <th key={c.k} style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th style={{ width: "110px" }}>إجراءات</th></tr></thead>
+              <thead><tr>{conf.cols.map((c) => <th key={c.k} style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th style={{ width: "230px" }}>الإجراءات</th></tr></thead>
               <tbody>
                 {filtered.map((r) => (
                   <tr key={r.id}>
@@ -167,9 +260,11 @@ export function Directory({ conf }: { conf: DirConf }) {
                       <td key={c.k} className={c.num ? "font-num" : ""}>{c.render ? c.render(r, app) : String(r[c.k] ?? "—")}</td>
                     ))}
                     <td>
-                      <div className="flex gap-1">
-                        <button className="btn btn-ghost !p-1.5" title="تعديل" onClick={() => openEdit(r)}><I n="edit" size={14} /></button>
-                        <button className="btn btn-danger !p-1.5" title="حذف (ينقل إلى السلة)" onClick={() => setDel(r)}><I n="trash" size={14} /></button>
+                      <div className="flex flex-wrap gap-1 justify-start max-w-[240px]">
+                        <ActionBtn k="view" allowed={allowed("عرض")} onClick={() => setView(r)} />
+                        <ActionBtn k="edit" allowed={allowed("تعديل")} onClick={() => openEdit(r)} />
+                        <ActionBtn k="print" allowed={allowed("طباعة")} onClick={() => printCard(r)} title="طباعة بطاقة السجل" />
+                        <ActionBtn k="del" allowed={allowed("حذف")} onClick={() => setDel(r)} title="حذف (ينقل إلى السلة)" />
                       </div>
                     </td>
                   </tr>
@@ -179,6 +274,11 @@ export function Directory({ conf }: { conf: DirConf }) {
           </div>
         )}
       </div>
+
+      {/* بطاقة العرض */}
+      <RecordView open={!!view} onClose={() => setView(null)} title={conf.title} icon={conf.icon} row={view}
+        fields={conf.fields} onPrint={() => view && printCard(view)} canEdit={allowed("تعديل")}
+        onEdit={() => { if (view) { openEdit(view); setView(null); } }} />
 
       {/* نافذة الإضافة/التعديل */}
       {form && (
@@ -296,14 +396,21 @@ export function Directory({ conf }: { conf: DirConf }) {
   );
 }
 
-/* ═══════ شاشة حركات عامة (سندات) ═══════ */
-export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView, onPrint }: {
+/* ═══════ شاشة حركات عامة (سندات) — بأزرار عرض/طباعة/ترحيل/اعتماد/حذف محكومة بالصلاحيات ═══════ */
+export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView, onPrint, module, onPost, postLabel, onApprove, approveLabel, canVoid }: {
   docs: AnyR[]; title: string; desc: string; icon: string; cols: ColDef[];
   onNew?: () => void; newLabel?: string; onView?: (d: AnyR) => void; onPrint?: (d: AnyR) => void;
+  module?: string; onPost?: (d: AnyR) => void; postLabel?: string;
+  onApprove?: (d: AnyR) => void; approveLabel?: string; canVoid?: boolean;
 }) {
   const app = useApp();
+  const allowed = (perm: string) => !module || app.can(module, perm);
   const [q, setQ] = useState("");
   const filtered = docs.filter((d) => !q || JSON.stringify(d).toLowerCase().includes(q.toLowerCase()));
+  const voidDoc = (d: AnyR) => {
+    if (d.lines) app.voidInvDoc(d.id);
+    else if (d.no) { const kind = String(d.no).startsWith("PIN") ? "purchases" : String(d.no).startsWith("SRT") ? "returns" : "sales"; app.voidInvoice(kind as any, d.id); }
+  };
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -316,7 +423,12 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
             <p className="text-mute text-[0.82rem] font-medium mt-0.5">{desc}</p>
           </div>
         </div>
-        {onNew && <button className="btn btn-brand" onClick={onNew}><I n="plus" size={16} /> {newLabel || "سند جديد"}</button>}
+        <div className="flex items-center gap-2 flex-wrap">
+          {allowed("طباعة")
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `سجل — ${title}`, subtitle: desc, columns: cols.map((c) => ({ h: c.label, v: (r: AnyR) => String(r[c.k] ?? "—") })), rows: filtered, summary: [["عدد السندات", String(filtered.length)]] })}><I n="print" size={15} /> طباعة السجل</button>
+            : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة السجل</button>}
+          {onNew && <button className="btn btn-brand" onClick={onNew}><I n="plus" size={16} /> {newLabel || "سند جديد"}</button>}
+        </div>
       </div>
       <div className="relative w-80 max-w-full mb-3.5">
         <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
@@ -326,25 +438,25 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
         {filtered.length === 0 ? <Empty msg="لا توجد سندات — أنشئ سنداً جديداً برقم يُولّد تلقائياً" /> : (
           <div className="overflow-x-auto">
             <table className="tbl min-w-[760px]">
-              <thead><tr>{cols.map((c) => <th key={c.k}>{c.label}</th>)}<th style={{ width: "120px" }}>إجراءات</th></tr></thead>
+              <thead><tr>{cols.map((c) => <th key={c.k}>{c.label}</th>)}<th style={{ width: "280px" }}>الإجراءات</th></tr></thead>
               <tbody>
-                {filtered.map((d) => (
-                  <tr key={d.id}>
-                    {cols.map((c) => <td key={c.k} className={c.num ? "font-num" : ""}>{c.render ? c.render(d, app) : String(d[c.k] ?? "—")}</td>)}
-                    <td>
-                      <div className="flex gap-1">
-                        {onView && <button className="btn btn-ghost !p-1.5" title="عرض التفاصيل" onClick={() => onView(d)}><I n="eye" size={14} /></button>}
-                        {onPrint && <button className="btn btn-ghost !p-1.5" title="طباعة السند" onClick={() => onPrint(d)}><I n="print" size={14} /></button>}
-                        {d.status !== "ملغي" && d.status !== "ملغاة" && (
-                          <button className="btn btn-danger !p-1.5" title="إلغاء السند وعكس أثره" onClick={() => {
-                            if (d.lines) app.voidInvDoc(d.id);
-                            else if (d.no) { const kind = String(d.no).startsWith("PIN") ? "purchases" : String(d.no).startsWith("SRT") ? "returns" : "sales"; app.voidInvoice(kind as any, d.id); }
-                          }}><I n="undo" size={14} /></button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((d) => {
+                  const dead = d.status === "ملغي" || d.status === "ملغاة" || d.status === "مرفوض";
+                  return (
+                    <tr key={d.id}>
+                      {cols.map((c) => <td key={c.k} className={c.num ? "font-num" : ""}>{c.render ? c.render(d, app) : String(d[c.k] ?? "—")}</td>)}
+                      <td>
+                        <div className="flex flex-wrap gap-1 justify-start max-w-[280px]">
+                          {onView && <ActionBtn k="view" allowed={allowed("عرض")} onClick={() => onView(d)} />}
+                          {onPrint && <ActionBtn k="print" allowed={allowed("طباعة")} onClick={() => onPrint(d)} title="طباعة السند (A4)" />}
+                          {onPost && !dead && <ActionBtn k="post" allowed={allowed("ترحيل")} onClick={() => onPost(d)} title={postLabel || "ترحيل السند"} />}
+                          {onApprove && (d.status === "مسودة" || d.status === "بانتظار الموافقة" || d.status === "ساري") && <ActionBtn k="approve" allowed={allowed("اعتماد")} onClick={() => onApprove(d)} title={approveLabel || "اعتماد"} />}
+                          {canVoid !== false && !dead && <ActionBtn k="del" allowed={allowed("حذف")} onClick={() => voidDoc(d)} title="إلغاء السند وعكس أثره" />}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

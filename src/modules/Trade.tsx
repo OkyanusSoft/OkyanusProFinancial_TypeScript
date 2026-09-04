@@ -1,8 +1,41 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart } from "../ui";
-import { Directory, type DirConf } from "../crud";
+import { Directory, ActionBtn, type DirConf } from "../crud";
+import { printTradeDoc, printDirectory } from "../print";
 import type { Invoice } from "../data";
+
+/* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
+function printInvoiceDoc(app: ReturnType<typeof useApp>, inv: any, kind: "sales" | "purchases" | "returns") {
+  const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
+  const partner = partners.find((p: any) => p.id === inv.partner);
+  const sub = inv.lines.reduce((a: number, l: any) => a + l.qty * l.price * (1 - (l.disc || 0) / 100), 0);
+  const total = app.invoiceTotal(inv);
+  const docTitle = kind === "sales" ? "فاتورة مبيعات" : kind === "purchases" ? "فاتورة مشتريات" : "فاتورة مرتجع مبيعات";
+  const totalItems: [string, string][] = [
+    ["الإجمالي الفرعي", app.fmtN(sub) + " ر.ي"],
+    [`ضريبة القيمة المضافة ${inv.vat}%`, app.fmtN(total - sub) + " ر.ي"],
+  ];
+  if (inv.paid) { totalItems.push(["المدفوع", app.fmtN(inv.paid) + " ر.ي"], ["المتبقي", app.fmtN(total - (inv.paid || 0)) + " ر.ي"]); }
+  printTradeDoc(app.session?.user || "—", {
+    docTitle, no: inv.no, date: app.fmtDate(inv.date), status: inv.status,
+    meta: [
+      [kind === "purchases" ? "المورد" : "العميل", partner?.name || "—"],
+      ["طريقة السداد", inv.payType], ["العملة", inv.currency + (inv.rate !== 1 ? ` (سعر ${inv.rate})` : "")],
+      ["مركز التكلفة", inv.costCenter || "—"], ["المدفوع", app.fmtN(inv.paid || 0) + " ر.ي"],
+    ],
+    lines: inv.lines.map((l: any) => {
+      const it = app.db.items.find((i: any) => i.id === l.item);
+      return { name: it?.name || l.item, qty: app.fmtN(l.qty), price: app.fmtN(l.price), disc: l.disc || 0, total: app.fmtN(l.qty * l.price * (1 - (l.disc || 0) / 100)) };
+    }),
+    totals: {
+      items: totalItems,
+      grand: ["الإجمالي المستحق", app.fmtN(total) + " ر.ي"],
+    },
+    note: inv.note || "رُحّل قيد محاسبي متوازن تلقائياً في دفتر الأستاذ العام.",
+    fmtN: app.fmtN,
+  });
+}
 
 /* ═══════════ المشتريات والموردون ═══════════ */
 export function Purchases() {
@@ -103,9 +136,33 @@ const catsConf = (app: ReturnType<typeof useApp>): DirConf => ({
 });
 
 /* ═══════════ طلبات الشراء ═══════════ */
+function printRequestDoc(app: ReturnType<typeof useApp>, r: any) {
+  const it = app.db.items.find((i: any) => i.id === r.item);
+  printTradeDoc(app.session?.user || "—", {
+    docTitle: "طلب شراء", no: r.no, date: app.fmtDate(r.date), status: r.status, fmtN: app.fmtN,
+    meta: [["مقدم الطلب", r.requester], ["الصنف", it?.name || "—"], ["الحالة", r.status]],
+    lines: [{ name: r.desc || it?.name || "طلب شراء", qty: app.fmtN(r.qty), price: app.fmtN((r.est || 0) / (r.qty || 1)), disc: 0, total: app.fmtN(r.est || 0) }],
+    totals: { items: [["الكمية المطلوبة", app.fmtN(r.qty)]], grand: ["القيمة التقديرية", app.fmtN(r.est || 0) + " ر.ي"] },
+    signLabels: ["مقدم الطلب", "مسؤول المشتريات", "المعتمد / المدير المالي"],
+  });
+}
+
+function printQuoteDoc(app: ReturnType<typeof useApp>, q: any, partners: any[], isSale: boolean) {
+  const partner = partners.find((p: any) => p.id === q.partner);
+  printTradeDoc(app.session?.user || "—", {
+    docTitle: isSale ? "عرض سعر بيع" : "عرض سعر شراء", no: q.no, date: app.fmtDate(q.date), status: q.status, fmtN: app.fmtN,
+    meta: [[isSale ? "العميل" : "المورد", partner?.name || "—"], ["صالح حتى", app.fmtDate(q.valid)], ["الحالة", q.status]],
+    lines: [{ name: isSale ? "عرض سعر مبيعات للعميل" : "عرض سعر مشتريات من المورد", qty: "1", price: app.fmtN(q.total), disc: 0, total: app.fmtN(q.total) }],
+    totals: { items: [["تاريخ انتهاء الصلاحية", app.fmtDate(q.valid)]], grand: ["قيمة العرض الإجمالية", app.fmtN(q.total) + " ر.ي"] },
+    note: `هذا العرض ساري حتى ${app.fmtDate(q.valid)} ويشمل ضريبة القيمة المضافة.`,
+    signLabels: ["المسؤول التجاري", "العميل / المورد", "المدير المالي"],
+  });
+}
+
 function PurchaseRequests() {
   const app = useApp();
   const [show, setShow] = useState(false);
+  const [view, setView] = useState<any>(null);
   const [f, setF] = useState({ desc: "", qty: 10, est: 0, item: app.db.items[0]?.id || "" });
   const rows = app.db.requests;
   return (
@@ -135,12 +192,13 @@ function PurchaseRequests() {
                   <td className="font-num">{app.fmtN(r.est)}</td>
                   <td><Chip s={r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مرفوض" ? "مرفوض" : "بانتظار الموافقة"} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
                   <td>
-                    {r.status === "مسودة" && <div className="flex gap-1">
-                      <button className="btn btn-soft !py-1 !text-[0.7rem]" onClick={() => app.setRequestStatus(r.id, "معتمد")}>اعتماد</button>
-                      <button className="btn btn-danger !py-1 !text-[0.7rem]" onClick={() => app.setRequestStatus(r.id, "مرفوض")}>رفض</button>
-                    </div>}
-                    {r.status === "معتمد" && <button className="btn btn-brand !py-1 !text-[0.7rem]" onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات مسودة`, "ok"); }}>تحويل لفاتورة</button>}
-                    {(r.status === "تم التحويل" || r.status === "مرفوض") && <span className="text-[0.72rem] text-mute font-bold">—</span>}
+                    <div className="flex flex-wrap gap-1 justify-start max-w-[260px]">
+                      <ActionBtn k="view" allowed={app.can("pur", "عرض")} onClick={() => setView(r)} />
+                      <ActionBtn k="print" allowed={app.can("pur", "طباعة")} onClick={() => printRequestDoc(app, r)} title="طباعة الطلب (A4)" />
+                      {r.status === "مسودة" && <ActionBtn k="approve" allowed={app.can("pur", "اعتماد")} onClick={() => app.setRequestStatus(r.id, "معتمد")} title="اعتماد الطلب" />}
+                      {r.status === "معتمد" && <ActionBtn k="post" allowed={app.can("pur", "ترحيل")} onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }} title="تحويل إلى فاتورة" />}
+                      {r.status === "مسودة" && <ActionBtn k="del" allowed={app.can("pur", "حذف")} onClick={() => app.setRequestStatus(r.id, "مرفوض")} title="رفض الطلب" />}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -148,6 +206,29 @@ function PurchaseRequests() {
           </table>
         </div>
       </div>
+      <Modal open={!!view} onClose={() => setView(null)} title={`الطلب ${view?.no || ""}`} icon="clip" wide>
+        {view && (() => { const it = app.db.items.find((i: any) => i.id === view.item); return (
+          <>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Chip s={view.status === "معتمد" ? "مقبول" : view.status === "تم التحويل" ? "مرحّل" : view.status === "مرفوض" ? "مرفوض" : "بانتظار الموافقة"} />
+              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{view.requester}</span>
+              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{app.fmtDate(view.date)}</span>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4 rounded-xl border border-line bg-panel/50 p-4 mb-3">
+              <div><div className="text-[0.64rem] font-bold text-mute">الصنف المطلوب</div><div className="text-[0.9rem] font-bold mt-0.5">{it?.name || "—"}</div></div>
+              <div><div className="text-[0.64rem] font-bold text-mute">البيان</div><div className="text-[0.9rem] font-bold mt-0.5">{view.desc}</div></div>
+              <div><div className="text-[0.64rem] font-bold text-mute">الكمية</div><div className="text-[0.9rem] font-bold font-num mt-0.5">{app.fmtN(view.qty)}</div></div>
+              <div><div className="text-[0.64rem] font-bold text-mute">القيمة التقديرية</div><div className="text-[0.9rem] font-bold font-num text-[var(--brand)] mt-0.5">{app.fmtN(view.est)} ر.ي</div></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              {view.status === "مسودة" && app.can("pur", "اعتماد") && <button className="btn btn-soft" onClick={() => { app.setRequestStatus(view.id, "معتمد"); setView(null); }}><I n="shield" size={15} /> اعتماد</button>}
+              {view.status === "معتمد" && app.can("pur", "ترحيل") && <button className="btn btn-brand" onClick={() => { app.setRequestStatus(view.id, "تم التحويل"); app.toast(`حُوّل الطلب ${view.no} إلى فاتورة`, "ok"); setView(null); }}><I n="check" size={15} /> تحويل لفاتورة</button>}
+              {app.can("pur", "طباعة") && <button className="btn btn-brand" onClick={() => printRequestDoc(app, view)}><I n="print" size={15} /> طباعة</button>}
+            </div>
+          </>
+        ); })()}
+      </Modal>
+
       <Modal open={show} onClose={() => setShow(false)} title="طلب شراء جديد" icon="clip">
         <div className="space-y-3">
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">الصنف المطلوب</span>
@@ -207,12 +288,11 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
                 <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(q.total)}</td>
                 <td><Chip s={q.status} /></td>
                 <td>
-                  {q.status === "ساري" ? (
-                    <div className="flex gap-1">
-                      {isSale && <button className="btn btn-soft !py-1 !text-[0.7rem]" onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }}>قبول وتحويل</button>}
-                      <button className="btn btn-ghost !py-1 !text-[0.7rem]" onClick={() => app.setQuoteStatus(q.id, "مرفوض")}>رفض</button>
-                    </div>
-                  ) : <span className="text-[0.72rem] text-mute font-bold">—</span>}
+                  <div className="flex flex-wrap gap-1 justify-start max-w-[240px]">
+                    <ActionBtn k="print" allowed={app.can(isSale ? "sal" : "pur", "طباعة")} onClick={() => printQuoteDoc(app, q, partners, isSale)} title="طباعة العرض (A4)" />
+                    {q.status === "ساري" && isSale && <ActionBtn k="approve" allowed={app.can("sal", "اعتماد")} onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }} title="قبول وتحويل" />}
+                    {q.status === "ساري" && <ActionBtn k="del" allowed={app.can(isSale ? "sal" : "pur", "حذف")} onClick={() => app.setQuoteStatus(q.id, "مرفوض")} title="رفض العرض" />}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -254,6 +334,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
   const [q, setQ] = useState("");
 
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
+  const mod = kind === "purchases" ? "pur" : "sal";
   const all = app.db[kind] as any as Invoice[];
   let rows = all.filter((i) => {
     const p = partners.find((x: any) => x.id === i.partner)?.name || "";
@@ -333,10 +414,11 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
                   </td>}
                   <td><Chip s={inv.status} />{credit && inv.status === "مرحّلة" && rem < 1 && <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] ms-1">مسددة ✓</span>}</td>
                   <td>
-                    <div className="flex gap-1">
-                      <button className="btn btn-ghost !p-1.5" title="عرض" onClick={() => setView(inv)}><I n="eye" size={14} /></button>
-                      {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.7rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={13} /> سداد</button>}
-                      {inv.status !== "ملغاة" && !credit && <button className="btn btn-danger !p-1.5" title="إلغاء" onClick={() => app.voidInvoice(kind, inv.id)}><I n="undo" size={14} /></button>}
+                    <div className="flex flex-wrap gap-1 justify-start max-w-[260px]">
+                      <ActionBtn k="view" allowed={app.can(mod, "عرض")} onClick={() => setView(inv)} />
+                      <ActionBtn k="print" allowed={app.can(mod, "طباعة")} onClick={() => printInvoiceDoc(app, inv, kind)} title="طباعة الفاتورة (A4)" />
+                      {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.62rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={12} /> سداد</button>}
+                      {inv.status !== "ملغاة" && !credit && <ActionBtn k="del" allowed={app.can(mod, "حذف")} onClick={() => app.voidInvoice(kind, inv.id)} title="إلغاء الفاتورة وعكس أثرها" />}
                     </div>
                   </td>
                 </tr>
@@ -362,9 +444,13 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
                 <tr key={i}><td className="font-bold">{itemName(l.item)}</td><td className="font-num">{l.qty}</td><td className="font-num">{app.fmtN(l.price)}</td><td className="font-num">{l.disc}%</td><td className="font-num font-bold">{app.fmtN(l.qty * l.price * (1 - l.disc / 100))}</td></tr>
               ))}</tbody>
             </table>
-            <div className="flex justify-between items-center rounded-xl p-4 bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))] border border-line">
+            <div className="flex flex-wrap justify-between items-center gap-3 rounded-xl p-4 bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))] border border-line">
               <span className="text-[0.78rem] font-bold text-soft">ضريبة {view.vat}% مضمّنة • التكامل المحاسبي ولّد قيداً تلقائياً في دفتر الأستاذ</span>
               <span className="font-num font-bold text-xl text-[var(--brand)]">{app.fmtN(app.invoiceTotal(view))} ر.ي</span>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              {view.status !== "ملغاة" && app.can(mod, "حذف") && <button className="btn btn-danger" onClick={() => { app.voidInvoice(kind, view.id); setView(null); }}><I n="undo" size={15} /> إلغاء الفاتورة</button>}
+              {app.can(mod, "طباعة") && <button className="btn btn-brand" onClick={() => printInvoiceDoc(app, view, kind)}><I n="print" size={15} /> طباعة الفاتورة</button>}
             </div>
           </>
         )}
@@ -527,7 +613,9 @@ function PurchaseReports() {
         </div>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={() => app.exportCsv("تقرير_المشتريات_حسب_المورد", [["المورد", "الإجمالي"], ...bySup.map((s) => [s.label, s.value])])}><I n="xlsx" size={15} /> Excel</button>
-          <button className="btn btn-ghost" onClick={() => app.toast("تقرير PDF جاهز في قائمة الطباعة", "info")}><I n="pdf" size={15} /> PDF</button>
+          {app.can("pur", "طباعة")
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: "تقرير المشتريات التحليلي", subtitle: "المشتريات حسب المورد والفترة — الربع الأول 2026", columns: [{ h: "المورد", v: (r: any) => r.label }, { h: "الإجمالي (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: bySup, summary: [["إجمالي المشتريات", app.fmtN(bySup.reduce((a, s) => a + s.value, 0)) + " ر.ي"], ["عدد الموردين", String(bySup.length)]] })}><I n="print" size={15} /> طباعة / PDF</button>
+            : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة</button>}
         </div>
       </div>
       <div className="grid lg:grid-cols-2 gap-4">
@@ -581,6 +669,9 @@ function SalesReports() {
             <button key={id} onClick={() => setPeriod(id)} className={`btn !py-1.5 !px-4 ${period === id ? "btn-brand" : "btn-ghost"}`}>{l}</button>
           ))}
           <button className="btn btn-ghost" onClick={() => app.exportCsv(`تقرير_المبيعات_${period}`, [["الفترة", "القيمة"], ...(period === "daily" ? byDay : byMonth).map((d) => [d.label, d.value])])}><I n="xlsx" size={15} /> Excel</button>
+          {app.can("sal", "طباعة")
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `تقرير المبيعات ${period === "daily" ? "اليومي" : period === "monthly" ? "الشهري" : "السنوي"}`, subtitle: "الربع الأول 2026 — نقدي وآجل", columns: [{ h: "الفترة", v: (r: any) => r.label }, { h: "القيمة (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: period === "daily" ? byDay : byMonth, summary: [["إجمالي المبيعات", app.fmtN(cashV + creditV) + " ر.ي"], ["نقدي", app.fmtN(cashV) + " ر.ي"], ["آجل", app.fmtN(creditV) + " ر.ي"], ["نسبة التحصيل النقدي", Math.round((cashV / (cashV + creditV || 1)) * 100) + "%"]] })}><I n="print" size={15} /> طباعة / PDF</button>
+            : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة</button>}
         </div>
       </div>
       <div className="grid lg:grid-cols-3 gap-4">

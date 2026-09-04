@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../store";
 import { I, Chip } from "../ui";
 import { Directory, type DirConf } from "../crud";
+import { printDirectory } from "../print";
 import { SIDEBAR_BGS, SYSTEM, ACTIVITY_CATS, MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS } from "../data";
 import type { Activity } from "../data";
 import { LOGIN_BGS } from "./Login";
@@ -435,6 +436,9 @@ function MonitorScreen() {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /> بث مباشر — تحديث كل 4.5 ث</span>
           <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num !py-1.5" dir="ltr">جيل المزامنة #{app.gen}</span>
+          {app.can("adm", "طباعة") && (
+            <button className="btn btn-soft !py-1.5" onClick={() => printDirectory(app.session?.user || "—", { title: "سجل نشاط المستخدمين", subtitle: "بث العمليات اللحظي على أجهزة الشبكة", columns: [{ h: "الوقت", v: (r: Activity) => new Date(r.ts).toLocaleString("ar-EG") }, { h: "المستخدم", v: (r: Activity) => r.user }, { h: "الدور", v: (r: Activity) => r.role }, { h: "الجهاز", v: (r: Activity) => r.device }, { h: "الفئة", v: (r: Activity) => r.category }, { h: "العملية", v: (r: Activity) => r.action }], rows: app.activity.slice(0, 200), summary: [["إجمالي العمليات", String(app.activity.length)], ["أجهزة متصلة", String(app.devices.filter((d) => d.online).length + 1)]] })}><I n="print" size={14} /> طباعة السجل</button>
+          )}
         </div>
       </div>
 
