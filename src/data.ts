@@ -11,14 +11,14 @@ export const SYSTEM = {
   version: "3.0.0",
   short: "IFS",
   phone: "781 183 050",
-  cr: "السجل التجاري: 2019004571 — صنعاء",
-  site: "https://okyanussoft.online/",
+  cr: "اليمن — صنعاء",
+  site: "https://okyanus-soft.com/",
 };
 
 export type AnyR = Record<string, any> & { id: string };
 
 export interface Account { code: string; name: string; en: string; level: number; parent: string; type: "أصول" | "خصوم" | "إيرادات" | "مصروفات"; posting: boolean; analytical?: boolean }
-export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string }
+export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string; subType?: string; partyKind?: "supplier" | "customer" | "cashbox"; party?: string; extRef?: string }
 export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number }
 export interface JournalLine { account: string; debit: number; credit: number; currency: string; rate: number; analytical?: string; costCenter?: string }
 export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة"; source?: string }
@@ -42,7 +42,9 @@ export const ACCOUNTS: Account[] = [
   { code: "11213", name: "ذمم موظفين", en: "Staff Receivables", level: 5, parent: "1121", type: "أصول", posting: true },
   { code: "113", name: "المخزون", en: "Inventory", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1131", name: "مخزون البضائع", en: "Goods Stock", level: 4, parent: "113", type: "أصول", posting: false },
-  { code: "11311", name: "المخزون الرئيسي", en: "Main Stock", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11311", name: "المخزون الرئيسي — صنعاء", en: "Main Stock - Sanaa", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11312", name: "مخزون فرع عدن", en: "Aden Branch Stock", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11313", name: "مخزون العبور — المكلا", en: "Mukalla Transit Stock", level: 5, parent: "1131", type: "أصول", posting: true },
   { code: "114", name: "الأصول الثابتة", en: "Fixed Assets", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1141", name: "المعدات والتجهيزات", en: "Equipment", level: 4, parent: "114", type: "أصول", posting: false },
   { code: "11411", name: "معدات طبية", en: "Medical Equipment", level: 5, parent: "1141", type: "أصول", posting: true },
@@ -98,6 +100,9 @@ export const ACCOUNTS: Account[] = [
   { code: "414", name: "إيرادات الأنشطة المتخصصة", en: "Specialized Activities Revenue", level: 3, parent: "41", type: "إيرادات", posting: false },
   { code: "4141", name: "إيرادات أنشطة متنوعة", en: "Misc. Activities Revenue", level: 4, parent: "414", type: "إيرادات", posting: false },
   { code: "41411", name: "إيراد الأنشطة المتخصصة", en: "Specialized Activity Income", level: 5, parent: "4141", type: "إيرادات", posting: true },
+  /* حسابات ربط المجموعات — تكلفة ومبيعات الأجهزة والمعدات */
+  { code: "31512", name: "تكلفة مبيعات الأجهزة والمعدات", en: "Devices COGS", level: 5, parent: "3151", type: "مصروفات", posting: true },
+  { code: "41113", name: "مبيعات الأجهزة والمعدات", en: "Devices Sales", level: 5, parent: "4111", type: "إيرادات", posting: true },
 ];
 
 export const ANALYTICALS: AnyR[] = [
@@ -118,19 +123,23 @@ export const UNITS: AnyR[] = [
   { id: "UN-07", code: "UN-07", name: "شريط", symbol: "شريط", active: true },
 ];
 
+/* كل مجموعة مرتبطة بثلاثة حسابات في الدليل المحاسبي (نمط الأنظمة القوية):
+   stockAccount: يُستخدم في قيود التوريد والمشتريات (مخزون المجموعة)
+   cogsAccount : يُستخدم في قيود الصرف والجرد والتكلفة عند البيع
+   salesAccount: يُستخدم في قيود إيرادات المبيعات والمرتجعات                    */
 export const GROUPS: AnyR[] = [
-  { id: "GR-01", code: "GR-01", name: "مضادات حيوية", note: "تتطلب وصفة طبية" },
-  { id: "GR-02", code: "GR-02", name: "مسكنات وخافضات حرارة", note: "الأعلى دوراناً" },
-  { id: "GR-03", code: "GR-03", name: "فيتامينات ومكملات", note: "" },
-  { id: "GR-04", code: "GR-04", name: "مستلزمات طبية", note: "استهلاكية" },
-  { id: "GR-05", code: "GR-05", name: "محاليل وحقن", note: "تخزين بارد" },
-  { id: "GR-06", code: "GR-06", name: "أجهزة قياس", note: "أصول دورانية" },
+  { id: "GR-01", code: "GR-01", name: "مضادات حيوية", note: "تتطلب وصفة طبية", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-02", code: "GR-02", name: "مسكنات وخافضات حرارة", note: "الأعلى دوراناً", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-03", code: "GR-03", name: "فيتامينات ومكملات", note: "", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-04", code: "GR-04", name: "مستلزمات طبية", note: "استهلاكية", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-05", code: "GR-05", name: "محاليل وحقن", note: "تخزين بارد", stockAccount: "11311", cogsAccount: "31511", salesAccount: "41111" },
+  { id: "GR-06", code: "GR-06", name: "أجهزة قياس", note: "أصول دورانية — حسابات مستقلة للتكلفة والمبيعات", stockAccount: "11311", cogsAccount: "31512", salesAccount: "41113" },
 ];
 
 export const WAREHOUSES: AnyR[] = [
-  { id: "WH-01", code: "WH-01", name: "المخزن الرئيسي — صنعاء", keeper: "عادل الحميري", location: "حزيز، المنطقة الصناعية", capacity: "12,000 موقع", active: true },
-  { id: "WH-02", code: "WH-02", name: "مخزن الفرع — عدن", keeper: "سميرة النجار", location: "المعلا، شارع الملكة أروى", capacity: "4,500 موقع", active: true },
-  { id: "WH-03", code: "WH-03", name: "مخزن العبور — المكلا", keeper: "فهد باشراحيل", location: "خور المكلا", capacity: "2,200 موقع", active: true },
+  { id: "WH-01", code: "WH-01", name: "المخزن الرئيسي — صنعاء", keeper: "عادل الحميري", location: "حزيز، المنطقة الصناعية", capacity: "12,000 موقع", active: true, account: "11311" },
+  { id: "WH-02", code: "WH-02", name: "مخزن الفرع — عدن", keeper: "سميرة النجار", location: "المعلا، شارع الملكة أروى", capacity: "4,500 موقع", active: true, account: "11312" },
+  { id: "WH-03", code: "WH-03", name: "مخزن العبور — المكلا", keeper: "فهد باشراحيل", location: "خور المكلا", capacity: "2,200 موقع", active: true, account: "11313" },
 ];
 
 export const ITEMS: AnyR[] = [
@@ -401,6 +410,11 @@ export const REPORTS: { id: string; name: string; module: string }[] = [
   { id: "rep-inv-card", name: "بطاقة صنف", module: "inv" },
   { id: "rep-inv-watch", name: "مراقبة المخزون", module: "inv" },
   { id: "rep-inv-count", name: "جرد المخزون", module: "inv" },
+  { id: "rep-inv-journal", name: "سجل حركة السندات", module: "inv" },
+  { id: "rep-inv-valuation", name: "تقييم المخزون", module: "inv" },
+  { id: "rep-inv-reorder", name: "اقتراحات إعادة الطلب", module: "inv" },
+  { id: "rep-inv-transfers", name: "سجل التحويلات بين المخازن", module: "inv" },
+  { id: "rep-inv-slow", name: "الأصناف الراكدة", module: "inv" },
   { id: "rep-pur", name: "تقارير المشتريات", module: "pur" },
   { id: "rep-sal", name: "تقارير المبيعات (يومي/شهري/سنوي)", module: "sal" },
   { id: "rep-gl-stmt", name: "كشف حساب", module: "gl" },
@@ -428,8 +442,8 @@ export const SIDEBAR_BGS = [
 /* قوالب الاستيراد (عينة CSV لكل دليل) */
 export const IMPORT_SAMPLES: Record<string, { headers: string[]; rows: string[][] }> = {
   units: { headers: ["الاسم", "الرمز"], rows: [["دستة", "دستة"], ["جرام", "جرام"]] },
-  groups: { headers: ["الاسم", "ملاحظات"], rows: [["أدوية أطفال", "جرعات خاصة"], ["مضادات التهاب", ""]] },
-  warehouses: { headers: ["الاسم", "الأمين", "الموقع", "السعة"], rows: [["مخزن الطوارئ", "أمن المخازن", "بدروم المقر", "800 موقع"]] },
+  groups: { headers: ["الكود", "اسم المجموعة", "حساب المخزون", "حساب تكلفة المبيعات", "حساب الإيراد", "ملاحظات"], rows: [["GR-07", "أدوية أطفال", "11311", "31511", "41111", "جرعات خاصة"], ["GR-08", "مضادات التهاب", "11311", "31511", "41111", ""]] },
+  warehouses: { headers: ["الاسم", "الأمين", "الحساب", "الموقع", "السعة"], rows: [["مخزن الطوارئ", "أمن المخازن", "11311", "بدروم المقر", "800 موقع"]] },
   items: { headers: ["الاسم", "المجموعة", "الوحدة", "التكلفة", "السعر", "أدنى", "أقصى"], rows: [["أسبرين 81mg", "GR-02", "UN-02", "450", "650", "300", "2500"]] },
   suppliers: { headers: ["الاسم", "الهاتف", "المدينة", "التصنيف"], rows: [["شركة الأدوية الوطنية", "01-200-100", "صنعاء", "أدوية"]] },
   customers: { headers: ["الاسم", "الهاتف", "المدينة", "التصنيف", "حد الائتمان"], rows: [["صيدلية الأمل", "02-118-305", "عدن", "صيدليات", "100000"]] },

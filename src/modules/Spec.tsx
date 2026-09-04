@@ -115,7 +115,11 @@ export function ActivationScreen() {
 export function SpecModule({ activityId }: { activityId: string }) {
   const app = useApp();
   const act = app.activities.find((a) => a.id === activityId);
-  const [entId, setEntId] = useState(act?.entities[0]?.id || "");
+  /* يتزامن مع الورقة المختارة من القائمة الرئيسية (إعادة التركيب عند تغيير المسار) */
+  const [entId, setEntId] = useState(() => {
+    const fromRoute = app.route.path;
+    return (act?.entities.some((e) => e.id === fromRoute) && fromRoute) || act?.entities[0]?.id || "";
+  });
   if (!act) return <Empty msg="النظام غير معروف أو معطّل" />;
   const ent = act.entities.find((e) => e.id === entId) || act.entities[0];
   return (
@@ -256,7 +260,7 @@ function SpecEntityScreen({ act, ent }: { act: ActivityDef; ent: SpecEntity }) {
         </Modal>
       )}
 
-      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash">
+      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash" subtitle="حذف آمن — ينشر شاهد الحذف لكل أجهزة الشبكة">
         <p className="text-[0.84rem] font-bold leading-6">سيُحذف «{String(del?.name || del?.code || del?.id)}» من {ent.label} ويُعمَّم الحذف على كل الأجهزة عبر سجل الشواهد.</p>
         <div className="flex justify-end gap-2 mt-5">
           <button className="btn btn-ghost" onClick={() => setDel(null)}>تراجع</button>

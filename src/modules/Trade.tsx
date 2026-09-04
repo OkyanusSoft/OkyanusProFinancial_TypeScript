@@ -206,7 +206,12 @@ function PurchaseRequests() {
           </table>
         </div>
       </div>
-      <Modal open={!!view} onClose={() => setView(null)} title={`الطلب ${view?.no || ""}`} icon="clip" wide>
+      <Modal open={!!view} onClose={() => setView(null)} title={`الطلب ${view?.no || ""}`} icon="clip" wide subtitle="تفاصيل طلب الشراء — الاعتماد والتحويل والطباعة"
+        footer={view ? <>
+          {view.status === "مسودة" && app.can("pur", "اعتماد") && <button className="btn btn-soft" onClick={() => { app.setRequestStatus(view.id, "معتمد"); setView(null); }}><I n="shield" size={15} /> اعتماد</button>}
+          {view.status === "معتمد" && app.can("pur", "ترحيل") && <button className="btn btn-brand" onClick={() => { app.setRequestStatus(view.id, "تم التحويل"); app.toast(`حُوّل الطلب ${view.no} إلى فاتورة`, "ok"); setView(null); }}><I n="check" size={15} /> تحويل لفاتورة</button>}
+          {app.can("pur", "طباعة") && <button className="btn btn-brand" onClick={() => printRequestDoc(app, view)}><I n="print" size={15} /> طباعة</button>}
+        </> : undefined}>
         {view && (() => { const it = app.db.items.find((i: any) => i.id === view.item); return (
           <>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -214,22 +219,26 @@ function PurchaseRequests() {
               <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{view.requester}</span>
               <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{app.fmtDate(view.date)}</span>
             </div>
-            <div className="grid md:grid-cols-2 gap-4 rounded-xl border border-line bg-panel/50 p-4 mb-3">
+            <div className="grid md:grid-cols-2 gap-4 rounded-xl border border-line bg-panel/50 p-4">
               <div><div className="text-[0.64rem] font-bold text-mute">الصنف المطلوب</div><div className="text-[0.9rem] font-bold mt-0.5">{it?.name || "—"}</div></div>
               <div><div className="text-[0.64rem] font-bold text-mute">البيان</div><div className="text-[0.9rem] font-bold mt-0.5">{view.desc}</div></div>
               <div><div className="text-[0.64rem] font-bold text-mute">الكمية</div><div className="text-[0.9rem] font-bold font-num mt-0.5">{app.fmtN(view.qty)}</div></div>
               <div><div className="text-[0.64rem] font-bold text-mute">القيمة التقديرية</div><div className="text-[0.9rem] font-bold font-num text-[var(--brand)] mt-0.5">{app.fmtN(view.est)} ر.ي</div></div>
             </div>
-            <div className="flex justify-end gap-2">
-              {view.status === "مسودة" && app.can("pur", "اعتماد") && <button className="btn btn-soft" onClick={() => { app.setRequestStatus(view.id, "معتمد"); setView(null); }}><I n="shield" size={15} /> اعتماد</button>}
-              {view.status === "معتمد" && app.can("pur", "ترحيل") && <button className="btn btn-brand" onClick={() => { app.setRequestStatus(view.id, "تم التحويل"); app.toast(`حُوّل الطلب ${view.no} إلى فاتورة`, "ok"); setView(null); }}><I n="check" size={15} /> تحويل لفاتورة</button>}
-              {app.can("pur", "طباعة") && <button className="btn btn-brand" onClick={() => printRequestDoc(app, view)}><I n="print" size={15} /> طباعة</button>}
-            </div>
           </>
         ); })()}
       </Modal>
 
-      <Modal open={show} onClose={() => setShow(false)} title="طلب شراء جديد" icon="clip">
+      <Modal open={show} onClose={() => setShow(false)} title="طلب شراء جديد" icon="clip" subtitle="يُحفظ كمسودة ثم يمر بدورة اعتماد وتحويل"
+        footer={<>
+          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
+          <button className="btn btn-brand" onClick={() => {
+            if (!f.desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
+            const no = app.nextNo(app.settings.prefixes.PR);
+            app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, status: "مسودة" });
+            app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
+          }}><I n="check" size={15} /> حفظ الطلب (مسودة)</button>
+        </>}>
         <div className="space-y-3">
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">الصنف المطلوب</span>
             <select className="select mt-1" value={f.item} onChange={(e) => { const it: any = app.db.items.find((i) => i.id === e.target.value); setF({ ...f, item: e.target.value, desc: `طلب شراء — ${it?.name || ""}`, est: (f.qty || 0) * (it?.cost || 0) }); }}>
@@ -240,15 +249,6 @@ function PurchaseRequests() {
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">القيمة التقديرية</span><input type="number" className="input mt-1 font-num" value={f.est} onChange={(e) => setF({ ...f, est: +e.target.value })} /></label>
           </div>
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} /></label>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
-          <button className="btn btn-brand" onClick={() => {
-            if (!f.desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
-            const no = app.nextNo(app.settings.prefixes.PR);
-            app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, status: "مسودة" });
-            app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
-          }}><I n="check" size={15} /> حفظ الطلب (مسودة)</button>
         </div>
       </Modal>
     </div>
@@ -299,7 +299,16 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
           </tbody>
         </table>
       </div></div>
-      <Modal open={show} onClose={() => setShow(false)} title={`عرض سعر ${kind} جديد`} icon="receipt">
+      <Modal open={show} onClose={() => setShow(false)} title={`عرض سعر ${kind} جديد`} icon="receipt" subtitle="عرض سعر بصلاحية زمنية — قابل للقبول والتحويل"
+        footer={<>
+          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
+          <button className="btn btn-brand" onClick={() => {
+            if (!f.partner) { app.toast("اختر الطرف أولاً", "err"); return; }
+            const no = app.nextNo(isSale ? app.settings.prefixes.QT : "PQ");
+            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "ساري" });
+            app.toast(`أُنشئ العرض ${no} — ساري حتى ${f.valid}`, "ok"); setShow(false);
+          }}><I n="check" size={15} /> إصدار العرض</button>
+        </>}>
         <div className="space-y-3">
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">{isSale ? "العميل" : "المورد"}</span>
             <select className="select mt-1" value={f.partner} onChange={(e) => setF({ ...f, partner: e.target.value })}>
@@ -309,15 +318,6 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">صالح حتى</span><input type="date" className="input mt-1 font-num" value={f.valid} onChange={(e) => setF({ ...f, valid: e.target.value })} /></label>
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">قيمة العرض</span><input type="number" className="input mt-1 font-num" value={f.total} onChange={(e) => setF({ ...f, total: +e.target.value })} /></label>
           </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
-          <button className="btn btn-brand" onClick={() => {
-            if (!f.partner) { app.toast("اختر الطرف أولاً", "err"); return; }
-            const no = app.nextNo(isSale ? app.settings.prefixes.QT : "PQ");
-            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "ساري" });
-            app.toast(`أُنشئ العرض ${no} — ساري حتى ${f.valid}`, "ok"); setShow(false);
-          }}><I n="check" size={15} /> إصدار العرض</button>
         </div>
       </Modal>
     </div>
@@ -430,7 +430,11 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
 
       {show && <InvoiceBuilder kind={kind} onClose={() => setShow(false)} defaultCredit={credit} />}
 
-      <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`}>
+      <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`} subtitle="عرض الفاتورة — البنود والضريبة مع الطباعة A4 والإلغاء"
+        footer={view ? <>
+          {view.status !== "ملغاة" && app.can(mod, "حذف") && <button className="btn btn-danger" onClick={() => { app.voidInvoice(kind, view.id); setView(null); }}><I n="undo" size={15} /> إلغاء الفاتورة</button>}
+          {app.can(mod, "طباعة") && <button className="btn btn-brand" onClick={() => printInvoiceDoc(app, view, kind)}><I n="print" size={15} /> طباعة الفاتورة</button>}
+        </> : undefined}>
         {view && (
           <>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -448,15 +452,20 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
               <span className="text-[0.78rem] font-bold text-soft">ضريبة {view.vat}% مضمّنة • التكامل المحاسبي ولّد قيداً تلقائياً في دفتر الأستاذ</span>
               <span className="font-num font-bold text-xl text-[var(--brand)]">{app.fmtN(app.invoiceTotal(view))} ر.ي</span>
             </div>
-            <div className="flex justify-end gap-2 mt-4">
-              {view.status !== "ملغاة" && app.can(mod, "حذف") && <button className="btn btn-danger" onClick={() => { app.voidInvoice(kind, view.id); setView(null); }}><I n="undo" size={15} /> إلغاء الفاتورة</button>}
-              {app.can(mod, "طباعة") && <button className="btn btn-brand" onClick={() => printInvoiceDoc(app, view, kind)}><I n="print" size={15} /> طباعة الفاتورة</button>}
-            </div>
           </>
         )}
       </Modal>
 
-      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`تسجيل سداد — ${payFor?.no || ""}`} icon="coins">
+      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`تسجيل سداد — ${payFor?.no || ""}`} icon="coins"
+        subtitle="تسجيل دفعة سداد — يولّد سند صرف/قبض ويحدّث الذمم فوراً"
+        footer={payFor ? <>
+          <button className="btn btn-ghost" onClick={() => setPayFor(null)}>إلغاء</button>
+          <button className="btn btn-brand" onClick={() => {
+            const res = app.payInvoice(kind as "sales" | "purchases", payFor.id, payAmt);
+            app.toast(res.msg, res.ok ? "ok" : "err");
+            if (res.ok) setPayFor(null);
+          }}><I n="check" size={15} /> تسجيل الدفعة وتوليد السند</button>
+        </> : undefined}>
         {payFor && (() => {
           const total = app.invoiceTotal(payFor); const rem = total - (payFor.paid || 0);
           return (
@@ -471,14 +480,6 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
               <div className="flex gap-2 mt-2">
                 <button className="btn btn-ghost !py-1.5 !text-[0.72rem]" onClick={() => setPayAmt(Math.round(rem / 2))}>نصف المبلغ</button>
                 <button className="btn btn-ghost !py-1.5 !text-[0.72rem]" onClick={() => setPayAmt(Math.round(rem))}>كامل المتبقي</button>
-              </div>
-              <div className="flex justify-end gap-2 mt-5">
-                <button className="btn btn-ghost" onClick={() => setPayFor(null)}>إلغاء</button>
-                <button className="btn btn-brand" onClick={() => {
-                  const res = app.payInvoice(kind as "sales" | "purchases", payFor.id, payAmt);
-                  app.toast(res.msg, res.ok ? "ok" : "err");
-                  if (res.ok) setPayFor(null);
-                }}><I n="check" size={15} /> تسجيل الدفعة وتوليد السند</button>
               </div>
             </>
           );
@@ -516,7 +517,11 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   };
 
   return (
-    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"}>
+    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري"
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> ترحيل الفاتورة ({s.payType})</button>
+      </>}>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">{kind === "purchases" ? "المورد" : "العميل"}</span>
           <select className="select mt-1" value={s.partner} onChange={(e) => setS({ ...s, partner: e.target.value })}>
@@ -587,10 +592,7 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
           <div className="font-num font-bold text-2xl text-[var(--brand)]">{app.fmtN(total)} <span className="text-sm">{s.currency === "YER" ? "ر.ي" : s.currency}</span></div>
         </div>
       </div>
-      <div className="flex justify-end gap-2 mt-5">
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> ترحيل الفاتورة ({s.payType})</button>
-      </div>
+
     </Modal>
   );
 }

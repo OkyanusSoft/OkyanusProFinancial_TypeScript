@@ -29,11 +29,12 @@ type BusMsg =
   | { kind: "state"; from: string; key: string; val: unknown }
   | { kind: "hello"; from: string; device: DeviceRec };
 
-const DB_KEY = "okyanus_ifs_central_v3";
-const ACT_KEY = "okyanus_ifs_activity_v3";
-const DEV_KEY = "okyanus_ifs_devices_v3";
-const TOMB_KEY = "okyanus_ifs_tombstones_v3";
-const GEN_KEY = "okyanus_ifs_gen_v3";
+/* الإصدار v4: يُرفع عند أي تغيير هيكلي في شكل البيانات ليبدأ كل جهاز بحالة نظيفة متوافقة */
+const DB_KEY = "okyanus_ifs_central_v4";
+const ACT_KEY = "okyanus_ifs_activity_v4";
+const DEV_KEY = "okyanus_ifs_devices_v4";
+const TOMB_KEY = "okyanus_ifs_tombstones_v4";
+const GEN_KEY = "okyanus_ifs_gen_v4";
 const ID_KEY = "okyanus_ifs_device_id";
 
 const read = <T,>(key: string, fallback: T): T => {
@@ -81,7 +82,16 @@ class SyncEngine {
   /* ── تحميل/حفظ القاعدة المركزية المشتركة ── */
   loadDb(seed: Record<string, AnyR[]>): Record<string, AnyR[]> {
     const central = read<Record<string, AnyR[]> | null>(DB_KEY, null);
-    if (central && Object.keys(central).length) return central;
+    if (central && Object.keys(central).length) {
+      /* دمج آمن: أي مجموعة جديدة أضيفت في إصدار لاحق تُستكمل من البذور — لا تنهار الشاشة بغياب مفتاح */
+      let patched = false;
+      const merged = { ...central };
+      for (const k of Object.keys(seed)) {
+        if (!Array.isArray((merged as Record<string, unknown>)[k])) { (merged as Record<string, AnyR[]>)[k] = seed[k]; patched = true; }
+      }
+      if (patched) write(DB_KEY, merged);
+      return merged;
+    }
     write(DB_KEY, seed);
     return seed;
   }

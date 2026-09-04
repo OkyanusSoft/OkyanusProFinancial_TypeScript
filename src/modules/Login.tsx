@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../store";
-import { I } from "../ui";
+import { I, LogoMark } from "../ui";
 import { SYSTEM } from "../data";
 
 export const LOGIN_BGS = [
@@ -36,12 +36,38 @@ export default function Login() {
     }, 1100);
   };
 
-  const features = useMemo(() => [
+  const features = [
+    ["pulse", "مزامنة مركزية لحظية"],
     ["book", "قيد مزدوج متعدد العملات"],
-    ["box", "مخازن وجرود فورية"],
-    ["scale", "تقارير IFRS جاهزة"],
-    ["shield", "صلاحيات على مستوى الزر"],
-  ], []);
+    ["layers", "دليل حسابات 5 مستويات"],
+    ["shield", "صلاحيات على 4 مستويات"],
+    ["print", "طباعة A4 احترافية"],
+    ["db", "قاعدة بيانات تكيفية"],
+  ] as const;
+
+  const counters = [
+    ["21", "نظاماً متخصصاً"],
+    ["10", "أنظمة أساسية"],
+    ["40+", "شاشة وتقرير"],
+    ["100", "مستخدم متزامن"],
+  ] as const;
+
+  /* شارة المميزات المتبدلة — قوة النظام لا عملاؤه */
+  const MERITS = [
+    "مزامنة لحظية: ما يدخله الكاشير يظهر للمدير خلال ثوانٍ",
+    "قيد مزدوج متوازن يرفض أي قيد غير متطابق",
+    "إقفال فترات مالية محصّن ضد أي تعديل",
+    "حسابات تحليلية بلا تضخيم لدليل الحسابات",
+    "ترحيل تلقائي: كل فاتورة تولّد قيدها فوراً",
+    "طباعة A4 احترافية لكل سند وتقرير",
+    "نسخ احتياطي واستعادة تنتشر لكل الأجهزة",
+    "صلاحيات دقيقة على مستوى النظام والشاشة والزر",
+  ];
+  const [actIdx, setActIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setActIdx((i) => (i + 1) % MERITS.length), 3000);
+    return () => clearInterval(t);
+  }, []);
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4 text-white" dir="rtl" style={{ background: bgStyle }}>
@@ -64,45 +90,74 @@ export default function Login() {
       </div>
 
       <div className="relative z-10 w-full max-w-5xl grid lg:grid-cols-[1.05fr_1fr] rounded-[22px] overflow-hidden shadow-2xl anim-rise" style={{ background: "rgba(3,20,35,0.55)", backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,0.14)" }}>
-        {/* التعريف بالنظام */}
-        <div className="p-8 md:p-10 hidden lg:flex flex-col justify-between border-e border-white/10">
+        {/* التعريف بالنظام — بيانات القوة والمميزات */}
+        <div className="p-8 md:p-9 hidden lg:flex flex-col justify-between border-e border-white/10">
           <div>
             <div className="flex items-center gap-3">
-              <svg width="52" height="52" viewBox="0 0 48 48" aria-hidden="true">
-                <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.12)" />
-                <path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" />
-                <path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.85" />
-                <circle cx="37" cy="13" r="3" fill="#ffd28a" />
-              </svg>
+              <LogoMark size={54} variant="glass" />
               <div>
-                <div className="font-display font-bold text-[1.65rem] leading-tight">{SYSTEM.name}</div>
-                <div className="text-[0.7rem] font-bold text-white/60 tracking-wide">{SYSTEM.en} • v{SYSTEM.version}</div>
+                <div className="font-display font-bold text-[1.5rem] leading-tight">{SYSTEM.name}</div>
+                <div className="text-[0.62rem] font-bold text-white/60 tracking-[0.16em] font-num" dir="ltr">INTEGRATED FINANCIAL SYSTEM</div>
               </div>
             </div>
-            <p className="mt-6 text-[0.9rem] leading-7 text-white/80 font-medium">
-              نظام مالي ومخزني متكامل بقيد مزدوج محكم، ودليل حسابات هرمي من خمسة مستويات،
-              وحسابات تحليلية للأنشطة الكبيرة — من سند التوريد إلى قائمة الدخل.
+
+            <h1 className="font-display font-bold text-[1.5rem] leading-9 mt-6">
+              منصة محاسبية إنتاجية واحدة
+              <span className="block text-[#7fd8ff]">تتكيف مع كل أنشطة الأعمال</span>
+            </h1>
+            <p className="mt-2.5 text-[0.85rem] leading-7 text-white/75 font-medium">
+              نظام محاسبي متكامل شامل لا يعرف حدود القطاع… يصلح لجميع الأنشطة التجارية والخدمية
+              والمصنعية والطبية، ومزامنته الفورية، وتقاريره وفق أرقى المعايير العالمية، وقاعدة
+              بياناته التي تتنفس مرونة… كأنما خُلق خصيصاً لعالمك.
             </p>
-            <div className="mt-7 grid grid-cols-2 gap-3">
-              {features.map(([ic, l], i) => (
-                <div key={l} className="flex items-center gap-2.5 rounded-xl bg-white/[0.07] border border-white/10 px-3.5 py-3 anim-rise" style={{ animationDelay: `${200 + i * 90}ms` }}>
-                  <span className="w-8 h-8 rounded-lg grid place-items-center bg-white/10 text-[#67d5ff] shrink-0"><I n={ic} size={16} /></span>
-                  <span className="text-[0.76rem] font-bold text-white/85">{l}</span>
+
+            {/* مؤشرات القوة */}
+            <div className="mt-5 grid grid-cols-4 gap-2.5">
+              {counters.map(([v, l], i) => (
+                <div key={l} className="rounded-xl bg-white/[0.07] border border-white/10 px-2 py-3 text-center anim-rise" style={{ animationDelay: `${150 + i * 80}ms` }}>
+                  <div className="font-num font-bold text-[1.3rem] text-[#7fd8ff] leading-none">{v}</div>
+                  <div className="text-[0.6rem] font-bold text-white/60 mt-1.5">{l}</div>
                 </div>
               ))}
             </div>
+
+            {/* المميزات */}
+            <div className="mt-4 grid grid-cols-2 gap-2.5">
+              {features.map(([ic, l], i) => (
+                <div key={l} className="flex items-center gap-2.5 rounded-xl bg-white/[0.07] border border-white/10 px-3 py-2.5 anim-rise" style={{ animationDelay: `${220 + i * 70}ms` }}>
+                  <span className="w-8 h-8 rounded-lg grid place-items-center bg-white/10 text-[#67d5ff] shrink-0"><I n={ic} size={15} /></span>
+                  <span className="text-[0.72rem] font-bold text-white/85">{l}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* شارة الميزة المتبدلة — تدور على مميزات النظام */}
+            <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 overflow-hidden">
+              <span className="relative grid h-8 w-8 place-items-center shrink-0">
+                <span className="absolute inset-0 rounded-full bg-[#7fd8ff]/30 anim-ring" />
+                <I n="check" size={15} className="text-[#7fd8ff] relative" />
+              </span>
+              <div className="text-[0.72rem] font-bold text-white/70 leading-5">
+                <span className="text-[#7fd8ff]">لماذا نحن؟</span>{" "}
+                <span key={actIdx} className="text-white anim-fadein inline-block">{MERITS[actIdx]}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2.5 text-[0.72rem] font-bold text-white/60 mt-8">
+
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[0.68rem] font-bold text-white/60 mt-7">
             <span className="w-2 h-2 rounded-full bg-[#4ade80] blink" />
-            خادم قاعدة البيانات يعمل • آخر نسخة احتياطية 02:00 اليوم
-            <span className="ms-auto font-num flex items-center gap-1.5" dir="ltr"><I n="phone" size={13} /> {SYSTEM.phone}</span>
+            خادم قاعدة البيانات يعمل • آخر نسخة احتياطية 02:00
+            <span className="ms-auto flex items-center gap-3">
+              <span className="font-num flex items-center gap-1.5" dir="ltr"><I n="phone" size={13} /> {SYSTEM.phone}</span>
+              <a href={SYSTEM.site} target="_blank" rel="noreferrer" className="font-num text-[#7fd8ff] hover:underline" dir="ltr">okyanus-soft.com</a>
+            </span>
           </div>
         </div>
 
         {/* نموذج الدخول */}
         <div className="p-7 md:p-10">
           <div className="lg:hidden flex items-center gap-2.5 mb-6">
-            <svg width="40" height="40" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.12)" /><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" /><path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg>
+            <LogoMark size={42} variant="glass" />
             <div><div className="font-display font-bold text-xl">{SYSTEM.name}</div><div className="text-[0.62rem] font-bold text-white/60">{SYSTEM.company} — {SYSTEM.companyEn}</div></div>
           </div>
           <h2 className="font-display font-bold text-2xl">تسجيل الدخول</h2>

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { SYSTEM } from "./data";
 
 /* ═══════════════ أيقونات SVG مرسومة يدوياً ═══════════════ */
 const P: Record<string, ReactNode> = {
@@ -72,21 +74,48 @@ export function I({ n, size = 18, className = "" }: { n: string; size?: number; 
   );
 }
 
-/* ═══════════════ الشعار ═══════════════ */
+/* ═══════════════ علامة النظام — أيقونة مالية (عملة ذهبية بنمو صاعد) ═══════════════ */
+export function LogoMark({ size = 40, variant = "tile" }: { size?: number; variant?: "tile" | "glass" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
+      <defs>
+        <linearGradient id="lgm-tile" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#0369a1" />
+        </linearGradient>
+        <linearGradient id="lgm-coin" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#7dd3fc" /><stop offset="55%" stopColor="#0ea5e9" /><stop offset="100%" stopColor="#0284c7" />
+        </linearGradient>
+      </defs>
+      {variant === "tile"
+        ? <rect width="48" height="48" rx="13" fill="url(#lgm-tile)" />
+        : <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />}
+      {/* العملة الزرقاء — ألوان الهوية */}
+      <circle cx="24" cy="24.5" r="13.6" fill="url(#lgm-coin)" />
+      <circle cx="24" cy="24.5" r="13.6" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="1.3" />
+      <circle cx="24" cy="24.5" r="10.8" fill="none" stroke="rgba(240,249,255,0.4)" strokeWidth="1" />
+      {/* أعمدة النمو الصاعد */}
+      <rect x="16.7" y="26" width="3.5" height="5.4" rx="1" fill="#f0f9ff" />
+      <rect x="22.3" y="22.4" width="3.5" height="9" rx="1" fill="#f0f9ff" />
+      <rect x="27.9" y="18.6" width="3.5" height="12.8" rx="1" fill="#f0f9ff" />
+      {/* سهم الصعود */}
+      <path d="M16.8 24.6 30.4 15.8" stroke="#e0f2fe" strokeWidth="1.9" fill="none" strokeLinecap="round" />
+      <path d="M26.5 15.4h4.4v4.4" stroke="#e0f2fe" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* بريق */}
+      <path d="M38 8.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="#bae6fd" />
+      <circle cx="10.5" cy="38" r="1.4" fill="#e0f2fe" opacity="0.9" />
+    </svg>
+  );
+}
+
 export function Logo({ size = 40, light = false }: { size?: number; light?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
-        <rect width="48" height="48" rx="13" fill={light ? "rgba(255,255,255,0.12)" : "#0b4f7a"} />
-        <path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" />
-        <path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.85" />
-        <circle cx="37" cy="13" r="3" fill="#ffd28a" />
-      </svg>
+      <LogoMark size={size} variant={light ? "glass" : "tile"} />
       <div className="leading-none">
         <div className={`font-display font-bold text-lg tracking-tight leading-tight ${light ? "text-white" : "text-ink"}`}>
           النظام المالي <span className="text-[var(--brand2)]">المتكامل</span>
         </div>
-        <div className={`text-[0.62rem] font-bold mt-1 ${light ? "text-white/60" : "text-mute"}`}>أوكيانوس سوفت — Okyanus Soft • v3.0</div>
+        <div dir="ltr" className={`font-num text-[0.58rem] font-bold mt-1 tracking-[0.16em] text-start ${light ? "text-white/60" : "text-mute"}`}>INTEGRATED FINANCIAL SYSTEM</div>
       </div>
     </div>
   );
@@ -121,26 +150,60 @@ export function Reveal({ children, className = "", delay = 0 }: { children: Reac
   return <div ref={ref} className={`reveal ${on ? "on" : ""} ${className}`} style={{ animationDelay: `${delay}ms` }}>{children}</div>;
 }
 
-/* ═══════════════ نافذة منبثقة ═══════════════ */
-export function Modal({ open, onClose, title, icon, children, wide = false }: { open: boolean; onClose: () => void; title: string; icon?: string; children: ReactNode; wide?: boolean }) {
+/* ═══════════════ النافذة المنبثقة الموحّدة (ERP Dialog) ═══════════════
+   تُعرض عبر Portal في document.body — خارج أي سياق تكديس أو تحويل.
+   ترتيب الطبقات الصريح (الأدنى ← الأعلى):
+     z-0  خلفية التعتيم (Backdrop)
+     z-10 إطار النافذة (Frame) — صلْب لا شفافية فيه
+     z-20 الترويسة + المحتوى + التذييل — فوق الإطار دائماً
+   هندسة التمرير: الإطار flex-col بحدود صارمة للارتفاع؛ الجسم
+   flex-1 min-h-0 overflow-y-auto — لا يخرج أي محتوى عن الإطار،
+   والتذييل (أزرار الإجراءات) مثبّت دائماً فلا يُحجب أبداً.        */
+export function Modal({ open, onClose, title, icon, children, subtitle, footer }: {
+  open: boolean; onClose: () => void; title: string; icon?: string; children: ReactNode;
+  wide?: boolean; subtitle?: string; footer?: ReactNode;
+}) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    if (open) window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
+    if (open) { window.addEventListener("keydown", h); document.body.style.overflow = "hidden"; }
+    return () => { window.removeEventListener("keydown", h); document.body.style.overflow = ""; };
   }, [open, onClose]);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#04121f]/60 backdrop-blur-[3px] anim-fadein" onClick={onClose} />
-      <div className={`relative card anim-pop w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[88vh] overflow-auto`}>
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-line sticky top-0 bg-surface z-10 rounded-t-[14px]">
-          {icon && <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]"><I n={icon} size={19} /></span>}
-          <h3 className="font-display font-bold text-lg flex-1">{title}</h3>
-          <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-bad hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] transition-colors" aria-label="إغلاق"><I n="x" size={17} /></button>
+  return createPortal(
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
+      {/* ── z-0: خلفية التعتيم (الطبقة الأدنى) ── */}
+      <div className="absolute inset-0 z-0 anim-fadein" style={{ background: "rgba(3,13,24,0.74)" }} onClick={onClose} aria-hidden="true" />
+      {/* ── z-10: إطار النافذة (الطبقة الوسطى) — خلفية صلبة ── */}
+      <div className="relative z-10 anim-modal flex w-full max-w-[940px] flex-col overflow-hidden rounded-2xl border border-line shadow-2xl"
+        style={{ background: "var(--surface)", maxHeight: "min(90vh, 860px)", minHeight: "280px" }}>
+        {/* شريط لوني علوي مميز */}
+        <div className="h-[5px] shrink-0" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent) 55%, var(--brand))" }} />
+        {/* ── z-20: الترويسة (فوق الإطار) ── */}
+        <div className="relative z-20 flex shrink-0 items-center gap-3.5 border-b border-line px-6 py-4" style={{ background: "var(--surface)" }}>
+          {icon ? (
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))", color: "var(--brandink)" }}>
+              <I n={icon} size={21} />
+            </span>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-display text-[1.15rem] font-bold leading-tight">{title}</h3>
+            <p className="mt-0.5 truncate text-[0.7rem] font-bold text-mute">{subtitle || "النظام المالي المتكامل — أوكيانوس سوفت"}</p>
+          </div>
+          <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-mute transition-all duration-200 hover:rotate-90 hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] hover:text-[var(--bad)]" aria-label="إغلاق">
+            <I n="x" size={18} />
+          </button>
         </div>
-        <div className="p-5">{children}</div>
+        {/* ── z-20: المحتوى الداخلي (الأعلى) — التمرير الداخلي فقط ── */}
+        <div className="relative z-20 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5" style={{ background: "var(--surface)", scrollbarWidth: "thin" }}>{children}</div>
+        {/* ── z-20: تذييل الإجراءات المثبّت — لا يُحجب أبداً ── */}
+        {footer && (
+          <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-3.5" style={{ background: "var(--panel)" }}>
+            {footer}
+          </div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
