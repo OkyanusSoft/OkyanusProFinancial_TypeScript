@@ -1,6 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppProvider, useApp } from "./store";
 import { I, LogoMark } from "./ui";
+
+/* ═══════ حاجز الأخطاء — يعرض سبب العطل بدل صفحة فارغة ═══════ */
+class ErrorBoundary extends Component<{ children: ReactNode }, { err: string }> {
+  state = { err: "" };
+  static getDerivedStateFromError(e: unknown) { return { err: e instanceof Error ? `${e.name}: ${e.message}` : String(e) }; }
+  render() {
+    if (this.state.err) {
+      return (
+        <div dir="rtl" style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#07111f", color: "#e6f1fb", fontFamily: "Tajawal, sans-serif", padding: 24 }}>
+          <div style={{ maxWidth: 560, background: "#0c1a2d", border: "1px solid #1d3550", borderRadius: 16, padding: 28 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <span style={{ width: 44, height: 44, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(248,113,113,0.14)", color: "#f87171", fontSize: 22, fontWeight: 800 }}>!</span>
+              <div>
+                <div style={{ fontFamily: "Changa, sans-serif", fontWeight: 700, fontSize: 20 }}>تعذّر تشغيل الواجهة</div>
+                <div style={{ fontSize: 12, color: "#7d97b0", fontWeight: 700 }}>النظام المالي المتكامل — أوكيانوس سوفت</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: "#b9cfe2", fontWeight: 700, lineHeight: 1.9 }}>
+              حدث خطأ تشغيلي أثناء العرض. جرّب إعادة تحميل الصفحة — وإن تكرر، امسح تخزين المتصفح للموقع (بيانات المزامنة المحلية) ثم أعد التحميل.
+            </p>
+            <pre dir="ltr" style={{ direction: "ltr", textAlign: "left", background: "#06263e", border: "1px solid rgba(125,211,252,0.2)", borderRadius: 10, padding: "10px 14px", fontSize: 11.5, color: "#fca5a5", overflow: "auto", whiteSpace: "pre-wrap", fontFamily: "Space Grotesk, monospace" }}>{this.state.err}</pre>
+            <button onClick={() => location.reload()} style={{ marginTop: 16, width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#0284c7,#38bdf8)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Tajawal, sans-serif" }}>إعادة تشغيل النظام</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import Login from "./modules/Login";
 import Dashboard from "./modules/Dashboard";
 import Inventory from "./modules/Inventory";
@@ -375,8 +404,10 @@ function Shell() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <Shell />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
