@@ -514,6 +514,9 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   const vatV = sub * (app.settings.vat / 100);
   const cust: any = app.db.customers.find((c: any) => c.id === s.partner);
   const willExceed = kind === "sales" && s.payType === "آجل" && cust?.creditLimit && cust.balance + total * rate > cust.creditLimit;
+  /* رقم الفاتورة يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
+  const [no, setNo] = useState<string | null>(null);
 
   const addLine = () => {
     if (s.qty <= 0) { app.toast("الكمية يجب أن تكون أكبر من صفر", "err"); return; }
@@ -521,24 +524,25 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   };
   const save = () => {
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
-    const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
-    const no = app.nextNo(prefix);
-    const res = app.addInvoice(kind, { id: no, no, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
+    const n = no || app.nextNo(prefix);
+    const res = app.addInvoice(kind, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
 
-  /* معاينة طباعة الفاتورة قبل الترحيل */
-  const printDraft = () => {
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
+  const printFinal = () => {
     if (s.lines.length === 0) { app.toast("أضف بنداً واحداً على الأقل قبل الطباعة", "err"); return; }
-    printInvoiceDoc(app, { id: "draft", no: "معاينة", date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مسودة", vat: app.settings.vat, lines: s.lines, paid: 0, note: s.note }, kind);
+    const n = no || app.nextNo(prefix);
+    setNo(n);
+    printInvoiceDoc(app, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined }, kind);
   };
 
   return (
     <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري"
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-soft" onClick={printDraft}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
         <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> حفظ وترحيل الفاتورة</button>
       </>}>
       <FormSection n="أولاً" icon="file" title="رأس الفاتورة" hint="العميل أو المورد وطريقة السداد والعملة">

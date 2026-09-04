@@ -345,6 +345,15 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
     kind === "adj" || kind === "count" ? accInfo(totalVal >= 0 ? grpAcc("stockAccount", whAcc(wh)) : whAcc(wh)) :
     accInfo(partyAccCode);
   const debitSideNeg = kind === "adj" || kind === "count" ? accInfo(app.settings.suspense.cogs) : null;
+  /* رقم السند يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const invPrefix = app.settings.prefixes[meta.prefix.toUpperCase()] || meta.prefix;
+  const [no, setNo] = useState<string | null>(null);
+
+  const buildLines = () => lines.filter((l) => l.item && (+l.qty || 0) !== 0).map((l) => {
+    const it: any = app.db.items.find((i) => i.id === l.item);
+    const qty = kind === "count" ? (+l.qty || 0) - (it?.qty[wh] || 0) : +l.qty;
+    return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
+  });
 
   const save = () => {
     if (!note.trim()) { app.toast("حقل «البيان» إلزامي — اذكر تفاصيل الحركة وسببها", "err"); return; }
@@ -352,34 +361,27 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
     if (valid.length === 0) { app.toast("أضف سطراً واحداً على الأقل بكمية غير صفرية", "err"); return; }
     if (kind === "tr" && wh === toWh) { app.toast("مخزنا المصدر والوجهة متطابقان — اختر مخزنين مختلفين", "err"); return; }
     if (partyKind && !party) { app.toast(`اختر ${PARTY_LABEL[partyKind]} — مطلوب لنوع الحركة «${sub}’`, "err"); return; }
-    const ref = app.nextNo(app.settings.prefixes[meta.prefix.toUpperCase()] || meta.prefix);
-    const finalLines = valid.map((l) => {
-      const it: any = app.db.items.find((i) => i.id === l.item);
-      let qty = +l.qty;
-      if (kind === "count") qty = +l.qty - ((it?.qty[wh] || 0)); // الفرق عن النظام
-      return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
-    });
+    const ref = no || app.nextNo(invPrefix);
+    const finalLines = buildLines();
     if (kind === "count" && finalLines.every((l) => l.qty === 0)) { app.toast("لا توجد فروقات جرد — الكميات المعدودة مطابقة للنظام ✓", "ok"); onClose(); return; }
     const res = app.addInvDoc({ id: ref, type: meta.label, date, ref, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined, user: app.session?.user || "—", status: "مرحّل", lines: finalLines, note, subType: sub || undefined, partyKind, party: party || undefined, extRef: extRef || undefined, clearAccount: kind === "open" ? clearAcc : undefined } as InvDoc);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
 
-  /* معاينة طباعة السند قبل الترحيل — بنفس قالب الطباعة المستندية */
-  const printDraft = () => {
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
+  const printFinal = () => {
     const valid = lines.filter((l) => l.item && (+l.qty || 0) !== 0);
-    const draft = {
-      id: "draft", ref: `معاينة ${meta.prefix}-…`, date, status: "مسودة",
+    if (valid.length === 0) { app.toast("أضف سطراً واحداً على الأقل قبل الطباعة", "err"); return; }
+    const ref = no || app.nextNo(invPrefix);
+    setNo(ref);
+    printInvDoc(app, {
+      id: ref, ref, date, status: "مرحّل",
       type: meta.label, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined,
       user: app.session?.user || "—", note, subType: sub || undefined, partyKind, party: party || undefined,
       extRef: extRef || undefined, clearAccount: kind === "open" ? clearAcc : undefined,
-      lines: valid.map((l) => {
-        const it: any = app.db.items.find((i) => i.id === l.item);
-        const qty = kind === "count" ? (+l.qty || 0) - (it?.qty[wh] || 0) : +l.qty;
-        return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
-      }),
-    };
-    printInvDoc(app, draft as any, meta.full);
+      lines: buildLines(),
+    } as any, meta.full);
   };
 
   return (
@@ -516,7 +518,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
       </FormSection>
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-soft" onClick={printDraft}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
         <button className="btn btn-brand" onClick={save}><I n="check" size={16} /> حفظ وترحيل السند</button>
       </div>
     </Modal>

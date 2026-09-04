@@ -646,7 +646,10 @@ function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
         ["عدد الأسطر", String(lines.length)],
         ["الحالة", j.status],
       ]}
-      totals={{ items: [["إجمالي الطرف المدين", app.fmtN(dr)], ["إجمالي الطرف الدائن", app.fmtN(cr)], ["فرق التوازن", app.fmtN(dr - cr)]], grand: ["قيمة السند", app.fmtN(dr)] }}
+      totals={{ items: [["إجمالي الطرف المدين", app.fmtN(dr)], ["إجمالي الطرف الدائن", app.fmtN(cr)], ["فرق التوازن", app.fmtN(dr - cr)], ["المبلغ بالحروف", tafqit(dr)]], grand: ["قيمة السند", app.fmtN(dr) + " ر.ي"] }}
+      stampText={j.source || "قيد يومية"} stampSub={j.status === "بانتظار الموافقة" ? "بانتظار الاعتماد" : j.status === "ملغي" ? "ملغي" : "معتمد"}
+      amountBox={{ num: app.fmtN(dr) + " ر.ي", words: tafqit(dr) }}
+      signLabels={j.status === "بانتظار الموافقة" ? ["المحاسب", "المدير المالي"] : ["المحاسب", "المراجع", "المدير المالي"]}
       user={app.session?.user || "—"}
     >
       <PTable
@@ -691,6 +694,9 @@ function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => v
   const linesSum = lines.reduce((a, l) => a + (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), 0);
   const headerVal = (+amount || 0) * rate;
   const matched = Math.abs(linesSum - headerVal) < 0.01 && headerVal > 0;
+  /* رقم السند يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const vPrefix = isRV ? app.settings.prefixes.RC : app.settings.prefixes.PV;
+  const [no, setNo] = useState<string | null>(null);
 
   const setL = (i: number, p: Partial<VLine>) => setLines((old) => old.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
@@ -699,9 +705,9 @@ function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => v
     if (!party.trim()) { app.toast(isRV ? "حقل «استلمنا من» إلزامي" : "حقل «صُرف إلى» إلزامي", "err"); return; }
     if (!(+amount > 0)) { app.toast("أدخل المبلغ رقماً — يجب أن يكون أكبر من صفر", "err"); return; }
     if (!matched) { app.toast(`إجمالي البنود (${app.fmtN(linesSum)}) لا يطابق مبلغ السند (${app.fmtN(headerVal)})`, "err"); return; }
-    const no = app.nextNo(isRV ? app.settings.prefixes.RC : app.settings.prefixes.PV);
+    const n = no || app.nextNo(vPrefix);
     const je: Journal = {
-      id: no, no, date, user: app.session?.user || "—", status: "مرحّل",
+      id: n, no: n, date, user: app.session?.user || "—", status: "مرحّل",
       desc: `${isRV ? "سند قبض" : "سند صرف"} — ${isRV ? "استلمنا من" : "صُرف إلى"} ${party} — ${desc}`,
       kind: isRV ? "قبض" : "صرف", source: isRV ? "سند قبض" : "سند صرف",
       lines: [
@@ -715,11 +721,16 @@ function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => v
     } as unknown as Journal;
     const res = app.addJournal(je);
     app.toast(res.msg, res.ok ? "ok" : "err");
-    if (res.ok) { printVoucher(app, { no, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
+    if (res.ok) { printVoucher(app, { no: n, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
   };
 
-  const printNow = () => {
-    printVoucher(app, { no: "معاينة", date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مسودة" });
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
+  const printFinal = () => {
+    if (!(+amount > 0)) { app.toast("أدخل المبلغ أولاً قبل الطباعة", "err"); return; }
+    if (!matched) { app.toast("طابق إجمالي البنود مع مبلغ السند أولاً", "err"); return; }
+    const n = no || app.nextNo(vPrefix);
+    setNo(n);
+    printVoucher(app, { no: n, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" });
   };
 
   return (
@@ -728,7 +739,7 @@ function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => v
       subtitle={isRV ? "تحصيل نقدي أو بنكي — يُرحَّل قيداً متوازناً: من ح/ الصندوق إلى الحسابات الدائنة" : "صرف نقدي أو بنكي — يُرحَّل قيداً متوازناً: من الحسابات المدينة إلى ح/ الصندوق"}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-soft" onClick={printNow}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
         <button className="btn btn-brand" onClick={save} disabled={!matched}><I n="check" size={15} /> حفظ وترحيل السند</button>
       </>}>
       {/* ── أولاً: رأس المستند ── */}
@@ -845,7 +856,7 @@ function printVoucher(app: ReturnType<typeof useApp>, v: {
   openPrint(
     <DocSheet
       docTitle={v.isRV ? "سند قبض" : "سند صرف"} no={v.no} date={v.date} status={v.status}
-      stampText={v.isRV ? "سند قبض" : "سند صرف"} stampSub="النظام المالي المتكامل"
+      stampText={v.isRV ? "سند قبض" : "سند صرف"} stampSub={v.status === "مرحّل" ? "معتمد" : v.status}
       subtitle={app.session?.branch}
       meta={[
         [v.isRV ? "استلمنا من" : "صُرف إلى", v.party || "—"],
@@ -906,23 +917,27 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const cr = rows.reduce((a, r) => a + (+r.credit || 0) * r.rate, 0);
   const balanced = Math.abs(dr - cr) < 0.01 && dr > 0;
   const setRow = (i: number, patch: Partial<typeof rows[0]>) => setRows((old) => old.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  /* رقم القيد يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const jePrefix = kind === "rv" ? app.settings.prefixes.RC : kind === "pv" ? app.settings.prefixes.PV : kind === "open" ? "FYE" : app.settings.prefixes.JE;
+  const [no, setNo] = useState<string | null>(null);
+  const jeStatus = isReq ? "بانتظار الموافقة" : "مرحّل";
+  const buildLines = (): JournalLine[] => rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
 
   const save = () => {
     if (!desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
     if (!balanced) { app.toast(`القيد غير متوازن: مدين ${app.fmtN(dr)} مقابل دائن ${app.fmtN(cr)}`, "err"); return; }
-    const prefix = kind === "rv" ? app.settings.prefixes.RC : kind === "pv" ? app.settings.prefixes.PV : kind === "open" ? "FYE" : app.settings.prefixes.JE;
-    const no = app.nextNo(prefix);
-    const lines: JournalLine[] = rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
-    const res = app.addJournal({ id: no, no, date, desc, kind: isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية", lines, user: app.session?.user || "—", status: isReq ? "بانتظار الموافقة" : "مرحّل", source: JE_META[kind].title } as Journal);
+    const n = no || app.nextNo(jePrefix);
+    const res = app.addJournal({ id: n, no: n, date, desc, kind: isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as Journal);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
 
-  /* معاينة طباعة القيد قبل الترحيل */
-  const printDraft = () => {
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته) وليس نسخة مسودة */
+  const printFinal = () => {
     if (!balanced) { app.toast("وازن القيد أولاً قبل الطباعة", "err"); return; }
-    const lines: JournalLine[] = rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
-    printJournal(app, { id: "draft", no: "معاينة", date, desc, kind: "يومية", lines, user: app.session?.user || "—", status: "مسودة", source: JE_META[kind].title } as unknown as Journal);
+    const n = no || app.nextNo(jePrefix);
+    setNo(n);
+    printJournal(app, { id: n, no: n, date, desc, kind: "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as unknown as Journal);
   };
 
   return (
@@ -988,7 +1003,7 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
       </FormSection>
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-soft" onClick={printDraft}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
         <button className="btn btn-brand" disabled={!balanced} onClick={save}>
           <I n="check" size={16} /> حفظ و{isReq ? "إرسال الطلب" : "ترحيل القيد"}
         </button>
