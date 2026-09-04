@@ -38,11 +38,14 @@ const unitsConf = (app: ReturnType<typeof useApp>): DirConf => ({
 
 const whConf = (app: ReturnType<typeof useApp>): DirConf => ({
   coll: "warehouses", title: "دليل المخازن", icon: "bld", prefix: "WH", importKey: "warehouses",
-  desc: "المخازن والمستودعات وأمناء العهدة — كل حركة مخزنية تُرحّل إلى مخزن محدد",
+  desc: "المخازن والمستودعات وأمناء العهدة — كل مخزن مرتبط بحساب في دليل الحسابات تُرحّل إليه حركاته",
   fields: [
     { k: "code", label: "الكود", req: true, uniq: true },
     { k: "name", label: "اسم المخزن", req: true, uniq: true },
     { k: "keeper", label: "أمين المخزن", req: true },
+    { k: "account", label: "الحساب المرتبط (دليل الحسابات)", type: "select", req: true, span: true,
+      opts: app.accounts.filter((a) => a.posting).map((a) => ({ v: a.code, l: `${a.code} — ${a.name}` })),
+      hint: "تُرحّل حركات هذا المخزن (توريد/صرف/تحويل) إلى هذا الحساب في القيود المحاسبية تلقائياً — الربط يحقق التكامل المالي والمخزني" },
     { k: "location", label: "الموقع" },
     { k: "capacity", label: "السعة التخزينية" },
     { k: "active", label: "الحالة", type: "select", opts: [{ v: true, l: "نشط" }, { v: false, l: "موقوف" }] },
@@ -51,7 +54,15 @@ const whConf = (app: ReturnType<typeof useApp>): DirConf => ({
     { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
     { k: "name", label: "المخزن", render: (r) => <b>{r.name}</b> },
     { k: "keeper", label: "الأمين" },
-    { k: "location", label: "الموقع" },
+    { k: "account", label: "الحساب المرتبط", render: (r, a) => {
+        const acc = a.accounts.find((x) => x.code === r.account);
+        return r.account ? (
+          <span className="inline-flex items-center gap-1.5 chip bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)]" title={acc?.name}>
+            <I n="book" size={12} /><span className="font-num" dir="ltr">{r.account}</span>
+            <span className="hidden lg:inline text-[0.62rem]">{acc?.name ? "· " + acc.name.replace(/ — .*$/, "") : ""}</span>
+          </span>
+        ) : <span className="text-[0.7rem] font-bold text-mute">غير مرتبط</span>;
+      } },
     { k: "capacity", label: "السعة" },
     { k: "stock", label: "الرصيد الحالي", num: true, render: (r, a) => <b className="font-num">{a.fmtN(a.db.items.reduce((s, i) => s + ((i.qty as any)[r.id] || 0), 0))}</b> },
     { k: "active", label: "الحالة", render: (r) => <Chip s={r.active === false ? "ملغي" : "مرحّل"} /> },
@@ -111,6 +122,7 @@ const DOC_META: Record<string, { label: string; full: string; icon: string; pref
 /* ── طباعة سند مخزني ── */
 function printInvDoc(app: ReturnType<typeof useApp>, d: AnyR, docTitle: string) {
   const whName = (id: string) => app.db.warehouses.find((w) => w.id === id)?.name || id;
+  const whAcc = (id: string) => { const c = (app.db.warehouses.find((w) => w.id === id) as any)?.account; return c ? `${c} — ${app.accounts.find((a) => a.code === c)?.name || ""}` : "غير مرتبط"; };
   const itemName = (id: string) => app.db.items.find((i) => i.id === id)?.name || id;
   const lines = (d.lines || []) as any[];
   const totalVal = lines.reduce((s, l) => s + l.qty * l.cost, 0);
@@ -118,7 +130,8 @@ function printInvDoc(app: ReturnType<typeof useApp>, d: AnyR, docTitle: string) 
     <DocSheet docTitle={docTitle} no={d.ref} date={d.date} status={d.status} subtitle={app.session?.branch}
       meta={[
         ["المخزن", whName(d.warehouse)],
-        ...(d.toWarehouse ? [["إلى مخزن", whName(d.toWarehouse)] as [string, string]] : []),
+        ["الحساب المرتبط", whAcc(d.warehouse)],
+        ...(d.toWarehouse ? [["إلى مخزن", `${whName(d.toWarehouse)} (${whAcc(d.toWarehouse)})`] as [string, string]] : []),
         ["المستخدم", d.user],
         ["عدد الأصناف", String(lines.length)],
         ["البيان", d.note || "—"],
@@ -252,6 +265,21 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         <label className={`block ${kind === "tr" ? "" : "md:col-span-2"}`}><span className="text-[0.74rem] font-bold text-soft">ملاحظة / السبب</span>
           <input className="input mt-1" value={note} onChange={(e) => setNote(e.target.value)} placeholder="سبب الحركة…" /></label>
       </div>
+
+      {/* التكامل المحاسبي: الحساب المرتبط بالمخزن المختار */}
+      {(() => {
+        const accOf = (id: string) => { const c = (app.db.warehouses.find((w) => w.id === id) as any)?.account as string | undefined; return c ? { code: c, name: app.accounts.find((a) => a.code === c)?.name || "" } : null; };
+        const a1 = accOf(wh); const a2 = kind === "tr" ? accOf(toWh) : null;
+        return (
+          <div className="flex flex-wrap items-center gap-2 mb-3 rounded-xl px-4 py-3 border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))]">
+            <I n="book" size={17} className="text-[var(--brand)] shrink-0" />
+            <span className="text-[0.76rem] font-bold text-soft">التكامل المحاسبي — سيُرحّل القيد إلى:</span>
+            {a1 ? <span className="chip bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] font-num" dir="ltr">{a1.code} <span dir="rtl">· {a1.name}</span></span>
+              : <span className="chip bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-[var(--warn)]">المخزن غير مرتبط بحساب</span>}
+            {a2 && (<><I n="swap" size={15} className="text-mute" /><span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)] font-num" dir="ltr">{a2.code} <span dir="rtl">· {a2.name}</span></span></>)}
+          </div>
+        );
+      })()}
 
       <div className="rounded-xl border border-line overflow-hidden mb-3">
         <table className="tbl">

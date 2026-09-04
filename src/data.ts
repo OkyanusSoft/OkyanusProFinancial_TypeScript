@@ -42,7 +42,9 @@ export const ACCOUNTS: Account[] = [
   { code: "11213", name: "ذمم موظفين", en: "Staff Receivables", level: 5, parent: "1121", type: "أصول", posting: true },
   { code: "113", name: "المخزون", en: "Inventory", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1131", name: "مخزون البضائع", en: "Goods Stock", level: 4, parent: "113", type: "أصول", posting: false },
-  { code: "11311", name: "المخزون الرئيسي", en: "Main Stock", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11311", name: "المخزون الرئيسي — صنعاء", en: "Main Stock - Sanaa", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11312", name: "مخزون فرع عدن", en: "Aden Branch Stock", level: 5, parent: "1131", type: "أصول", posting: true },
+  { code: "11313", name: "مخزون العبور — المكلا", en: "Mukalla Transit Stock", level: 5, parent: "1131", type: "أصول", posting: true },
   { code: "114", name: "الأصول الثابتة", en: "Fixed Assets", level: 3, parent: "11", type: "أصول", posting: false },
   { code: "1141", name: "المعدات والتجهيزات", en: "Equipment", level: 4, parent: "114", type: "أصول", posting: false },
   { code: "11411", name: "معدات طبية", en: "Medical Equipment", level: 5, parent: "1141", type: "أصول", posting: true },
@@ -128,9 +130,9 @@ export const GROUPS: AnyR[] = [
 ];
 
 export const WAREHOUSES: AnyR[] = [
-  { id: "WH-01", code: "WH-01", name: "المخزن الرئيسي — صنعاء", keeper: "عادل الحميري", location: "حزيز، المنطقة الصناعية", capacity: "12,000 موقع", active: true },
-  { id: "WH-02", code: "WH-02", name: "مخزن الفرع — عدن", keeper: "سميرة النجار", location: "المعلا، شارع الملكة أروى", capacity: "4,500 موقع", active: true },
-  { id: "WH-03", code: "WH-03", name: "مخزن العبور — المكلا", keeper: "فهد باشراحيل", location: "خور المكلا", capacity: "2,200 موقع", active: true },
+  { id: "WH-01", code: "WH-01", name: "المخزن الرئيسي — صنعاء", keeper: "عادل الحميري", location: "حزيز، المنطقة الصناعية", capacity: "12,000 موقع", active: true, account: "11311" },
+  { id: "WH-02", code: "WH-02", name: "مخزن الفرع — عدن", keeper: "سميرة النجار", location: "المعلا، شارع الملكة أروى", capacity: "4,500 موقع", active: true, account: "11312" },
+  { id: "WH-03", code: "WH-03", name: "مخزن العبور — المكلا", keeper: "فهد باشراحيل", location: "خور المكلا", capacity: "2,200 موقع", active: true, account: "11313" },
 ];
 
 export const ITEMS: AnyR[] = [
@@ -429,7 +431,7 @@ export const SIDEBAR_BGS = [
 export const IMPORT_SAMPLES: Record<string, { headers: string[]; rows: string[][] }> = {
   units: { headers: ["الاسم", "الرمز"], rows: [["دستة", "دستة"], ["جرام", "جرام"]] },
   groups: { headers: ["الاسم", "ملاحظات"], rows: [["أدوية أطفال", "جرعات خاصة"], ["مضادات التهاب", ""]] },
-  warehouses: { headers: ["الاسم", "الأمين", "الموقع", "السعة"], rows: [["مخزن الطوارئ", "أمن المخازن", "بدروم المقر", "800 موقع"]] },
+  warehouses: { headers: ["الاسم", "الأمين", "الحساب", "الموقع", "السعة"], rows: [["مخزن الطوارئ", "أمن المخازن", "11311", "بدروم المقر", "800 موقع"]] },
   items: { headers: ["الاسم", "المجموعة", "الوحدة", "التكلفة", "السعر", "أدنى", "أقصى"], rows: [["أسبرين 81mg", "GR-02", "UN-02", "450", "650", "300", "2500"]] },
   suppliers: { headers: ["الاسم", "الهاتف", "المدينة", "التصنيف"], rows: [["شركة الأدوية الوطنية", "01-200-100", "صنعاء", "أدوية"]] },
   customers: { headers: ["الاسم", "الهاتف", "المدينة", "التصنيف", "حد الائتمان"], rows: [["صيدلية الأمل", "02-118-305", "عدن", "صيدليات", "100000"]] },

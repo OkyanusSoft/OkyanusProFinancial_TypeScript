@@ -433,6 +433,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if ((d.type === "صرف" || delta < 0) && cur < 0) return { ok: false, msg: `الكمية غير كافية للصنف ${it.name} — الرصيد سيصبح ${cur}` };
       }
     }
+    /* ── التكامل المحاسبي: قيد مزدوج متوازن على حساب المخزن المرتبط ──
+       توريد/افتتاحي : من ح/ المخزن المرتبط ← إلى ح/ المشتريات
+       صرف           : من ح/ تكلفة المبيعات ← إلى ح/ المخزن المرتبط
+       تحويل         : من ح/ مخزن الوجهة ← إلى ح/ المخزن المصدر              */
+    const whAccOf = (code: string) => ((db.warehouses.find((w: any) => w.id === code) as any)?.account as string) || settings.suspense.purchases;
+    const totalVal = d.lines.reduce((s, l) => s + l.qty * l.cost, 0);
+    const v = Math.abs(totalVal);
+    const from = whAccOf(d.warehouse);
+    const to = d.toWarehouse ? whAccOf(d.toWarehouse) : from;
+    const jeLines = v === 0 ? [] :
+      d.type === "تحويل" ? (from === to ? [] : [
+        { account: to, debit: v, credit: 0, currency: "YER", rate: 1 },
+        { account: from, debit: 0, credit: v, currency: "YER", rate: 1 },
+      ]) :
+      d.type === "صرف" || totalVal < 0 ? [
+        { account: settings.suspense.cogs, debit: v, credit: 0, currency: "YER", rate: 1 },
+        { account: from, debit: 0, credit: v, currency: "YER", rate: 1 },
+      ] : [
+        { account: from, debit: v, credit: 0, currency: "YER", rate: 1 },
+        { account: settings.suspense.purchases, debit: 0, credit: v, currency: "YER", rate: 1 },
+      ];
+    const jeNo = nextNo(settings.prefixes.JE);
+    const je = jeLines.length ? {
+      id: jeNo, no: jeNo, date: d.date, user: session?.user || "—", status: "مرحّل",
+      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref} على حساب المخزن المرتبط`,
+      kind: "يومية", source: `سند ${d.type} مخزني`, lines: jeLines,
+    } : null;
+
     setDb((old) => {
       const items = old.items.map((it: AnyR) => {
         const line = d.lines.find((l) => l.item === it.id);
@@ -443,7 +471,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         else qty[d.warehouse] = (qty[d.warehouse] || 0) + delta;
         return { ...it, qty };
       });
-      return { ...old, items, invDocs: [...old.invDocs, d as any] };
+      return { ...old, items, invDocs: [...old.invDocs, d as any], journals: je ? [...old.journals, je as any] : old.journals };
     });
     /* بث لحظي: السند وأثره المخزني لكل الأجهزة */
     const now = Date.now();
@@ -456,10 +484,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       else { const delta = d.type === "صرف" ? -line.qty : line.qty; qty[d.warehouse] = (qty[d.warehouse] || 0) + delta; }
       patches.push({ coll: "items", rows: [{ ...it, qty, updatedAt: now }] });
     });
+    if (je) patches.push({ coll: "journals", rows: [{ ...je, updatedAt: now } as any] });
     engine.publishPatches(patches);
     engine.bumpDeviceOps();
-    toast(`رُحّل السند ${d.ref} وأُثّرت الكميات فوراً`);
-    pushNotif({ kind: "info", title: `سند ${d.type} جديد`, body: `${d.ref} — ${d.lines.length} صنف في ${d.warehouse}` });
+    toast(`رُحّل السند ${d.ref} — أُثّرت الكميات${je ? ` ووُلّد قيد محاسبي متوازن على ${from}` : ""}`);
+    pushNotif({ kind: "info", title: `سند ${d.type} جديد`, body: `${d.ref} — ${d.lines.length} صنف في ${d.warehouse}${je ? " + قيد محاسبي" : ""}` });
     return { ok: true, msg: `رُحّل السند ${d.ref}` };
   };
 
