@@ -266,11 +266,9 @@ html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type=
 .stagger > *:nth-child(8) { animation-delay: 420ms; }
 
 /* ═══════════ الطباعة A4 ═══════════ */
-#print-root {
-  position: fixed; inset: 0; z-index: 400; overflow: auto;
-  background: #dfe7ee; padding: 26px 12px;
-}
-#print-root > div { max-width: 830px; margin: 0 auto; }
+/* حاوية المستند داخل iframe الطباعة المعزول */
+#print-doc { background: #fff; }
+#print-doc > div { max-width: 830px; margin: 0 auto; }
 
 .print-doc {
   background: #ffffff; color: #122a41; border-radius: 8px;
@@ -349,10 +347,9 @@ html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type=
 .p-bar { display: flex; align-items: flex-end; gap: 2px; justify-content: flex-end; }
 .p-bar span { display: inline-block; background: #122a41; }
 
+/* الطباعة تتم داخل iframe معزول (انظر print.tsx) — قواعد احتياطية للتوافق */
 @media print {
-  body > #root { display: none !important; }
-  #print-root { position: static; overflow: visible; background: #fff; padding: 0; }
-  #print-root > div { max-width: none; }
-  .print-doc { box-shadow: none; border-radius: 0; padding: 8mm 6mm; }
+  .print-doc { box-shadow: none !important; border-radius: 0 !important; }
+  .no-print { display: none !important; }
   @page { size: A4; margin: 9mm; }
 }

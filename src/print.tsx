@@ -6,17 +6,77 @@ import { SYSTEM } from "./data";
    محرك الطباعة الاحترافي — مستندات A4 بترويسة وختم واعتمادات
    ════════════════════════════════════════════════════════════ */
 
+/* الطباعة عبر iframe معزول تماماً — يُطبع المستند وحده ولا يمكن أبداً
+   أن تلتقط الطابعة محتويات شاشة التطبيق (الحل القوي والموثوق) */
 export function openPrint(content: ReactNode) {
-  let host = document.getElementById("print-root");
-  if (!host) { host = document.createElement("div"); host.id = "print-root"; document.body.appendChild(host); }
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.title = "طباعة مستند";
+  iframe.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;z-index:9999;background:#fff;";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  if (!doc) { iframe.remove(); return; }
+
+  /* جمع أنماط التطبيق (الخطوط + مكونات الطباعة) من ملف CSS المجمّع */
+  let css = "";
+  try {
+    for (const sheet of Array.from(document.styleSheets)) {
+      try { css += Array.from(sheet.cssRules).map((r) => r.cssText).join("\n") + "\n"; } catch { /* قواعد CORS */ }
+    }
+  } catch { /* ignore */ }
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8" />
+<title>${SYSTEM.name} — مستند للطباعة</title>
+<style>
+${css}
+/* ── عزل صارم: خلفية بيضاء والمستند فقط ── */
+html, body { background:#fff !important; margin:0 !important; }
+body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+#print-doc { position:static !important; background:#fff !important; margin:0 !important; padding:0 !important; }
+.print-doc { box-shadow:none !important; border-radius:0 !important; }
+@media print {
+  body { background:#fff !important; }
+  .print-doc { box-shadow:none !important; border-radius:0 !important; }
+  .no-print { display:none !important; }
+}
+@page { size: A4; margin: 9mm; }
+</style>
+</head>
+<body>
+<div id="print-doc"></div>
+</body>
+</html>`);
+  doc.close();
+
+  const host = doc.getElementById("print-doc");
+  if (!host) { iframe.remove(); return; }
   const root = createRoot(host);
   root.render(<div dir="rtl">{content}</div>);
-  const done = () => {
-    window.removeEventListener("afterprint", done);
-    setTimeout(() => { root.unmount(); host?.remove(); }, 300);
+
+  let printed = false;
+  const firePrint = () => {
+    if (printed) return;
+    printed = true;
+    try {
+      const w = iframe.contentWindow;
+      if (w) { w.focus(); w.print(); }
+    } catch { /* ignore */ }
   };
-  window.addEventListener("afterprint", done);
-  requestAnimationFrame(() => requestAnimationFrame(() => { try { window.print(); } catch { /* ignore */ } }));
+  const cleanup = () => {
+    setTimeout(() => { try { root.unmount(); } catch { /* ignore */ } iframe.remove(); }, 500);
+  };
+
+  /* الانتظار حتى يكتمل رسم المستند داخل الـ iframe ثم الطباعة مرة واحدة */
+  iframe.onload = () => setTimeout(firePrint, 150);
+  setTimeout(firePrint, 500); /* احتياط إن لم يُطلق onload */
+
+  iframe.contentWindow?.addEventListener("afterprint", cleanup);
+  setTimeout(cleanup, 60000); /* حد أقصى للتنظيف */
 }
 
 /* ── شعار مطبوع ── */
