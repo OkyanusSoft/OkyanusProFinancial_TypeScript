@@ -62,18 +62,24 @@ body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   const firePrint = () => {
     if (printed) return;
     printed = true;
-    try {
-      const w = iframe.contentWindow;
-      if (w) { w.focus(); w.print(); }
-    } catch { /* ignore */ }
+    const w = iframe.contentWindow;
+    if (!w) return;
+    /* انتظار اكتمال تحميل الخطوط داخل الـ iframe فتظهر الأوزان صحيحة فوراً */
+    const doPrint = () => { try { w.focus(); w.print(); } catch { /* ignore */ } };
+    const fontsReady = (w.document as Document & { fonts?: FontFaceSet }).fonts?.ready;
+    if (fontsReady && typeof fontsReady.then === "function") {
+      Promise.race([fontsReady, new Promise((r) => setTimeout(r, 900))]).then(doPrint);
+    } else {
+      setTimeout(doPrint, 120);
+    }
   };
   const cleanup = () => {
     setTimeout(() => { try { root.unmount(); } catch { /* ignore */ } iframe.remove(); }, 500);
   };
 
   /* الانتظار حتى يكتمل رسم المستند داخل الـ iframe ثم الطباعة مرة واحدة */
-  iframe.onload = () => setTimeout(firePrint, 150);
-  setTimeout(firePrint, 500); /* احتياط إن لم يُطلق onload */
+  iframe.onload = () => setTimeout(firePrint, 120);
+  setTimeout(firePrint, 600); /* احتياط إن لم يُطلق onload */
 
   iframe.contentWindow?.addEventListener("afterprint", cleanup);
   setTimeout(cleanup, 60000); /* حد أقصى للتنظيف */
