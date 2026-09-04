@@ -174,7 +174,7 @@ function Shell() {
                   <LogoMark size={36} variant="glass" />
                   <div className="leading-none min-w-0">
                     <div className="font-display font-bold text-[0.98rem] text-white truncate">{SYSTEM.name}</div>
-                    <div className="text-[0.6rem] font-bold text-white/55 mt-1">{SYSTEM.companyEn}</div>
+                    <div dir="ltr" className="font-num text-[0.52rem] font-bold text-white/55 mt-1 tracking-[0.14em] text-start">INTEGRATED FINANCIAL SYSTEM</div>
                   </div>
                 </div>}
             {!collapsed && <button onClick={() => setCollapsed(true)} className="w-7 h-7 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors shrink-0" aria-label="طي"><I n="chevS" size={16} className="rotate-180" /></button>}

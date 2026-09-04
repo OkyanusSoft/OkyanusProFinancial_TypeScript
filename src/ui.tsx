@@ -115,7 +115,7 @@ export function Logo({ size = 40, light = false }: { size?: number; light?: bool
         <div className={`font-display font-bold text-lg tracking-tight leading-tight ${light ? "text-white" : "text-ink"}`}>
           النظام المالي <span className="text-[var(--brand2)]">المتكامل</span>
         </div>
-        <div className={`text-[0.62rem] font-bold mt-1 ${light ? "text-white/60" : "text-mute"}`}>أوكيانوس سوفت — Okyanus Soft</div>
+        <div dir="ltr" className={`font-num text-[0.58rem] font-bold mt-1 tracking-[0.16em] text-start ${light ? "text-white/60" : "text-mute"}`}>INTEGRATED FINANCIAL SYSTEM</div>
       </div>
     </div>
   );
