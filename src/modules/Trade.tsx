@@ -430,7 +430,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
 
       {show && <InvoiceBuilder kind={kind} onClose={() => setShow(false)} defaultCredit={credit} />}
 
-      <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`}>
+      <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`} subtitle="عرض الفاتورة — البنود والضريبة مع الطباعة A4 والإلغاء">
         {view && (
           <>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -516,7 +516,7 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   };
 
   return (
-    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"}>
+    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">{kind === "purchases" ? "المورد" : "العميل"}</span>
           <select className="select mt-1" value={s.partner} onChange={(e) => setS({ ...s, partner: e.target.value })}>

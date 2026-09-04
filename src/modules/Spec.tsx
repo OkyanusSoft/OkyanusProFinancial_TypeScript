@@ -256,7 +256,7 @@ function SpecEntityScreen({ act, ent }: { act: ActivityDef; ent: SpecEntity }) {
         </Modal>
       )}
 
-      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash">
+      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash" subtitle="حذف آمن — ينشر شاهد الحذف لكل أجهزة الشبكة">
         <p className="text-[0.84rem] font-bold leading-6">سيُحذف «{String(del?.name || del?.code || del?.id)}» من {ent.label} ويُعمَّم الحذف على كل الأجهزة عبر سجل الشواهد.</p>
         <div className="flex justify-end gap-2 mt-5">
           <button className="btn btn-ghost" onClick={() => setDel(null)}>تراجع</button>

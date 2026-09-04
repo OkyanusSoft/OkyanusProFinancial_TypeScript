@@ -318,19 +318,21 @@ export function Directory({ conf }: { conf: DirConf }) {
       )}
 
       {/* تأكيد الحذف */}
-      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash">
-        <div className="flex items-start gap-3 p-3.5 rounded-xl bg-[color-mix(in_srgb,var(--bad)_7%,transparent)] border border-[color-mix(in_srgb,var(--bad)_25%,transparent)]">
-          <I n="alert" size={20} className="text-[var(--bad)] shrink-0 mt-0.5" />
-          <p className="text-[0.84rem] font-bold leading-6">
-            سيُنقل السجل «{String(del?.[nameF] ?? del?.id)}» إلى <b>سلة المحذوفات</b> مع إيقاف أثره فوراً.
-            <span className="block text-[0.72rem] text-mute font-medium mt-1">يمكنك استعادته لاحقاً من زر السلة، أو حذفه نهائياً من هناك (صيانة البيانات).</span>
+      <Modal open={!!del} onClose={() => setDel(null)} title="تأكيد الحذف" icon="trash" subtitle="حذف آمن — ينشر شاهد الحذف (Tombstone) لكل أجهزة الشبكة">
+        <div className="max-w-xl mx-auto text-center py-2">
+          <span className="w-16 h-16 rounded-2xl grid place-items-center mx-auto mb-4 anim-pop" style={{ background: "color-mix(in srgb, var(--bad) 12%, transparent)", color: "var(--bad)" }}>
+            <I n="alert" size={30} />
+          </span>
+          <p className="text-[0.95rem] font-bold leading-7">
+            سيُنقل السجل «{String(del?.[nameF] ?? del?.id)}» إلى <b className="text-[var(--bad)]">سلة المحذوفات</b> مع إيقاف أثره فوراً.
           </p>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button className="btn btn-ghost" onClick={() => setDel(null)}>تراجع</button>
-          <button className="btn btn-danger" onClick={() => { if (del) app.remove(conf.coll, del.id, String(del[nameF] ?? del.id)); setDel(null); }}>
-            <I n="trash" size={15} /> نقل إلى السلة
-          </button>
+          <p className="text-[0.76rem] text-mute font-medium mt-1.5 leading-6">يمكنك استعادته لاحقاً من زر السلة، أو حذفه نهائياً من هناك (صيانة البيانات).</p>
+          <div className="flex justify-center gap-2.5 mt-6">
+            <button className="btn btn-ghost !px-6" onClick={() => setDel(null)}>تراجع</button>
+            <button className="btn btn-danger !px-6" onClick={() => { if (del) app.remove(conf.coll, del.id, String(del[nameF] ?? del.id)); setDel(null); }}>
+              <I n="trash" size={15} /> نقل إلى السلة
+            </button>
+          </div>
         </div>
       </Modal>
 

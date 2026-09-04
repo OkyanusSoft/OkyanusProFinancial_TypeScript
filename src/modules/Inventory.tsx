@@ -166,7 +166,7 @@ function MoveScreen({ kind }: { kind: string }) {
 
       {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
 
-      <Modal open={!!view} onClose={() => setView(null)} wide icon={meta.icon} title={`تفاصيل السند ${view?.ref || ""}`}>
+      <Modal open={!!view} onClose={() => setView(null)} wide icon={meta.icon} title={`تفاصيل السند ${view?.ref || ""}`} subtitle={`${meta.full} — عرض كامل البنود مع الطباعة والتراجع`}>
         {view && (
           <>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -235,7 +235,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} wide icon={meta.icon} title={`إنشاء ${meta.full} — رقم يُولّد تلقائياً`}>
+    <Modal open onClose={onClose} wide icon={meta.icon} title={`إنشاء ${meta.full} — رقم يُولّد تلقائياً`} subtitle="سند مخزني — يُرحّل الكميات فوراً ويولّد قيداً محاسبياً متوازناً في دفتر الأستاذ">
       <div className="grid md:grid-cols-4 gap-3 mb-4">
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>
           <input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>

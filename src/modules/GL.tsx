@@ -402,7 +402,7 @@ function AddAccountModal({ open, onClose }: { open: boolean; onClose: () => void
   };
 
   return (
-    <Modal open={open} onClose={onClose} wide icon="layers" title="إضافة حساب جديد إلى دليل الحسابات">
+    <Modal open={open} onClose={onClose} wide icon="layers" title="إضافة حساب جديد إلى دليل الحسابات" subtitle="ترقيم تسلسلي تلقائي حسب آخر رقم في نفس المستوى (1113 ← 1114)">
       <div className="grid md:grid-cols-2 gap-3.5">
         <label className="block md:col-span-2">
           <span className="text-[0.74rem] font-bold text-soft">الحساب الأب <b className="text-[var(--bad)]">*</b></span>
@@ -694,7 +694,7 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} wide icon="book" title={JE_META[kind].newLabel + " جديد — رقم يُولّد تلقائياً"}>
+    <Modal open onClose={onClose} wide icon="book" title={JE_META[kind].newLabel + " جديد — رقم يُولّد تلقائياً"} subtitle="قيد مزدوج متعدد العملات — يُرفض الترحيل إذا لم يتوازن المدين والدائن">
       <div className="grid md:grid-cols-4 gap-3 mb-4">
         <label className="block md:col-span-2"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span><input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { SYSTEM } from "./data";
 
 /* ═══════════════ أيقونات SVG مرسومة يدوياً ═══════════════ */
 const P: Record<string, ReactNode> = {
@@ -121,24 +122,43 @@ export function Reveal({ children, className = "", delay = 0 }: { children: Reac
   return <div ref={ref} className={`reveal ${on ? "on" : ""} ${className}`} style={{ animationDelay: `${delay}ms` }}>{children}</div>;
 }
 
-/* ═══════════════ نافذة منبثقة ═══════════════ */
-export function Modal({ open, onClose, title, icon, children, wide = false }: { open: boolean; onClose: () => void; title: string; icon?: string; children: ReactNode; wide?: boolean }) {
+/* ═══════════════ النافذة المنبثقة الموحّدة (ERP Dialog) ═══════════════
+   حجم ومقاس موحّد لكل الشاشات المنبثقة في جميع الأنظمة —
+   كبيرة، وسط الشاشة، ترويسة مميزة، جسم قابل للتمرير           */
+export function Modal({ open, onClose, title, icon, children, subtitle }: {
+  open: boolean; onClose: () => void; title: string; icon?: string; children: ReactNode;
+  wide?: boolean; subtitle?: string;
+}) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    if (open) window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
+    if (open) { window.addEventListener("keydown", h); document.body.style.overflow = "hidden"; }
+    return () => { window.removeEventListener("keydown", h); document.body.style.overflow = ""; };
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#04121f]/60 backdrop-blur-[3px] anim-fadein" onClick={onClose} />
-      <div className={`relative card anim-pop w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[88vh] overflow-auto`}>
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-line sticky top-0 bg-surface z-10 rounded-t-[14px]">
-          {icon && <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)]"><I n={icon} size={19} /></span>}
-          <h3 className="font-display font-bold text-lg flex-1">{title}</h3>
-          <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-bad hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] transition-colors" aria-label="إغلاق"><I n="x" size={17} /></button>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-[#03101c]/72 backdrop-blur-[5px] anim-fadein" onClick={onClose} />
+      <div className="relative card anim-modal w-full max-w-[940px] max-h-[90vh] min-h-[320px] flex flex-col overflow-hidden shadow-2xl ring-1 ring-black/10">
+        {/* شريط لوني علوي مميز */}
+        <div className="h-[5px] shrink-0" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent) 55%, var(--brand))" }} />
+        {/* الترويسة الموحّدة */}
+        <div className="flex items-center gap-3.5 px-6 py-4 border-b border-line bg-surface shrink-0">
+          {icon ? (
+            <span className="w-11 h-11 rounded-xl grid place-items-center shrink-0 shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))", color: "var(--brandink)" }}>
+              <I n={icon} size={21} />
+            </span>
+          ) : null}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-display font-bold text-[1.15rem] leading-tight truncate">{title}</h3>
+            <p className="text-[0.7rem] font-bold text-mute mt-0.5 truncate">{subtitle || "النظام المالي المتكامل — أوكيانوس سوفت"}</p>
+          </div>
+          <span className="hidden sm:flex chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] !text-[0.6rem] font-num shrink-0" dir="ltr">v{SYSTEM.version}</span>
+          <button onClick={onClose} className="w-9 h-9 grid place-items-center rounded-lg text-mute hover:text-[var(--bad)] hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] transition-all hover:rotate-90 duration-200 shrink-0" aria-label="إغلاق">
+            <I n="x" size={18} />
+          </button>
         </div>
-        <div className="p-5">{children}</div>
+        {/* الجسم القابل للتمرير */}
+        <div className="flex-1 overflow-y-auto px-6 py-5" style={{ scrollbarWidth: "thin" }}>{children}</div>
       </div>
     </div>
   );
