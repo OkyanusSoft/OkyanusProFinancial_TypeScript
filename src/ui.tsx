@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { SYSTEM } from "./data";
 
 /* ═══════════════ أيقونات SVG مرسومة يدوياً ═══════════════ */
@@ -123,8 +124,13 @@ export function Reveal({ children, className = "", delay = 0 }: { children: Reac
 }
 
 /* ═══════════════ النافذة المنبثقة الموحّدة (ERP Dialog) ═══════════════
-   حجم ومقاس موحّد لكل الشاشات المنبثقة في جميع الأنظمة —
-   كبيرة، وسط الشاشة، ترويسة مميزة، جسم قابل للتمرير           */
+   تُعرض عبر Portal في document.body — خارج أي سياق تكديس أو تحويل
+   في الصفحة الأصلية، وبترتيب طبقات صريح:
+     الطبقة 0 : خلفية التعتيم (Backdrop)      — الأدنى
+     الطبقة 1 : إطار النافذة (Frame)          — الوسطى
+     الطبقة 2 : المحتوى الداخلي (Content)     — الأعلى، فوق الإطار دائماً
+   هندسة التمرير: الإطار flex-col بحد أقصى للارتفاع، والجسم
+   flex-1 min-h-0 overflow-y-auto فلا يخرج المحتوى عن الإطار أبداً   */
 export function Modal({ open, onClose, title, icon, children, subtitle }: {
   open: boolean; onClose: () => void; title: string; icon?: string; children: ReactNode;
   wide?: boolean; subtitle?: string;
@@ -135,14 +141,16 @@ export function Modal({ open, onClose, title, icon, children, subtitle }: {
     return () => { window.removeEventListener("keydown", h); document.body.style.overflow = ""; };
   }, [open, onClose]);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-[#03101c]/72 backdrop-blur-[5px] anim-fadein" onClick={onClose} />
-      <div className="relative card anim-modal w-full max-w-[940px] max-h-[90vh] min-h-[320px] flex flex-col overflow-hidden shadow-2xl ring-1 ring-black/10">
+  return createPortal(
+    <div className="fixed inset-0 z-[90] isolate flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true">
+      {/* ── الطبقة 0: خلفية التعتيم (الأدنى) ── */}
+      <div className="absolute inset-0 z-0 bg-[#03101c]/72 backdrop-blur-[5px] anim-fadein" onClick={onClose} aria-hidden="true" />
+      {/* ── الطبقة 1: إطار النافذة (الوسطى) ── */}
+      <div className="relative z-10 isolate card anim-modal w-full max-w-[940px] max-h-[min(90vh,860px)] min-h-[300px] flex flex-col overflow-hidden shadow-2xl ring-1 ring-black/10">
         {/* شريط لوني علوي مميز */}
         <div className="h-[5px] shrink-0" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent) 55%, var(--brand))" }} />
         {/* الترويسة الموحّدة */}
-        <div className="flex items-center gap-3.5 px-6 py-4 border-b border-line bg-surface shrink-0">
+        <div className="relative z-20 flex items-center gap-3.5 px-6 py-4 border-b border-line bg-surface shrink-0">
           {icon ? (
             <span className="w-11 h-11 rounded-xl grid place-items-center shrink-0 shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))", color: "var(--brandink)" }}>
               <I n={icon} size={21} />
@@ -157,10 +165,11 @@ export function Modal({ open, onClose, title, icon, children, subtitle }: {
             <I n="x" size={18} />
           </button>
         </div>
-        {/* الجسم القابل للتمرير */}
-        <div className="flex-1 overflow-y-auto px-6 py-5" style={{ scrollbarWidth: "thin" }}>{children}</div>
+        {/* ── الطبقة 2: المحتوى الداخلي (الأعلى) — min-h-0 لإصلاح التمرير ── */}
+        <div className="relative z-20 flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5 bg-surface" style={{ scrollbarWidth: "thin" }}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
