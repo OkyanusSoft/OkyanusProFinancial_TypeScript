@@ -182,7 +182,7 @@ export const CASHBOXES: AnyR[] = [
 ];
 
 export const COST_CENTERS: AnyR[] = [
-  { id: "CC-01", code: "CC-01", name: "الإدارة العامة", parent: "", manager: "م. أروى المقطري" },
+  { id: "CC-01", code: "CC-01", name: "الإدارة العامة", parent: "", manager: "م.وائل الشرفي" },
   { id: "CC-02", code: "CC-02", name: "فرع عدن", parent: "", manager: "أ. نبيل السباعي" },
   { id: "CC-03", code: "CC-03", name: "فرع المكلا", parent: "", manager: "أ. فهد باشراحيل" },
   { id: "CC-011", code: "CC-011", name: "قسم المشتريات", parent: "CC-01", manager: "أ. هدى العامري" },
@@ -191,7 +191,7 @@ export const COST_CENTERS: AnyR[] = [
 ];
 
 export const BRANCHES: AnyR[] = [
-  { id: "BR-01", code: "BR-01", name: "المركز الرئيسي — صنعاء", manager: "م. أروى المقطري", phone: "01-448-210", main: true },
+  { id: "BR-01", code: "BR-01", name: "المركز الرئيسي — صنعاء", manager: "م.وائل الشرفي", phone: "01-448-210", main: true },
   { id: "BR-02", code: "BR-02", name: "فرع عدن", manager: "أ. نبيل السباعي", phone: "02-331-908", main: false },
   { id: "BR-03", code: "BR-03", name: "فرع المكلا", manager: "أ. فهد باشراحيل", phone: "05-662-774", main: false },
 ];
@@ -204,12 +204,9 @@ export const DEPARTMENTS: AnyR[] = [
   { id: "DP-05", code: "DP-05", name: "قسم الصيدلية — عدن", branch: "BR-02", head: "د. لمى العطاس" },
 ];
 
+/* مستخدم واحد فقط — مدير النظام، لبدء إدخال البيانات الحقيقية */
 export const USERS: AnyR[] = [
-  { id: "U-01", code: "U-01", name: "م. أروى المقطري", username: "admin", role: "مدير النظام", branch: "BR-01", active: true, lastLogin: "2026-03-29 08:12" },
-  { id: "U-02", code: "U-02", name: "سمير الحداد", username: "s.haddad", role: "محاسب رئيسي", branch: "BR-01", active: true, lastLogin: "2026-03-29 07:55" },
-  { id: "U-03", code: "U-03", name: "عادل الحميري", username: "a.humairi", role: "أمين مخزن", branch: "BR-01", active: true, lastLogin: "2026-03-28 16:40" },
-  { id: "U-04", code: "U-04", name: "هدى العامري", username: "h.ameri", role: "مسؤولة مشتريات", branch: "BR-02", active: true, lastLogin: "2026-03-29 09:03" },
-  { id: "U-05", code: "U-05", name: "طارق الوزير", username: "t.wazir", role: "مسؤول مبيعات", branch: "BR-02", active: false, lastLogin: "2026-03-14 11:22" },
+  { id: "U-01", code: "U-01", name: "م.وائل الشرفي", username: "admin", role: "مدير النظام", branch: "BR-01", active: true, lastLogin: "" },
 ];
 
 export const ROLES = ["مدير النظام", "محاسب رئيسي", "أمين مخزن", "مسؤولة مشتريات", "مسؤول مبيعات", "مدقق خارجي"];
@@ -280,61 +277,6 @@ export const REQUESTS: AnyR[] = [];
 
 /* قيود اليومية فارغة — ميزان المراجعة يبدأ من الصفر، ويُبنى عبر سند قيد افتتاحي مالي ثم قيود اليومية */
 export const JOURNALS: Journal[] = [];
-const _jSeed: Journal[] = [
-  { id: "JE-0001", no: "FYE-2026-001", date: "2026-01-01", desc: "القيد الافتتاحي للسنة المالية 2026", kind: "افتتاحي", user: "سمير الحداد", status: "مرحّل", source: "سند قيد افتتاحي مالي", lines: [
-    { account: "11111", debit: 250000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
-    { account: "11121", debit: 1450000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
-    { account: "11211", debit: 620000, credit: 0, currency: "YER", rate: 1 },
-    { account: "11212", debit: 180000, credit: 0, currency: "YER", rate: 1 },
-    { account: "11311", debit: 2300000, credit: 0, currency: "YER", rate: 1 },
-    { account: "21111", debit: 0, credit: 940000, currency: "YER", rate: 1 },
-    { account: "21211", debit: 0, credit: 85000, currency: "YER", rate: 1 },
-    { account: "22111", debit: 0, credit: 3775000, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1001", no: "JE-2026-1001", date: "2026-01-15", desc: "مبيعات نقدية — تحصيل مباشر", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "11111", debit: 96500, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
-    { account: "41111", debit: 0, credit: 90000, currency: "YER", rate: 1, costCenter: "CC-012" },
-    { account: "21211", debit: 0, credit: 6500, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1002", no: "JE-2026-1002", date: "2026-01-22", desc: "مبيعات آجلة — مستشفى النور ومجمع الريان", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "11211", debit: 210000, credit: 0, currency: "YER", rate: 1 },
-    { account: "41112", debit: 0, credit: 200000, currency: "YER", rate: 1, costCenter: "CC-012" },
-    { account: "21211", debit: 0, credit: 10000, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1003", no: "JE-2026-1003", date: "2026-02-03", desc: "فاتورة مشتريات آجلة — شركة الدواء الحديث", kind: "يومية", user: "هدى العامري", status: "مرحّل", source: "فاتورة مشتريات", lines: [
-    { account: "11311", debit: 154000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-011" },
-    { account: "21211", debit: 7700, credit: 0, currency: "YER", rate: 1 },
-    { account: "21111", debit: 0, credit: 161700, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1004", no: "PV-2026-0104", date: "2026-02-10", desc: "مسيرات رواتب شهر يناير 2026", kind: "صرف", user: "سمير الحداد", status: "مرحّل", source: "سند صرف", lines: [
-    { account: "31111", debit: 185000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
-    { account: "11121", debit: 0, credit: 185000, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1005", no: "RC-2026-0105", date: "2026-02-18", desc: "سند قبض — دفعة من مستشفى النور التخصصي", kind: "قبض", user: "سمير الحداد", status: "مرحّل", source: "سند قبض", lines: [
-    { account: "11111", debit: 130000, credit: 0, currency: "YER", rate: 1 },
-    { account: "11211", debit: 0, credit: 130000, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1006", no: "PV-2026-0106", date: "2026-03-02", desc: "سند صرف — سداد دفعة لمؤسسة الخليج", kind: "صرف", user: "هدى العامري", status: "مرحّل", source: "سند صرف", lines: [
-    { account: "21111", debit: 90000, credit: 0, currency: "YER", rate: 1 },
-    { account: "11121", debit: 0, credit: 90000, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1007", no: "JE-2026-1007", date: "2026-03-11", desc: "إيجار المقر الرئيسي — الربع الأول", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "31211", debit: 24500, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
-    { account: "11111", debit: 0, credit: 24500, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1008", no: "JE-2026-1008", date: "2026-03-20", desc: "قسط استهلاك المعدات الطبية — مارس", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "31311", debit: 32000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
-    { account: "11421", debit: 0, credit: 32000, currency: "YER", rate: 1 },
-  ]},
-  { id: "JE-1009", no: "JE-2026-1009", date: "2026-03-25", desc: "خدمات طبية لنزلاء — تحليلي: أحمد الشامي", kind: "يومية", user: "سمير الحداد", status: "مرحّل", source: "سند قيد يومية", lines: [
-    { account: "11212", debit: 45000, credit: 0, currency: "YER", rate: 1, analytical: "AN-001" },
-    { account: "41211", debit: 0, credit: 45000, currency: "YER", rate: 1, costCenter: "CC-021" },
-  ]},
-  { id: "JE-1010", no: "REQ-2026-0004", date: "2026-03-27", desc: "طلب قيد — حملة تسويق رقمية (بانتظار موافقة المدير المالي)", kind: "طلب", user: "طارق الوزير", status: "بانتظار الموافقة", source: "طلب سند قيد يومية", lines: [
-    { account: "31411", debit: 40000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-012" },
-    { account: "11111", debit: 0, credit: 40000, currency: "YER", rate: 1 },
-  ]},
-];
 
 export const PERM_MODULES = ["لوحة التحكم", "المخازن", "المشتريات", "المبيعات", "الحسابات العامة", "إدارة النظام", "التقارير"];
 export const PERM_ACTIONS = ["عرض", "إنشاء", "تعديل", "حذف / إلغاء", "تصدير تقارير", "إقفال فترات"];
@@ -681,23 +623,11 @@ export const HR_EMPLOYEES: AnyR[] = [
   { id: "EMP-04", code: "EMP-04", name: "طارق الوزير", job: "مسؤول مبيعات", dept: "المبيعات", branch: "BR-02", salary: 130000, phone: "770-444-004", join: "2024-02-20", status: "إجازة" },
   { id: "EMP-05", code: "EMP-05", name: "لمى العطاس", job: "صيدلانية", dept: "المبيعات", branch: "BR-02", salary: 160000, phone: "736-555-005", join: "2024-08-05", status: "نشط" },
 ];
-export const HR_ATTENDANCE: AnyR[] = [
-  { id: "AT-01", code: "AT-01", emp: "EMP-01", date: "2026-03-29", in: "07:55", out: "16:10", hours: 8.25, status: "حاضر" },
-  { id: "AT-02", code: "AT-02", emp: "EMP-02", date: "2026-03-29", in: "08:15", out: "16:30", hours: 8.25, status: "حاضر" },
-  { id: "AT-03", code: "AT-03", emp: "EMP-03", date: "2026-03-29", in: "09:05", out: "—", hours: 0, status: "متأخر" },
-  { id: "AT-04", code: "AT-04", emp: "EMP-05", date: "2026-03-29", in: "07:50", out: "16:00", hours: 8.1, status: "حاضر" },
-];
-export const HR_REWARDS: AnyR[] = [
-  { id: "RW-01", code: "RW-01", emp: "EMP-01", reason: "إنجاز الإقفال السنوي قبل الموعد", amount: 25000, date: "2026-02-10", status: "مصروفة" },
-  { id: "RW-02", code: "RW-02", emp: "EMP-05", reason: "أفضل موظفة مبيعات — فبراير", amount: 15000, date: "2026-03-05", status: "معتمدة" },
-];
-export const HR_WARNINGS: AnyR[] = [
-  { id: "WN-01", code: "WN-01", emp: "EMP-03", reason: "تكرار التأخر عن الدوام", level: "إنذار أول", date: "2026-03-29", status: "مسجَّل" },
-];
-export const HR_LEAVES: AnyR[] = [
-  { id: "LV-01", code: "LV-01", emp: "EMP-04", from: "2026-03-25", to: "2026-04-02", days: 8, type: "سنوية", status: "معتمدة" },
-  { id: "LV-02", code: "LV-02", emp: "EMP-02", from: "2026-04-10", to: "2026-04-11", days: 2, type: "طارئة", status: "بانتظار الموافقة" },
-];
+/* حركات الموارد البشرية فارغة — تبدأ بإدخال الحضور والمكافآت والإنذارات والإجازات فعلياً */
+export const HR_ATTENDANCE: AnyR[] = [];
+export const HR_REWARDS: AnyR[] = [];
+export const HR_WARNINGS: AnyR[] = [];
+export const HR_LEAVES: AnyR[] = [];
 
 /* ── بيانات الأصول الثابتة ── */
 export const ASSETS: AnyR[] = [
