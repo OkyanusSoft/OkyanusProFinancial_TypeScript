@@ -466,6 +466,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       return Object.entries(m).map(([account, val]) => ({ account, val }));
     };
+    /* حساب الطرف المقابل حسب طبيعة الحركة (مورد آجل / صندوق نقدي / عميل مرتجع) */
+    const partyName =
+      d.partyKind === "supplier" ? (db.suppliers.find((s: any) => s.id === d.party) as any)?.name :
+      d.partyKind === "customer" ? (db.customers.find((c: any) => c.id === d.party) as any)?.name :
+      d.partyKind === "cashbox" ? (db.cashboxes.find((c: any) => c.id === d.party) as any)?.name : undefined;
+    const partyAcc =
+      d.partyKind === "supplier" ? ((db.suppliers.find((s: any) => s.id === d.party) as any)?.account as string) || settings.suspense.suppliers :
+      d.partyKind === "customer" ? ((db.customers.find((c: any) => c.id === d.party) as any)?.account as string) || settings.suspense.customers :
+      d.partyKind === "cashbox" ? ((db.cashboxes.find((c: any) => c.id === d.party) as any)?.account as string) || settings.suspense.cash :
+      settings.suspense.purchases;
     const jeLines = v === 0 ? [] :
       d.type === "تحويل" ? (from === to ? [] : [
         { account: to, debit: v, credit: 0, currency: "YER", rate: 1 },
@@ -476,12 +486,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         { account: from, debit: 0, credit: v, currency: "YER", rate: 1 },
       ] : [
         ...aggBy("stockAccount", settings.suspense.purchases).map(({ account, val }) => ({ account, debit: val, credit: 0, currency: "YER", rate: 1 })),
-        { account: settings.suspense.purchases, debit: 0, credit: v, currency: "YER", rate: 1 },
+        { account: partyAcc, debit: 0, credit: v, currency: "YER", rate: 1 },
       ];
     const jeNo = nextNo(settings.prefixes.JE);
     const je = jeLines.length ? {
       id: jeNo, no: jeNo, date: d.date, user: session?.user || "—", status: "مرحّل",
-      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref} على حسابات المجموعات المرتبطة`,
+      desc: `قيد تلقائي — سند ${d.type} مخزني ${d.ref}${d.subType ? ` (${d.subType})` : ""}${partyName ? ` — الطرف: ${partyName}` : ""}`,
       kind: "يومية", source: `سند ${d.type} مخزني`, lines: jeLines,
     } : null;
 
