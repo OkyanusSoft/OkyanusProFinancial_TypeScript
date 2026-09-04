@@ -1244,7 +1244,7 @@ function PrefsScreen() {
           </div>
         </div>
       </div>
-      <p className="text-[0.72rem] font-bold text-mute mt-4 flex items-center gap-1.5"><I n="info" size={14} className="text-[var(--brand)]" /> تُحفظ تفضيلاتك باسم المستخدم {app.session?.user} وتُطبّق على {SYSTEM.name} v{SYSTEM.version} في كل جلساتك.</p>
+      <p className="text-[0.72rem] font-bold text-mute mt-4 flex items-center gap-1.5"><I n="info" size={14} className="text-[var(--brand)]" /> تُحفظ تفضيلاتك باسم المستخدم {app.session?.user} وتُطبّق على {SYSTEM.name} في كل جلساتك.</p>
     </div>
   );
 }

@@ -16,7 +16,7 @@ export default function Help() {
           <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="life" size={23} /></span>
           <div>
             <h1 className="font-display font-bold text-2xl leading-tight">المساعدة</h1>
-            <p className="text-mute text-[0.82rem] font-medium mt-0.5">دليل المستخدم، حول النظام، ووثائق المطورين — {SYSTEM.name} v{SYSTEM.version}</p>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">دليل المستخدم، حول النظام، ووثائق المطورين — {SYSTEM.name}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -69,13 +69,13 @@ export default function Help() {
             <div className="absolute top-0 inset-x-0 h-1.5" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand))" }} />
             <div className="flex justify-center mb-4"><Logo size={64} /></div>
             <h2 className="font-display font-bold text-3xl">{SYSTEM.name}</h2>
-            <p className="text-[0.82rem] font-bold text-mute mt-1 font-num" dir="ltr">{SYSTEM.en} — v{SYSTEM.version}</p>
+            <p className="text-[0.82rem] font-bold text-mute mt-1 font-num" dir="ltr">{SYSTEM.en}</p>
             <p className="text-[0.84rem] font-medium text-soft leading-7 mt-4 max-w-xl mx-auto">
               نظام مالي ومخزني متكامل من شركة أوكيانوس سوفت: قيد مزدوج متعدد العملات، دليل حسابات من 5 مستويات،
               حسابات تحليلية، إقفال فترات محصّن، وتقارير بمعايير IFRS — مصمم للأنشطة التجارية والطبية الكبيرة.
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-              {[["الإصدار", "3.0.0"], ["قاعدة البيانات", "MySQL 8.0"], ["المصادقة", "JWT / OAuth2"], ["المعمارية", "Modular"]].map(([k, v]) => (
+              {[["قاعدة البيانات", "MySQL 8.0"], ["المصادقة", "JWT / OAuth2"], ["المعمارية", "Modular"], ["الدعم الفني", "24/7"]].map(([k, v]) => (
                 <div key={k} className="bg-panel rounded-xl p-3 border border-line"><div className="text-[0.64rem] font-bold text-mute">{k}</div><div className="font-num font-bold text-[0.9rem] mt-0.5" dir="ltr">{v}</div></div>
               ))}
             </div>

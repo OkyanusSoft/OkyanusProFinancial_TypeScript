@@ -52,10 +52,20 @@ export default function Login() {
     ["100", "مستخدم متزامن"],
   ] as const;
 
-  const ACT = ["نظام المطاعم", "نظام المستشفيات", "نظام المصانع والإنتاج", "نظام المقاولات", "نظام محلات الذهب", "نظام الصرافة والحوالات", "نظام المدارس", "نظام الفنادق"];
+  /* شارة المميزات المتبدلة — قوة النظام لا عملاؤه */
+  const MERITS = [
+    "مزامنة لحظية: ما يدخله الكاشير يظهر للمدير خلال ثوانٍ",
+    "قيد مزدوج متوازن يرفض أي قيد غير متطابق",
+    "إقفال فترات مالية محصّن ضد أي تعديل",
+    "حسابات تحليلية بلا تضخيم لدليل الحسابات",
+    "ترحيل تلقائي: كل فاتورة تولّد قيدها فوراً",
+    "طباعة A4 احترافية لكل سند وتقرير",
+    "نسخ احتياطي واستعادة تنتشر لكل الأجهزة",
+    "صلاحيات دقيقة على مستوى النظام والشاشة والزر",
+  ];
   const [actIdx, setActIdx] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setActIdx((i) => (i + 1) % ACT.length), 2600);
+    const t = setInterval(() => setActIdx((i) => (i + 1) % MERITS.length), 3000);
     return () => clearInterval(t);
   }, []);
 
@@ -120,15 +130,15 @@ export default function Login() {
               ))}
             </div>
 
-            {/* شارة النشاط المتبدل */}
-            <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3">
+            {/* شارة الميزة المتبدلة — تدور على مميزات النظام */}
+            <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 overflow-hidden">
               <span className="relative grid h-8 w-8 place-items-center shrink-0">
                 <span className="absolute inset-0 rounded-full bg-[#7fd8ff]/30 anim-ring" />
-                <I n="layers" size={15} className="text-[#7fd8ff] relative" />
+                <I n="check" size={15} className="text-[#7fd8ff] relative" />
               </span>
-              <div className="text-[0.72rem] font-bold text-white/70">
-                يعمل الآن لدى عملائنا:{" "}
-                <span key={actIdx} className="text-white anim-fadein inline-block">{ACT[actIdx]}</span>
+              <div className="text-[0.72rem] font-bold text-white/70 leading-5">
+                <span className="text-[#7fd8ff]">لماذا نحن؟</span>{" "}
+                <span key={actIdx} className="text-white anim-fadein inline-block">{MERITS[actIdx]}</span>
               </div>
             </div>
           </div>

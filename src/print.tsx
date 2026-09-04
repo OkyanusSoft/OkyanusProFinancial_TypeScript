@@ -131,7 +131,7 @@ export function PFoot({ user }: { user: string }) {
   return (
     <div className="p-foot">
       <div>طُبع بواسطة: <b>{user}</b> — {now.toLocaleString("ar-EG")} </div>
-      <div className="p-foot-mid">{SYSTEM.name} v{SYSTEM.version} — {SYSTEM.company} <span dir="ltr">{SYSTEM.phone}</span></div>
+      <div className="p-foot-mid">{SYSTEM.name} — {SYSTEM.company} <span dir="ltr">{SYSTEM.phone}</span></div>
       <div dir="ltr">{SYSTEM.site}</div>
       <div className="p-bar" aria-hidden="true">
         {`OKS-${now.getTime().toString().slice(-8)}`.split("").map((c, i) => (

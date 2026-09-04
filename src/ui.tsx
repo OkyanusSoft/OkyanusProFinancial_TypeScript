@@ -80,29 +80,29 @@ export function LogoMark({ size = 40, variant = "tile" }: { size?: number; varia
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
       <defs>
         <linearGradient id="lgm-tile" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#12a0d8" /><stop offset="100%" stopColor="#075a8f" />
+          <stop offset="0%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#0369a1" />
         </linearGradient>
         <linearGradient id="lgm-coin" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffe6b0" /><stop offset="55%" stopColor="#f2b95e" /><stop offset="100%" stopColor="#d3952f" />
+          <stop offset="0%" stopColor="#7dd3fc" /><stop offset="55%" stopColor="#0ea5e9" /><stop offset="100%" stopColor="#0284c7" />
         </linearGradient>
       </defs>
       {variant === "tile"
         ? <rect width="48" height="48" rx="13" fill="url(#lgm-tile)" />
         : <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />}
-      {/* العملة الذهبية */}
+      {/* العملة الزرقاء — ألوان الهوية */}
       <circle cx="24" cy="24.5" r="13.6" fill="url(#lgm-coin)" />
-      <circle cx="24" cy="24.5" r="13.6" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.3" />
-      <circle cx="24" cy="24.5" r="10.8" fill="none" stroke="rgba(122,74,10,0.32)" strokeWidth="1" />
+      <circle cx="24" cy="24.5" r="13.6" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="1.3" />
+      <circle cx="24" cy="24.5" r="10.8" fill="none" stroke="rgba(240,249,255,0.4)" strokeWidth="1" />
       {/* أعمدة النمو الصاعد */}
-      <rect x="16.7" y="26" width="3.5" height="5.4" rx="1" fill="#0a5c8f" />
-      <rect x="22.3" y="22.4" width="3.5" height="9" rx="1" fill="#0a5c8f" />
-      <rect x="27.9" y="18.6" width="3.5" height="12.8" rx="1" fill="#0a5c8f" />
+      <rect x="16.7" y="26" width="3.5" height="5.4" rx="1" fill="#f0f9ff" />
+      <rect x="22.3" y="22.4" width="3.5" height="9" rx="1" fill="#f0f9ff" />
+      <rect x="27.9" y="18.6" width="3.5" height="12.8" rx="1" fill="#f0f9ff" />
       {/* سهم الصعود */}
-      <path d="M16.8 24.6 30.4 15.8" stroke="#083a5c" strokeWidth="1.9" fill="none" strokeLinecap="round" />
-      <path d="M26.5 15.4h4.4v4.4" stroke="#083a5c" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16.8 24.6 30.4 15.8" stroke="#e0f2fe" strokeWidth="1.9" fill="none" strokeLinecap="round" />
+      <path d="M26.5 15.4h4.4v4.4" stroke="#e0f2fe" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       {/* بريق */}
-      <path d="M38 8.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="#ffd28a" />
-      <circle cx="10.5" cy="38" r="1.4" fill="#a5e6ff" opacity="0.85" />
+      <path d="M38 8.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="#bae6fd" />
+      <circle cx="10.5" cy="38" r="1.4" fill="#e0f2fe" opacity="0.9" />
     </svg>
   );
 }
@@ -189,7 +189,6 @@ export function Modal({ open, onClose, title, icon, children, subtitle, footer }
             <h3 className="truncate font-display text-[1.15rem] font-bold leading-tight">{title}</h3>
             <p className="mt-0.5 truncate text-[0.7rem] font-bold text-mute">{subtitle || "النظام المالي المتكامل — أوكيانوس سوفت"}</p>
           </div>
-          <span className="chip hidden shrink-0 bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] font-num !text-[0.6rem] text-[var(--brand)] sm:flex" dir="ltr">v{SYSTEM.version}</span>
           <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-mute transition-all duration-200 hover:rotate-90 hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] hover:text-[var(--bad)]" aria-label="إغلاق">
             <I n="x" size={18} />
           </button>

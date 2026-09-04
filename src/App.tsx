@@ -171,10 +171,10 @@ function Shell() {
             {collapsed
               ? <svg width="38" height="38" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.1)" /><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" /><path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg>
               : <div className="flex items-center gap-2 min-w-0">
-                  <svg width="36" height="36" viewBox="0 0 48 48" className="shrink-0" aria-hidden="true"><rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.12)" /><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" /><path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg>
+                  <LogoMark size={36} variant="glass" />
                   <div className="leading-none min-w-0">
                     <div className="font-display font-bold text-[0.98rem] text-white truncate">{SYSTEM.name}</div>
-                    <div className="text-[0.6rem] font-bold text-white/55 mt-1">{SYSTEM.companyEn} • v{SYSTEM.version}</div>
+                    <div className="text-[0.6rem] font-bold text-white/55 mt-1">{SYSTEM.companyEn}</div>
                   </div>
                 </div>}
             {!collapsed && <button onClick={() => setCollapsed(true)} className="w-7 h-7 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors shrink-0" aria-label="طي"><I n="chevS" size={16} className="rotate-180" /></button>}
