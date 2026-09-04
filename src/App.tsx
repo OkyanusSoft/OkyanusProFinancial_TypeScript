@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AppProvider, useApp } from "./store";
-import { I, Logo } from "./ui";
+import { I, Logo, LogoMark } from "./ui";
 import { SYSTEM } from "./data";
 import Login from "./modules/Login";
 import Dashboard from "./modules/Dashboard";
@@ -321,14 +321,13 @@ function Shell() {
           {/* ═══ التذييل الثابت — أسفل كل شاشة ═══ */}
           <footer className="border-t border-line mt-2 py-4 px-4 text-center" style={{ background: "color-mix(in srgb, var(--panel) 75%, transparent)" }}>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[0.78rem] font-bold text-soft">
-              <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="13" fill="var(--brand)" /><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="var(--brandink)" strokeWidth="3" fill="none" strokeLinecap="round" /><path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="var(--brandink)" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.7" /></svg>
+              <LogoMark size={22} variant="tile" />
               <span>جميع الحقوق محفوظة لدى شركة أوكيانوس سوفت - Okyanus Soft</span>
               <a href={SYSTEM.site} target="_blank" rel="noreferrer" className="text-[var(--brand)] hover:underline underline-offset-4 font-num" dir="ltr">{SYSTEM.site}</a>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[0.68rem] font-bold">
               <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] font-num !text-[0.74rem]" dir="ltr"><I n="phone" size={12} className="inline -mt-0.5" /> {SYSTEM.phone}</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num">{SYSTEM.cr}</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{SYSTEM.name} v{SYSTEM.version}</span>
+              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]"><I n="globe" size={12} className="inline -mt-0.5" /> {SYSTEM.cr}</span>
             </div>
           </footer>
         </div>

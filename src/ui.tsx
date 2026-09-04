@@ -74,21 +74,48 @@ export function I({ n, size = 18, className = "" }: { n: string; size?: number; 
   );
 }
 
-/* ═══════════════ الشعار ═══════════════ */
+/* ═══════════════ علامة النظام — أيقونة مالية (عملة ذهبية بنمو صاعد) ═══════════════ */
+export function LogoMark({ size = 40, variant = "tile" }: { size?: number; variant?: "tile" | "glass" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
+      <defs>
+        <linearGradient id="lgm-tile" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#12a0d8" /><stop offset="100%" stopColor="#075a8f" />
+        </linearGradient>
+        <linearGradient id="lgm-coin" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffe6b0" /><stop offset="55%" stopColor="#f2b95e" /><stop offset="100%" stopColor="#d3952f" />
+        </linearGradient>
+      </defs>
+      {variant === "tile"
+        ? <rect width="48" height="48" rx="13" fill="url(#lgm-tile)" />
+        : <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />}
+      {/* العملة الذهبية */}
+      <circle cx="24" cy="24.5" r="13.6" fill="url(#lgm-coin)" />
+      <circle cx="24" cy="24.5" r="13.6" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.3" />
+      <circle cx="24" cy="24.5" r="10.8" fill="none" stroke="rgba(122,74,10,0.32)" strokeWidth="1" />
+      {/* أعمدة النمو الصاعد */}
+      <rect x="16.7" y="26" width="3.5" height="5.4" rx="1" fill="#0a5c8f" />
+      <rect x="22.3" y="22.4" width="3.5" height="9" rx="1" fill="#0a5c8f" />
+      <rect x="27.9" y="18.6" width="3.5" height="12.8" rx="1" fill="#0a5c8f" />
+      {/* سهم الصعود */}
+      <path d="M16.8 24.6 30.4 15.8" stroke="#083a5c" strokeWidth="1.9" fill="none" strokeLinecap="round" />
+      <path d="M26.5 15.4h4.4v4.4" stroke="#083a5c" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* بريق */}
+      <path d="M38 8.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="#ffd28a" />
+      <circle cx="10.5" cy="38" r="1.4" fill="#a5e6ff" opacity="0.85" />
+    </svg>
+  );
+}
+
 export function Logo({ size = 40, light = false }: { size?: number; light?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
-        <rect width="48" height="48" rx="13" fill={light ? "rgba(255,255,255,0.12)" : "#0b4f7a"} />
-        <path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="3" fill="none" strokeLinecap="round" />
-        <path d="M8 19c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.85" />
-        <circle cx="37" cy="13" r="3" fill="#ffd28a" />
-      </svg>
+      <LogoMark size={size} variant={light ? "glass" : "tile"} />
       <div className="leading-none">
         <div className={`font-display font-bold text-lg tracking-tight leading-tight ${light ? "text-white" : "text-ink"}`}>
           النظام المالي <span className="text-[var(--brand2)]">المتكامل</span>
         </div>
-        <div className={`text-[0.62rem] font-bold mt-1 ${light ? "text-white/60" : "text-mute"}`}>أوكيانوس سوفت — Okyanus Soft • v3.0</div>
+        <div className={`text-[0.62rem] font-bold mt-1 ${light ? "text-white/60" : "text-mute"}`}>أوكيانوس سوفت — Okyanus Soft</div>
       </div>
     </div>
   );

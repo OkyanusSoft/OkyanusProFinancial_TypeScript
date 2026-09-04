@@ -11,8 +11,8 @@ export const SYSTEM = {
   version: "3.0.0",
   short: "IFS",
   phone: "781 183 050",
-  cr: "السجل التجاري: 2019004571 — صنعاء",
-  site: "https://okyanussoft.online/",
+  cr: "اليمن — صنعاء",
+  site: "https://okyanus-soft.com/",
 };
 
 export type AnyR = Record<string, any> & { id: string };
