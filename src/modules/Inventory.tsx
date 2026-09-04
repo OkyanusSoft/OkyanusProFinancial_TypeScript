@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
-import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart } from "../ui";
+import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart, FormSection } from "../ui";
 import { Directory, DocList, type DirConf, type ColDef } from "../crud";
-import { openPrint, DocSheet, PTable, ReportSheet } from "../print";
+import { openPrint, DocSheet, PTable, ReportSheet, tafqit } from "../print";
 import type { InvDoc } from "../data";
 
 export default function Inventory() {
@@ -173,7 +173,9 @@ function printInvDoc(app: ReturnType<typeof useApp>, d: AnyR, docTitle: string) 
         ["البيان", d.note || "—"],
         ["الحالة", d.status],
       ]}
-      totals={{ items: [["عدد الأسطر", String(lines.length)], ["إجمالي الكميات", app.fmtN(lines.reduce((s, l) => s + Math.abs(l.qty), 0))]], grand: ["القيمة الإجمالية بالتكلفة", app.fmtN(totalVal)] }}
+      totals={{ items: [["عدد الأسطر", String(lines.length)], ["إجمالي الكميات", app.fmtN(lines.reduce((s, l) => s + Math.abs(l.qty), 0))], ["المبلغ بالحروف", tafqit(totalVal)]], grand: ["القيمة الإجمالية بالتكلفة", app.fmtN(totalVal) + " ر.ي"] }}
+      stampText={d.type} stampSub={d.status === "مسودة" ? "معاينة" : "معتمد"}
+      signLabels={d.status === "مسودة" ? ["أمين المخزن", "المحاسب"] : ["أمين المخزن", "المحاسب", "المدير المالي"]}
       note={d.note} user={app.session?.user || "—"}
     >
       <PTable head={["م", "كود الصنف", "اسم الصنف", "الكمية", "التكلفة", "الإجمالي"]}
@@ -363,9 +365,27 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
     if (res.ok) onClose();
   };
 
+  /* معاينة طباعة السند قبل الترحيل — بنفس قالب الطباعة المستندية */
+  const printDraft = () => {
+    const valid = lines.filter((l) => l.item && (+l.qty || 0) !== 0);
+    const draft = {
+      id: "draft", ref: `معاينة ${meta.prefix}-…`, date, status: "مسودة",
+      type: meta.label, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined,
+      user: app.session?.user || "—", note, subType: sub || undefined, partyKind, party: party || undefined,
+      extRef: extRef || undefined, clearAccount: kind === "open" ? clearAcc : undefined,
+      lines: valid.map((l) => {
+        const it: any = app.db.items.find((i) => i.id === l.item);
+        const qty = kind === "count" ? (+l.qty || 0) - (it?.qty[wh] || 0) : +l.qty;
+        return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
+      }),
+    };
+    printInvDoc(app, draft as any, meta.full);
+  };
+
   return (
     <Modal open onClose={onClose} wide icon={meta.icon} title={`إنشاء ${meta.full} — رقم يُولّد تلقائياً`} subtitle="سند مخزني — يُرحّل الكميات فوراً ويولّد قيداً محاسبياً متوازناً في دفتر الأستاذ">
-      <div className="grid md:grid-cols-4 gap-3 mb-4">
+      <FormSection n="أولاً" icon="file" title="رأس المستند" hint="البيانات العامة للسند">
+      <div className="grid md:grid-cols-4 gap-3 mb-3">
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>
           <input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         {subs.length > 1 && (
@@ -414,6 +434,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         <textarea className="input !text-[0.86rem] !leading-6" rows={3} value={note} onChange={(e) => setNote(e.target.value)}
           placeholder={kind === "grn" ? "مثال: توريد بضاعة من المورد … بموجب فاتورة رقم … تشمل أصناف …" : kind === "iss" ? "مثال: صرف بضاعة للعميل … بموجب فاتورة رقم …" : kind === "tr" ? "مثال: تحويل بضاعة من المخزن الرئيسي إلى مخزن الفرع لتغطية الطلب…" : kind === "open" ? "مثال: إثبات الأرصدة الافتتاحية للمخزون بداية السنة المالية…" : "اذكر تفاصيل الحركة وسببها بوضوح…"} />
       </label>
+      </FormSection>
 
       {/* المعاينة الحية للقيد المحاسبي — من حـ/ … إلى حـ/ … */}
       <div className="mb-3 rounded-xl border border-[color-mix(in_srgb,var(--brand)_25%,transparent)] overflow-hidden">
@@ -450,9 +471,10 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         </div>
       </div>
 
+      <FormSection n="ثانياً" icon="box" title="بنود المستند" hint={kind === "count" ? "أدخل الكميات المعدودة فعلياً ويُحتسب الفرق عن النظام تلقائياً" : "أصناف السند وكمياتها وتكلفتها"}>
       <div className="rounded-xl border border-line overflow-hidden mb-3">
         <table className="tbl">
-          <thead><tr><th>الصنف</th><th>{kind === "count" ? "الرصيد بالنظام" : ""}</th><th>{kind === "count" ? "الكمية المعدودة" : "الكمية"}</th><th>التكلفة</th><th>{kind === "count" ? "الفرق" : "الإجمالي"}</th><th></th></tr></thead>
+          <thead><tr><th>الصنف</th><th>الوحدة</th><th>{kind === "count" ? "الرصيد بالنظام" : ""}</th><th>{kind === "count" ? "الكمية المعدودة" : "الكمية"}</th><th>التكلفة</th><th>{kind === "count" ? "الفرق" : "الإجمالي"}</th><th></th></tr></thead>
           <tbody>
             {lines.map((l, i) => {
               const it: any = app.db.items.find((x) => x.id === l.item);
@@ -466,6 +488,7 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
                       {app.db.items.map((it2) => <option key={it2.id} value={it2.id}>{it2.name}</option>)}
                     </select>
                   </td>
+                  <td className="text-[0.72rem] font-bold text-mute">{it?.unit || "—"}</td>
                   {kind === "count" && <td className="font-num text-mute">{app.fmtN(sys)}</td>}
                   <td><input type="number" className="input !py-1.5 !w-28 font-num" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} /></td>
                   <td><input type="number" className="input !py-1.5 !w-28 font-num" value={l.cost} onChange={(e) => setLine(i, { cost: e.target.value })} /></td>
@@ -490,9 +513,11 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         <span className="text-[0.78rem] font-bold text-soft">عدد الأسطر: <b className="font-num">{lines.length}</b> • إجمالي الكميات: <b className="font-num">{app.fmtN(totalQty)}</b></span>
         <span className="font-num font-bold text-lg text-[var(--brand)]">{app.fmtN(totalVal)} <span className="text-[0.7rem] text-mute">ر.ي (بالتكلفة)</span></span>
       </div>
+      </FormSection>
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-brand" onClick={save}><I n="check" size={16} /> ترحيل {meta.verb} وتحديث الكميات</button>
+        <button className="btn btn-soft" onClick={printDraft}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-brand" onClick={save}><I n="check" size={16} /> حفظ وترحيل السند</button>
       </div>
     </Modal>
   );

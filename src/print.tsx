@@ -260,18 +260,22 @@ export function printDirectory(user: string, opts: {
 export function printTradeDoc(user: string, d: {
   docTitle: string; no: string; date: string; status: string;
   meta: [string, ReactNode][];
-  lines: { name: string; qty: number | string; price: number | string; disc?: number | string; total: number | string }[];
+  lines: { name: string; unit?: string; qty: number | string; price: number | string; disc?: number | string; total: number | string }[];
   totals?: { items: [string, string][]; grand: [string, string] };
-  note?: string; signLabels?: string[]; fmtN: (n: number) => string;
+  grandValue?: number;
+  note?: string; signLabels?: string[]; stampText?: string; fmtN: (n: number) => string;
 }) {
   openPrint(
     <DocSheet docTitle={d.docTitle} no={d.no} date={d.date} status={d.status} meta={d.meta}
-      totals={d.totals} note={d.note} user={user} signLabels={d.signLabels}>
+      stampText={d.stampText || d.docTitle} stampSub={d.status === "مسودة" ? "معاينة" : "معتمد"}
+      amountBox={d.grandValue !== undefined ? { num: d.fmtN(d.grandValue) + " ر.ي", words: tafqit(d.grandValue) } : undefined}
+      totals={d.totals} note={d.note} user={user} signLabels={d.signLabels || ["المحاسب", "المدير المالي"]}>
       <PTable
-        head={["الصنف / البيان", "الكمية", "سعر الوحدة", "خصم %", "الإجمالي"]}
-        widths={["44%", "11%", "15%", "10%", "20%"]}
+        head={["الصنف / البيان", "الوحدة", "الكمية", "سعر الوحدة", "خصم %", "الإجمالي"]}
+        widths={["40%", "8%", "10%", "14%", "9%", "19%"]}
         rows={d.lines.map((l) => [
           <b key="n">{l.name}</b>,
+          <span key="u" dir="ltr">{l.unit || "—"}</span>,
           <span key="q" dir="ltr">{l.qty}</span>,
           <span key="p" dir="ltr">{l.price}</span>,
           <span key="d" dir="ltr">{l.disc ?? "—"}</span>,

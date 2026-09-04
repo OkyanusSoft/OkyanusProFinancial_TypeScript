@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
-import { I, Modal, Chip, Empty, Reveal } from "../ui";
+import { I, Modal, Chip, Empty, Reveal, FormSection } from "../ui";
 import { Directory, type DirConf } from "../crud";
 import { openPrint, DocSheet, PTable, ReportSheet, tafqit } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
@@ -918,8 +918,16 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
     if (res.ok) onClose();
   };
 
+  /* معاينة طباعة القيد قبل الترحيل */
+  const printDraft = () => {
+    if (!balanced) { app.toast("وازن القيد أولاً قبل الطباعة", "err"); return; }
+    const lines: JournalLine[] = rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
+    printJournal(app, { id: "draft", no: "معاينة", date, desc, kind: "يومية", lines, user: app.session?.user || "—", status: "مسودة", source: JE_META[kind].title } as unknown as Journal);
+  };
+
   return (
     <Modal open onClose={onClose} wide icon="book" title={JE_META[kind].newLabel + " جديد — رقم يُولّد تلقائياً"} subtitle="قيد مزدوج متعدد العملات — يُرفض الترحيل إذا لم يتوازن المدين والدائن">
+      <FormSection n="أولاً" icon="file" title="رأس القيد" hint="البيان والتاريخ ومركز التكلفة">
       {/* حقل البيان — كبير وكامل العرض */}
       <label className="block mb-3">
         <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
@@ -931,6 +939,8 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">مركز التكلفة</span>
           <select className="select mt-1" value={cc} onChange={(e) => setCc(e.target.value)}>{app.db.costCenters.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       </div>
+      </FormSection>
+      <FormSection n="ثانياً" icon="book" title="سطور القيد" hint="الحسابات المدينة والدائنة — يجب أن يتوازن الطرفان">
       <div className="rounded-xl border border-line overflow-hidden mb-3">
         <table className="tbl">
           <thead><tr><th>الحساب (المستوى 5)</th><th>مدين</th><th>دائن</th><th>العملة</th><th>تحليلي</th><th></th></tr></thead>
@@ -975,10 +985,12 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
           <span>الفرق: <span className="text-[var(--warn)]">{app.fmtN(dr - cr)}</span></span>
         </div>
       </div>
+      </FormSection>
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-soft" onClick={printDraft}><I n="print" size={15} /> معاينة الطباعة</button>
         <button className="btn btn-brand" disabled={!balanced} onClick={save}>
-          <I n="check" size={16} /> {isReq ? "إرسال الطلب للموافقة" : "ترحيل القيد"}
+          <I n="check" size={16} /> حفظ و{isReq ? "إرسال الطلب" : "ترحيل القيد"}
         </button>
       </div>
     </Modal>

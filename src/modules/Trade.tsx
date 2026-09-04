@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
-import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart } from "../ui";
+import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart, FormSection } from "../ui";
 import { Directory, ActionBtn, type DirConf } from "../crud";
-import { printTradeDoc, printDirectory } from "../print";
+import { printTradeDoc, printDirectory, tafqit } from "../print";
 import type { Invoice } from "../data";
 
 /* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
@@ -26,12 +26,15 @@ function printInvoiceDoc(app: ReturnType<typeof useApp>, inv: any, kind: "sales"
     ],
     lines: inv.lines.map((l: any) => {
       const it = app.db.items.find((i: any) => i.id === l.item);
-      return { name: it?.name || l.item, qty: app.fmtN(l.qty), price: app.fmtN(l.price), disc: l.disc || 0, total: app.fmtN(l.qty * l.price * (1 - (l.disc || 0) / 100)) };
+      return { name: it?.name || l.item, unit: it?.unit || "—", qty: app.fmtN(l.qty), price: app.fmtN(l.price), disc: l.disc || 0, total: app.fmtN(l.qty * l.price * (1 - (l.disc || 0) / 100)) };
     }),
     totals: {
-      items: totalItems,
+      items: [...totalItems, ["المبلغ بالحروف", tafqit(total)]],
       grand: ["الإجمالي المستحق", app.fmtN(total) + " ر.ي"],
     },
+    grandValue: total,
+    stampText: docTitle,
+    signLabels: inv.status === "مسودة" ? ["البائع", "المحاسب"] : ["البائع", "المحاسب", "المدير المالي"],
     note: inv.note || "رُحّل قيد محاسبي متوازن تلقائياً في دفتر الأستاذ العام.",
     fmtN: app.fmtN,
   });
@@ -525,13 +528,21 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
     if (res.ok) onClose();
   };
 
+  /* معاينة طباعة الفاتورة قبل الترحيل */
+  const printDraft = () => {
+    if (s.lines.length === 0) { app.toast("أضف بنداً واحداً على الأقل قبل الطباعة", "err"); return; }
+    printInvoiceDoc(app, { id: "draft", no: "معاينة", date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مسودة", vat: app.settings.vat, lines: s.lines, paid: 0, note: s.note }, kind);
+  };
+
   return (
     <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري"
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> ترحيل الفاتورة ({s.payType})</button>
+        <button className="btn btn-soft" onClick={printDraft}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> حفظ وترحيل الفاتورة</button>
       </>}>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <FormSection n="أولاً" icon="file" title="رأس الفاتورة" hint="العميل أو المورد وطريقة السداد والعملة">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">{kind === "purchases" ? "المورد" : "العميل"}</span>
           <select className="select mt-1" value={s.partner} onChange={(e) => setS({ ...s, partner: e.target.value })}>
             {partners.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -562,7 +573,9 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
         <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={s.note} onChange={(e) => setS({ ...s, note: e.target.value })}
           placeholder={kind === "purchases" ? "مثال: فاتورة مشتريات من المورد … بموجب أمر شراء رقم … تشمل أصناف …" : kind === "returns" ? "مثال: مرتجع مبيعات من العميل … بسبب …" : "مثال: فاتورة مبيعات للعميل … تشمل أصناف …"} />
       </label>
+      </FormSection>
 
+      <FormSection n="ثانياً" icon="box" title="بنود الفاتورة" hint="أضف الأصناف بكمياتها وأسعارها وخصوماتها">
       <div className="rounded-xl border border-line bg-panel p-3 mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 items-end">
           <label className="block col-span-2"><span className="text-[0.7rem] font-bold text-mute">الصنف</span>
@@ -580,10 +593,11 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
 
       {s.lines.length > 0 ? (
         <table className="tbl mb-4">
-          <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th><th></th></tr></thead>
+          <thead><tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th><th></th></tr></thead>
           <tbody>{s.lines.map((l, i) => (
             <tr key={i}>
               <td className="font-bold">{app.db.items.find((x: any) => x.id === l.item)?.name}</td>
+              <td className="text-[0.72rem] font-bold text-mute">{(app.db.items.find((x: any) => x.id === l.item) as any)?.unit || "—"}</td>
               <td className="font-num">{l.qty}</td><td className="font-num">{app.fmtN(l.price)}</td><td className="font-num">{l.disc}%</td>
               <td className="font-num font-bold">{app.fmtN(lineTotal(l))}</td>
               <td><button className="text-mute hover:text-[var(--bad)] transition-colors" onClick={() => setS({ ...s, lines: s.lines.filter((_, j) => j !== i) })} aria-label="حذف"><I n="trash" size={15} /></button></td>
@@ -608,6 +622,7 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
           <div className="font-num font-bold text-2xl text-[var(--brand)]">{app.fmtN(total)} <span className="text-sm">{s.currency === "YER" ? "ر.ي" : s.currency}</span></div>
         </div>
       </div>
+      </FormSection>
 
     </Modal>
   );
