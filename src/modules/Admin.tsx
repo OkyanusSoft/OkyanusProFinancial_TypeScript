@@ -1552,11 +1552,16 @@ function BackupSection() {
 
 /* ═══════════ التفضيلات ═══════════ */
 const THEMES = [
-  { id: "azure", name: "السماوي (افتراضي)", sw: ["#0284c7", "#38bdf8"] },
-  { id: "light", name: "الفاتح", sw: ["#e2e8f0", "#0284c7"] },
-  { id: "night", name: "الداكن", sw: ["#0d1b2a", "#38bdf8"] },
-  { id: "indigo", name: "النيلي", sw: ["#3730a3", "#818cf8"] },
-  { id: "gold", name: "الذهبي", sw: ["#b45309", "#fbbf24"] },
+  { id: "azure", name: "السماوي", en: "Azure", sw: ["#0284c7", "#38bdf8", "#e9f2f9"], dark: false, def: true },
+  { id: "light", name: "الفاتح", en: "Light", sw: ["#0284c7", "#38bdf8", "#f1f5f9"], dark: false },
+  { id: "night", name: "الليلي", en: "Night", sw: ["#38bdf8", "#7dd3fc", "#0c1a2d"], dark: true },
+  { id: "indigo", name: "النيلي", en: "Indigo", sw: ["#4f46e5", "#818cf8", "#edeffb"], dark: false },
+  { id: "gold", name: "الذهبي", en: "Gold", sw: ["#d99a2b", "#f2c14e", "#1e1810"], dark: true },
+  { id: "emerald", name: "الزمردي", en: "Emerald", sw: ["#0e8a5f", "#2dd4a0", "#e7f0ec"], dark: false },
+  { id: "carbon", name: "الفحمي", en: "Carbon", sw: ["#3fb8af", "#7ee0d8", "#161b22"], dark: true },
+  { id: "navy", name: "الكحلي", en: "Navy", sw: ["#4f8ff7", "#8ab6ff", "#0d1b33"], dark: true },
+  { id: "sand", name: "الصحراوي", en: "Sand", sw: ["#a3701d", "#d4a348", "#f3ecdf"], dark: false },
+  { id: "maroon", name: "العنابي", en: "Maroon", sw: ["#e0598a", "#f290b4", "#25131b"], dark: true },
 ];
 
 function PrefsScreen() {
@@ -1573,15 +1578,30 @@ function PrefsScreen() {
       </div>
       <div className="grid lg:grid-cols-2 gap-5">
         <div className="card p-5">
-          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="palette" size={18} className="text-[var(--brand)]" /> نمط المظهر — 5 أنماط احترافية</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-            {THEMES.map((t) => (
-              <button key={t.id} onClick={() => { app.setPrefs({ theme: t.id }); app.toast(`طُبّق نمط «${t.name}» على النظام بالكامل`, "ok"); }}
-                className={`p-3 rounded-xl border-2 text-start transition-all hover:scale-[1.02] ${pr.theme === t.id ? "border-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_7%,transparent)]" : "border-line bg-panel"}`}>
-                <div className="flex gap-1 mb-2">{t.sw.map((c, i) => <span key={i} className="w-6 h-6 rounded-full border border-black/10" style={{ background: c }} />)}</div>
-                <div className="text-[0.76rem] font-bold flex items-center gap-1.5">{t.name}{pr.theme === t.id && <I n="check" size={13} className="text-[var(--brand)]" />}</div>
-              </button>
-            ))}
+          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="palette" size={18} className="text-[var(--brand)]" /> نمط المظهر — 10 أنماط احترافية</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {THEMES.map((t) => {
+              const on = pr.theme === t.id;
+              return (
+                <button key={t.id} onClick={() => { app.setPrefs({ theme: t.id }); app.toast(`طُبّق نمط «${t.name} — ${t.en}» على النظام بالكامل`, "ok"); }}
+                  className={`group rounded-xl border-2 overflow-hidden text-start transition-all hover:scale-[1.03] hover:-translate-y-0.5 ${on ? "border-[var(--brand)] shadow-lg" : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)]"}`}>
+                  {/* شريط المعاينة الملوّن */}
+                  <div className="h-11 flex">
+                    <span className="flex-[2]" style={{ background: t.sw[2] }} />
+                    <span className="flex-[1.2]" style={{ background: t.sw[0] }} />
+                    <span className="flex-[0.8]" style={{ background: t.sw[1] }} />
+                  </div>
+                  <div className="px-2.5 py-2 flex items-center gap-1.5">
+                    <span className="text-[0.72rem] font-bold flex-1 truncate">{t.name}</span>
+                    {on && <I n="check" size={14} className="text-[var(--brand)] shrink-0" />}
+                  </div>
+                  <div className="px-2.5 pb-2 flex items-center gap-1">
+                    <span className="font-num text-[0.56rem] text-mute" dir="ltr">{t.en}</span>
+                    <span className={`ms-auto text-[0.54rem] font-bold px-1.5 py-px rounded-full ${t.dark ? "bg-[color-mix(in_srgb,var(--mute)_18%,transparent)] text-mute" : "bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-[var(--warn)]"}`}>{t.dark ? "داكن" : "فاتح"}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <h4 className="font-display font-bold text-sm mt-5 mb-2.5">خلفية الشريط الجانبي</h4>
           <div className="grid grid-cols-3 gap-2.5">
@@ -1613,6 +1633,29 @@ function PrefsScreen() {
                 <div className="flex justify-between text-[0.78rem] font-bold mb-1.5"><span>حجم الخط</span><span className="font-num text-[var(--brand)]">{pr.font}%</span></div>
                 <input type="range" min={85} max={120} step={5} value={pr.font} onChange={(e) => app.setPrefs({ font: +e.target.value })} className="w-full" />
               </div>
+
+              {/* درجة وضوح الخط — تحكم تقني بحدة الحواف مع معاينة حية */}
+              <div className="rounded-xl border border-line bg-panel/60 p-3.5">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[0.78rem] font-bold flex items-center gap-1.5"><I n="eye" size={15} className="text-[var(--accent)]" /> درجة وضوح الخط</span>
+                  <span className="font-num text-[0.72rem] font-bold text-[var(--brand)]" dir="ltr">{pr.sharpen}%</span>
+                </div>
+                <input type="range" min={0} max={100} step={5} value={pr.sharpen ?? 0} onChange={(e) => app.setPrefs({ sharpen: +e.target.value })} className="w-full" />
+                <div className="flex gap-1.5 mt-2">
+                  {[{ v: 0, l: "قياسي" }, { v: 50, l: "واضح" }, { v: 100, l: "فائق الحدة" }].map((p) => (
+                    <button key={p.v} onClick={() => app.setPrefs({ sharpen: p.v })}
+                      className={`flex-1 py-1 rounded-lg text-[0.68rem] font-bold border transition-all ${(pr.sharpen ?? 0) === p.v ? "text-[var(--brandink)] border-transparent" : "bg-surface border-line text-mute hover:text-ink"}`}
+                      style={(pr.sharpen ?? 0) === p.v ? { background: "linear-gradient(135deg, var(--brand), var(--brand2))" } : undefined}>{p.l}</button>
+                  ))}
+                </div>
+                {/* معاينة حية */}
+                <div className="mt-2.5 rounded-lg bg-surface border border-line px-3 py-2">
+                  <div className="text-[0.76rem] font-bold leading-6">النظام المالي المتكامل — Okyanus IFS</div>
+                  <div className="text-[0.68rem] text-soft leading-5">قيد مزدوج، مزامنة لحظية، وتقارير بمعايير عالمية <span className="font-num" dir="ltr">1,234,567.89</span></div>
+                </div>
+                <p className="text-[0.62rem] text-mute font-medium mt-1.5">تعزز حدة حواف الحروف (Anti-aliasing) عبر stroke بصري دقيق — مفيدة للشاشات عالية الدقة وضعف النظر.</p>
+              </div>
+
               <div>
                 <div className="text-[0.78rem] font-bold mb-1.5">اتجاه الواجهة</div>
                 <div className="flex rounded-xl border border-line overflow-hidden">

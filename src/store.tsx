@@ -72,7 +72,7 @@ export interface Settings {
 }
 export interface QuickItem { id: string; module: string; path: string; label: string; icon: string }
 
-export interface Prefs { theme: string; font: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
+export interface Prefs { theme: string; font: number; sharpen: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
 
 interface AppCtx {
   db: Record<CollKey, AnyR[]>;
@@ -254,7 +254,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [seq, setSeq] = useState<Record<string, number>>({ SIN: 260, PIN: 120, SRT: 18, GRN: 8, ISS: 22, TR: 4, ADJ: 4, JC: 2, JE: 1010, RC: 107, PV: 107, PR: 36, QT: 48, OB: 2, FYE: 2, REQ: 5 });
   const [settings, setSettingsState] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...engine.loadJson("@settings", {} as Partial<Settings>) }));
   const setSettings = (s: Settings) => { setSettingsState(s); engine.publishState("@settings", s); }; /* حفظ مركزي + بث لحظي */
-  const [prefs, setPrefsState] = useState<Prefs>({ theme: "azure", font: 100, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" });
+  const [prefs, setPrefsState] = useState<Prefs>(() => {
+    const def: Prefs = { theme: "azure", font: 100, sharpen: 0, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" };
+    try { const raw = localStorage.getItem("okyanus_ifs_prefs"); return raw ? { ...def, ...(JSON.parse(raw) as Partial<Prefs>) } : def; } catch { return def; }
+  });
   const [session, setSession] = useState<Session | null>(null);
   const [route, setRoute] = useState<Route>({ module: "dashboard", path: "" });
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -349,7 +352,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifs((old) => [{ id: Date.now(), time: new Date().toTimeString().slice(0, 5), ...n }, ...old]);
   const markNotifs = () => setNotifs([]);
 
-  const setPrefs = (p: Partial<Prefs>) => setPrefsState((old) => ({ ...old, ...p }));
+  const setPrefs = (p: Partial<Prefs>) => setPrefsState((old) => {
+    const next = { ...old, ...p };
+    try { localStorage.setItem("okyanus_ifs_prefs", JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
   const nav = (r: Partial<Route>) => setRoute((old) => ({ module: r.module || old.module, path: r.path !== undefined ? r.path : old.path }));
   const login = (s: Session) => {
     setSession(s); setRoute({ module: "dashboard", path: "" });

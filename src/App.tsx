@@ -175,13 +175,15 @@ function Shell() {
   const [userMenu, setUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  /* تطبيق النمط والخط والاتجاه على كامل النظام */
+  /* تطبيق النمط والخط ودرجة الوضوح والاتجاه على كامل النظام */
   useEffect(() => {
     const el = document.documentElement;
     el.dataset.theme = prefs.theme;
     el.style.fontSize = `${prefs.font}%`;
     el.dir = prefs.dir;
-  }, [prefs.theme, prefs.font, prefs.dir]);
+    /* درجة وضوح الخط: 0 (قياسي) ← 100 (فائق الحدة) → تُترجم إلى stroke بحد أقصى 0.5px */
+    el.style.setProperty("--font-sharpen", `${((prefs.sharpen ?? 0) / 100) * 0.5}px`);
+  }, [prefs.theme, prefs.font, prefs.dir, prefs.sharpen]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setUserMenu(false); };
