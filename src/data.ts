@@ -105,12 +105,13 @@ export const ACCOUNTS: Account[] = [
   { code: "41113", name: "مبيعات الأجهزة والمعدات", en: "Devices Sales", level: 5, parent: "4111", type: "إيرادات", posting: true },
 ];
 
+/* الحسابات التحليلية تبدأ من الصفر — تتحرك عبر قيود اليومية المرتبطة بها */
 export const ANALYTICALS: AnyR[] = [
-  { id: "AN-001", code: "AN-001", name: "أحمد محمد الشامي", linkedAccount: "11212", open: 40000, debit: 22000, credit: 0, phone: "777-102-334", note: "قسم الباطنية — غرفة 204" },
-  { id: "AN-002", code: "AN-002", name: "سالم عبدالله الحضرمي", linkedAccount: "11212", open: 35000, debit: 13500, credit: 0, phone: "733-881-210", note: "قسم الجراحة — غرفة 118" },
-  { id: "AN-003", code: "AN-003", name: "منى عوض السقاف", linkedAccount: "11212", open: 30000, debit: 9000, credit: 0, phone: "711-455-902", note: "قسم النساء — غرفة 305" },
-  { id: "AN-004", code: "AN-004", name: "خالد سالم باوزير", linkedAccount: "11212", open: 25000, debit: 500, credit: 0, phone: "770-233-481", note: "قسم الأطفال — غرفة 210" },
-  { id: "AN-005", code: "AN-005", name: "فاطمة حسن العمودي", linkedAccount: "11212", open: 50000, debit: 0, credit: 0, phone: "736-604-118", note: "قسم العيون — غرفة 122" },
+  { id: "AN-001", code: "AN-001", name: "أحمد محمد الشامي", linkedAccount: "11212", open: 0, debit: 0, credit: 0, phone: "777-102-334", note: "قسم الباطنية — غرفة 204" },
+  { id: "AN-002", code: "AN-002", name: "سالم عبدالله الحضرمي", linkedAccount: "11212", open: 0, debit: 0, credit: 0, phone: "733-881-210", note: "قسم الجراحة — غرفة 118" },
+  { id: "AN-003", code: "AN-003", name: "منى عوض السقاف", linkedAccount: "11212", open: 0, debit: 0, credit: 0, phone: "711-455-902", note: "قسم النساء — غرفة 305" },
+  { id: "AN-004", code: "AN-004", name: "خالد سالم باوزير", linkedAccount: "11212", open: 0, debit: 0, credit: 0, phone: "770-233-481", note: "قسم الأطفال — غرفة 210" },
+  { id: "AN-005", code: "AN-005", name: "فاطمة حسن العمودي", linkedAccount: "11212", open: 0, debit: 0, credit: 0, phone: "736-604-118", note: "قسم العيون — غرفة 122" },
 ];
 
 export const UNITS: AnyR[] = [
@@ -142,38 +143,42 @@ export const WAREHOUSES: AnyR[] = [
   { id: "WH-03", code: "WH-03", name: "مخزن العبور — المكلا", keeper: "فهد باشراحيل", location: "خور المكلا", capacity: "2,200 موقع", active: true, account: "11313" },
 ];
 
+/* الكميات تبدأ من الصفر — تدخل عبر سند قيد افتتاحي مخزني أو سند توريد */
 export const ITEMS: AnyR[] = [
-  { id: "IT-1001", code: "IT-1001", name: "باراسيتامول 500mg أقراص", group: "GR-02", unit: "UN-02", barcode: "6210001001", cost: 850, price: 1150, min: 200, max: 2000, qty: { "WH-01": 1240, "WH-02": 320 } },
-  { id: "IT-1002", code: "IT-1002", name: "أموكسيسيلين 500mg كبسول", group: "GR-01", unit: "UN-02", barcode: "6210001002", cost: 1450, price: 1980, min: 150, max: 1500, qty: { "WH-01": 860, "WH-02": 140, "WH-03": 90 } },
-  { id: "IT-1003", code: "IT-1003", name: "فيتامين C + زنك فوار", group: "GR-03", unit: "UN-02", barcode: "6210001003", cost: 1100, price: 1500, min: 100, max: 900, qty: { "WH-01": 640 } },
-  { id: "IT-1004", code: "IT-1004", name: "سيفترياكسون 1g حقن", group: "GR-05", unit: "UN-06", barcode: "6210001004", cost: 2200, price: 2950, min: 300, max: 2500, qty: { "WH-01": 260, "WH-02": 120 } },
-  { id: "IT-1005", code: "IT-1005", name: "محلول نورمال سالين 500ml", group: "GR-05", unit: "UN-01", barcode: "6210001005", cost: 620, price: 890, min: 400, max: 3000, qty: { "WH-01": 2100, "WH-02": 800, "WH-03": 350 } },
-  { id: "IT-1006", code: "IT-1006", name: "جهاز قياس ضغط رقمي", group: "GR-06", unit: "UN-01", barcode: "6210001006", cost: 18500, price: 24900, min: 20, max: 150, qty: { "WH-01": 46 } },
-  { id: "IT-1007", code: "IT-1007", name: "قفازات طبية معقمة (100)", group: "GR-04", unit: "UN-02", barcode: "6210001007", cost: 1900, price: 2600, min: 250, max: 2200, qty: { "WH-01": 180, "WH-02": 95 } },
-  { id: "IT-1008", code: "IT-1008", name: "أوميغا 3 كبسولات 1000mg", group: "GR-03", unit: "UN-02", barcode: "6210001008", cost: 3400, price: 4500, min: 80, max: 700, qty: { "WH-01": 420, "WH-02": 110 } },
-  { id: "IT-1009", code: "IT-1009", name: "أنسولين مخلوط 100IU", group: "GR-05", unit: "UN-06", barcode: "6210001009", cost: 5600, price: 7200, min: 120, max: 800, qty: { "WH-01": 95, "WH-03": 40 } },
-  { id: "IT-1010", code: "IT-1010", name: "جهاز قياس سكر + شرائط", group: "GR-06", unit: "UN-01", barcode: "6210001010", cost: 14200, price: 19400, min: 25, max: 180, qty: { "WH-01": 58, "WH-02": 22 } },
+  { id: "IT-1001", code: "IT-1001", name: "باراسيتامول 500mg أقراص", group: "GR-02", unit: "UN-02", barcode: "6210001001", cost: 850, price: 1150, min: 200, max: 2000, qty: {} },
+  { id: "IT-1002", code: "IT-1002", name: "أموكسيسيلين 500mg كبسول", group: "GR-01", unit: "UN-02", barcode: "6210001002", cost: 1450, price: 1980, min: 150, max: 1500, qty: {} },
+  { id: "IT-1003", code: "IT-1003", name: "فيتامين C + زنك فوار", group: "GR-03", unit: "UN-02", barcode: "6210001003", cost: 1100, price: 1500, min: 100, max: 900, qty: {} },
+  { id: "IT-1004", code: "IT-1004", name: "سيفترياكسون 1g حقن", group: "GR-05", unit: "UN-06", barcode: "6210001004", cost: 2200, price: 2950, min: 300, max: 2500, qty: {} },
+  { id: "IT-1005", code: "IT-1005", name: "محلول نورمال سالين 500ml", group: "GR-05", unit: "UN-01", barcode: "6210001005", cost: 620, price: 890, min: 400, max: 3000, qty: {} },
+  { id: "IT-1006", code: "IT-1006", name: "جهاز قياس ضغط رقمي", group: "GR-06", unit: "UN-01", barcode: "6210001006", cost: 18500, price: 24900, min: 20, max: 150, qty: {} },
+  { id: "IT-1007", code: "IT-1007", name: "قفازات طبية معقمة (100)", group: "GR-04", unit: "UN-02", barcode: "6210001007", cost: 1900, price: 2600, min: 250, max: 2200, qty: {} },
+  { id: "IT-1008", code: "IT-1008", name: "أوميغا 3 كبسولات 1000mg", group: "GR-03", unit: "UN-02", barcode: "6210001008", cost: 3400, price: 4500, min: 80, max: 700, qty: {} },
+  { id: "IT-1009", code: "IT-1009", name: "أنسولين مخلوط 100IU", group: "GR-05", unit: "UN-06", barcode: "6210001009", cost: 5600, price: 7200, min: 120, max: 800, qty: {} },
+  { id: "IT-1010", code: "IT-1010", name: "جهاز قياس سكر + شرائط", group: "GR-06", unit: "UN-01", barcode: "6210001010", cost: 14200, price: 19400, min: 25, max: 180, qty: {} },
 ];
 
+/* الأرصدة تبدأ من الصفر — تتكون عبر فواتير المشتريات والسداد */
 export const SUPPLIERS: AnyR[] = [
-  { id: "SP-01", code: "SP-01", name: "شركة الدواء الحديث المتحدة", phone: "01-448-210", city: "صنعاء", category: "أدوية", balance: 342000, account: "21111", creditDays: 45, active: true },
-  { id: "SP-02", code: "SP-02", name: "مؤسسة الخليج للمستلزمات الطبية", phone: "02-331-908", city: "عدن", category: "مستلزمات", balance: 128500, account: "21111", creditDays: 30, active: true },
+  { id: "SP-01", code: "SP-01", name: "شركة الدواء الحديث المتحدة", phone: "01-448-210", city: "صنعاء", category: "أدوية", balance: 0, account: "21111", creditDays: 45, active: true },
+  { id: "SP-02", code: "SP-02", name: "مؤسسة الخليج للمستلزمات الطبية", phone: "02-331-908", city: "عدن", category: "مستلزمات", balance: 0, account: "21111", creditDays: 30, active: true },
   { id: "SP-03", code: "SP-03", name: "شركة ميديكال بلس للتجهيزات", phone: "05-662-774", city: "المكلا", category: "أجهزة", balance: 0, account: "21111", creditDays: 60, active: true },
-  { id: "SP-04", code: "SP-04", name: "مختبرات فارما كير", phone: "01-220-315", city: "صنعاء", category: "تحاليل", balance: 56800, account: "21111", creditDays: 30, active: true },
+  { id: "SP-04", code: "SP-04", name: "مختبرات فارما كير", phone: "01-220-315", city: "صنعاء", category: "تحاليل", balance: 0, account: "21111", creditDays: 30, active: true },
 ];
 
+/* الأرصدة تبدأ من الصفر — تتكون عبر فواتير المبيعات الآجلة والتحصيل */
 export const CUSTOMERS: AnyR[] = [
-  { id: "CU-01", code: "CU-01", name: "مستشفى النور التخصصي", phone: "01-505-100", city: "صنعاء", category: "مستشفيات", balance: 412000, creditLimit: 500000, account: "11211", active: true },
-  { id: "CU-02", code: "CU-02", name: "صيدلية الشفاء المركزية", phone: "02-244-871", city: "عدن", category: "صيدليات", balance: 96400, creditLimit: 150000, account: "11211", active: true },
-  { id: "CU-03", code: "CU-03", name: "مؤسسة الصحة للجميع", phone: "05-310-226", city: "المكلا", category: "منظمات", balance: 188200, creditLimit: 200000, account: "11211", active: true },
-  { id: "CU-04", code: "CU-04", name: "مجمع الريان الطبي", phone: "01-617-402", city: "تعز", category: "مجمعات", balance: 64300, creditLimit: 120000, account: "11211", active: true },
-  { id: "CU-05", code: "CU-05", name: "صيدلية ابن سينا", phone: "02-883-519", city: "عدن", category: "صيدليات", balance: 210500, creditLimit: 200000, account: "11211", active: true },
+  { id: "CU-01", code: "CU-01", name: "مستشفى النور التخصصي", phone: "01-505-100", city: "صنعاء", category: "مستشفيات", balance: 0, creditLimit: 500000, account: "11211", active: true },
+  { id: "CU-02", code: "CU-02", name: "صيدلية الشفاء المركزية", phone: "02-244-871", city: "عدن", category: "صيدليات", balance: 0, creditLimit: 150000, account: "11211", active: true },
+  { id: "CU-03", code: "CU-03", name: "مؤسسة الصحة للجميع", phone: "05-310-226", city: "المكلا", category: "منظمات", balance: 0, creditLimit: 200000, account: "11211", active: true },
+  { id: "CU-04", code: "CU-04", name: "مجمع الريان الطبي", phone: "01-617-402", city: "تعز", category: "مجمعات", balance: 0, creditLimit: 120000, account: "11211", active: true },
+  { id: "CU-05", code: "CU-05", name: "صيدلية ابن سينا", phone: "02-883-519", city: "عدن", category: "صيدليات", balance: 0, creditLimit: 200000, account: "11211", active: true },
 ];
 
+/* الأرصدة الافتتاحية صفر — تدخل عبر سند قيد افتتاحي مالي أو سند قبض */
 export const CASHBOXES: AnyR[] = [
-  { id: "CB-01", code: "CB-01", name: "الصندوق الرئيسي", currency: "YER", open: 250000, keeper: "عادل الحميري", account: "11111", active: true },
-  { id: "CB-02", code: "CB-02", name: "صندوق فرع عدن", currency: "YER", open: 84000, keeper: "نبيل السباعي", account: "11112", active: true },
-  { id: "CB-03", code: "CB-03", name: "صندوق النقد الأجنبي", currency: "USD", open: 5200, keeper: "سمير الحداد", account: "11121", active: true },
+  { id: "CB-01", code: "CB-01", name: "الصندوق الرئيسي", currency: "YER", open: 0, keeper: "عادل الحميري", account: "11111", active: true },
+  { id: "CB-02", code: "CB-02", name: "صندوق فرع عدن", currency: "YER", open: 0, keeper: "نبيل السباعي", account: "11112", active: true },
+  { id: "CB-03", code: "CB-03", name: "صندوق النقد الأجنبي", currency: "USD", open: 0, keeper: "سمير الحداد", account: "11121", active: true },
 ];
 
 export const COST_CENTERS: AnyR[] = [
@@ -261,59 +266,21 @@ export const PERIODS: AnyR[] = [
   { id: "2026-06", code: "2026-06", label: "يونيو 2026", locked: false, closedAt: "" },
 ];
 
-export const INV_DOCS: InvDoc[] = [
-  { id: "INV-2601", type: "قيد افتتاحي", date: "2026-01-01", ref: "OB-2026-0001", warehouse: "WH-01", user: "عادل الحميري", status: "مرحّل", lines: [{ item: "IT-1001", qty: 1240, cost: 850 }, { item: "IT-1002", qty: 860, cost: 1450 }, { item: "IT-1005", qty: 2100, cost: 620 }], note: "أرصدة افتتاحية للمخزن الرئيسي" },
-  { id: "INV-2602", type: "توريد", date: "2026-01-14", ref: "GRN-2026-0001", warehouse: "WH-01", user: "عادل الحميري", status: "مرحّل", lines: [{ item: "IT-1004", qty: 260, cost: 2200 }, { item: "IT-1007", qty: 180, cost: 1900 }], note: "توريد من شركة الدواء الحديث" },
-  { id: "INV-2603", type: "تحويل", date: "2026-01-28", ref: "TR-2026-0001", warehouse: "WH-01", toWarehouse: "WH-02", user: "فهد باشراحيل", status: "مرحّل", lines: [{ item: "IT-1001", qty: 320, cost: 850 }, { item: "IT-1005", qty: 800, cost: 620 }] },
-  { id: "INV-2604", type: "صرف", date: "2026-02-06", ref: "ISS-2026-0001", warehouse: "WH-01", user: "عادل الحميري", status: "مرحّل", lines: [{ item: "IT-1003", qty: 120, cost: 1100 }], note: "صرف لفرع عدن — حملة ترويجية" },
-  { id: "INV-2605", type: "جرد", date: "2026-02-20", ref: "JC-2026-0001", warehouse: "WH-02", user: "سميرة النجار", status: "مرحّل", lines: [{ item: "IT-1002", qty: -6, cost: 1450 }, { item: "IT-1007", qty: 4, cost: 1900 }], note: "فروقات الجرد الدوري — فبراير" },
-  { id: "INV-2606", type: "تسوية", date: "2026-03-05", ref: "ADJ-2026-0001", warehouse: "WH-01", user: "عادل الحميري", status: "ملغي", lines: [{ item: "IT-1008", qty: -12, cost: 3400 }], note: "أُلغي بخطأ إدخال — أعيد إنشاؤه" },
-];
+/* السندات المخزنية فارغة — تبدأ من سند قيد افتتاحي مخزني */
+export const INV_DOCS: InvDoc[] = [];
 
-export const PURCHASES: Invoice[] = [
-  { id: "PU-1", no: "PIN-2026-0087", date: "2026-01-12", partner: "SP-01", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, paid: 100000, lines: [{ item: "IT-1004", qty: 260, price: 2200, disc: 0 }, { item: "IT-1001", qty: 400, price: 850, disc: 2 }] },
-  { id: "PU-2", no: "PIN-2026-0091", date: "2026-01-25", partner: "SP-02", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1007", qty: 180, price: 1900, disc: 0 }] },
-  { id: "PU-3", no: "PIN-2026-0096", date: "2026-02-09", partner: "SP-03", payType: "آجل", currency: "USD", rate: 535, costCenter: "CC-02", status: "مرحّلة", vat: 5, paid: 400000, lines: [{ item: "IT-1006", qty: 20, price: 34.5, disc: 0 }, { item: "IT-1010", qty: 15, price: 26.5, disc: 0 }] },
-  { id: "PU-4", no: "PIN-2026-0102", date: "2026-02-22", partner: "SP-01", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1002", qty: 300, price: 1450, disc: 1.5 }] },
-  { id: "PU-5", no: "PIN-2026-0109", date: "2026-03-08", partner: "SP-04", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-03", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1009", qty: 60, price: 5600, disc: 0 }] },
-  { id: "PU-6", no: "PIN-2026-0114", date: "2026-03-19", partner: "SP-02", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-02", status: "ملغاة", vat: 5, lines: [{ item: "IT-1005", qty: 500, price: 620, disc: 0 }] },
-];
+/* فواتير المشتريات فارغة */
+export const PURCHASES: Invoice[] = [];
 
-export const SALES: Invoice[] = [
-  { id: "SA-1", no: "SIN-2026-0201", date: "2026-01-08", partner: "CU-01", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, paid: 130000, lines: [{ item: "IT-1001", qty: 150, price: 1150, disc: 0 }, { item: "IT-1005", qty: 400, price: 890, disc: 2 }] },
-  { id: "SA-2", no: "SIN-2026-0206", date: "2026-01-17", partner: "CU-02", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-02", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1003", qty: 80, price: 1500, disc: 0 }] },
-  { id: "SA-3", no: "SIN-2026-0211", date: "2026-01-26", partner: "CU-05", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-02", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1008", qty: 60, price: 4500, disc: 1 }] },
-  { id: "SA-4", no: "SIN-2026-0217", date: "2026-02-05", partner: "CU-03", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-03", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1004", qty: 120, price: 2950, disc: 0 }, { item: "IT-1007", qty: 100, price: 2600, disc: 3 }] },
-  { id: "SA-5", no: "SIN-2026-0223", date: "2026-02-14", partner: "CU-01", payType: "نقدي", currency: "USD", rate: 535, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1006", qty: 6, price: 46.5, disc: 0 }] },
-  { id: "SA-6", no: "SIN-2026-0228", date: "2026-02-24", partner: "CU-04", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1002", qty: 90, price: 1980, disc: 0 }] },
-  { id: "SA-7", no: "SIN-2026-0234", date: "2026-03-03", partner: "CU-02", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-02", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1001", qty: 200, price: 1150, disc: 1 }] },
-  { id: "SA-8", no: "SIN-2026-0239", date: "2026-03-12", partner: "CU-03", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-03", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1009", qty: 40, price: 7200, disc: 0 }] },
-  { id: "SA-9", no: "SIN-2026-0245", date: "2026-03-21", partner: "CU-05", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-02", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1010", qty: 12, price: 19400, disc: 2 }] },
-  { id: "SA-10", no: "SIN-2026-0251", date: "2026-03-28", partner: "CU-01", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1005", qty: 350, price: 890, disc: 0 }] },
-];
+/* فواتير المبيعات والمرتجعات وعروض الأسعار وطلبات الشراء — فارغة */
+export const SALES: Invoice[] = [];
+export const RETURNS: Invoice[] = [];
+export const QUOTES: AnyR[] = [];
+export const REQUESTS: AnyR[] = [];
 
-export const RETURNS: Invoice[] = [
-  { id: "RT-1", no: "SRT-2026-0012", date: "2026-02-18", partner: "CU-04", payType: "آجل", currency: "YER", rate: 1, costCenter: "CC-01", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1002", qty: 10, price: 1980, disc: 0 }], note: "عبوات تالفة أثناء النقل" },
-  { id: "RT-2", no: "SRT-2026-0017", date: "2026-03-15", partner: "CU-02", payType: "نقدي", currency: "YER", rate: 1, costCenter: "CC-02", status: "مرحّلة", vat: 5, lines: [{ item: "IT-1003", qty: 6, price: 1500, disc: 0 }], note: "استرجاع فائض طلب" },
-];
-
-export const QUOTES: AnyR[] = [
-  { id: "Q-1", code: "QT-2026-0041", no: "QT-2026-0041", kind: "بيع", date: "2026-03-02", partner: "CU-03", valid: "2026-03-31", total: 1180000, status: "مقبول" },
-  { id: "Q-2", code: "QT-2026-0044", no: "QT-2026-0044", kind: "بيع", date: "2026-03-10", partner: "CU-01", valid: "2026-04-10", total: 642500, status: "ساري" },
-  { id: "Q-3", code: "QT-2026-0047", no: "QT-2026-0047", kind: "بيع", date: "2026-03-18", partner: "CU-05", valid: "2026-04-18", total: 288300, status: "ساري" },
-  { id: "Q-4", code: "PQ-2026-0019", no: "PQ-2026-0019", kind: "شراء", date: "2026-03-06", partner: "SP-01", valid: "2026-03-25", total: 954000, status: "منتهي" },
-  { id: "Q-5", code: "PQ-2026-0022", no: "PQ-2026-0022", kind: "شراء", date: "2026-03-16", partner: "SP-03", valid: "2026-04-15", total: 213000, status: "ساري" },
-];
-
-export const REQUESTS: AnyR[] = [
-  { id: "PR-1", code: "PR-2026-0031", no: "PR-2026-0031", date: "2026-03-20", requester: "طارق الوزير", desc: "طلب شراء عاجل — أنسولين مخلوط", qty: 120, est: 672000, status: "معتمد" },
-  { id: "PR-2", code: "PR-2026-0032", no: "PR-2026-0032", date: "2026-03-22", requester: "عادل الحميري", desc: "طلب شراء — قفازات طبية معقمة", qty: 500, est: 950000, status: "مسودة" },
-  { id: "PR-3", code: "PR-2026-0033", no: "PR-2026-0033", date: "2026-03-25", requester: "هدى العامري", desc: "طلب شراء — محاليل وريدية", qty: 1000, est: 620000, status: "تم التحويل" },
-  { id: "PR-4", code: "PR-2026-0034", no: "PR-2026-0034", date: "2026-03-27", requester: "سميرة النجار", desc: "طلب شراء — أجهزة قياس سكر", qty: 30, est: 426000, status: "مسودة" },
-  { id: "PR-5", code: "PR-2026-0035", no: "PR-2026-0035", date: "2026-03-28", requester: "طارق الوزير", desc: "طلب شراء — فيتامين C فوار", qty: 250, est: 275000, status: "مرفوض" },
-];
-
-export const JOURNALS: Journal[] = [
+/* قيود اليومية فارغة — ميزان المراجعة يبدأ من الصفر، ويُبنى عبر سند قيد افتتاحي مالي ثم قيود اليومية */
+export const JOURNALS: Journal[] = [];
+const _jSeed: Journal[] = [
   { id: "JE-0001", no: "FYE-2026-001", date: "2026-01-01", desc: "القيد الافتتاحي للسنة المالية 2026", kind: "افتتاحي", user: "سمير الحداد", status: "مرحّل", source: "سند قيد افتتاحي مالي", lines: [
     { account: "11111", debit: 250000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
     { account: "11121", debit: 1450000, credit: 0, currency: "YER", rate: 1, costCenter: "CC-01" },
