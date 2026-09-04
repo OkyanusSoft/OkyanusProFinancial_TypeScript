@@ -68,7 +68,9 @@ export interface Settings {
   api: { baseUrl: string; wsPath: string; jwtExp: string; refresh: boolean; cors: string; rateLimit: number };
   front: { syncSec: number; sessionMin: number; offline: boolean; density: "مريحة" | "مضغوطة"; sound: boolean; autoSave: boolean };
   backup: { fullDaily: boolean; diffHours: number; gzip: boolean; encrypt: boolean; retainDays: number; path: string; autoLocal: boolean };
+  quick: { visible: boolean; items: QuickItem[] };
 }
+export interface QuickItem { id: string; module: string; path: string; label: string; icon: string }
 
 export interface Prefs { theme: string; font: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
 
@@ -209,6 +211,30 @@ const DEF_MATRIX: Record<string, PermRole> = {
   "مدقق خارجي": mkPerm(ALL_MODS, {}, ALL_REPS),
 };
 
+/* القيم الافتراضية للإعدادات — تُدمج مع أي إعدادات محفوظة مركزياً */
+const DEFAULT_SETTINGS: Settings = {
+  vat: 5, discMax: 15, round: 2, autoNum: true, blockOverCredit: true, negStock: false,
+  lowStockAlert: true, requireCC: true, fiscalStart: "2026-01-01",
+  prefixes: { SIN: "SIN", PIN: "PIN", SRT: "SRT", GRN: "GRN", ISS: "ISS", TR: "TR", ADJ: "ADJ", JC: "JC", JE: "JE", RC: "RC", PV: "PV", PR: "PR", QT: "QT" },
+  suspense: { salesCash: "41111", salesCredit: "41112", purchases: "11311", vatOut: "21211", vatIn: "21212", customers: "11211", suppliers: "21111", cogs: "31511", cash: "11111", bank: "11121" },
+  dbCfg: { host: "localhost", port: 3306, user: "erp_admin", pass: "", name: "okyanus_ifs", engine: "InnoDB", charset: "utf8mb4", tz: "Asia/Aden", ssl: false, pool: 40, queue: 200, timeout: 30 },
+  deviceName: "جهاز الإدارة الرئيسي",
+  api: { baseUrl: "http://localhost:4000", wsPath: "/ws", jwtExp: "8h", refresh: true, cors: "*", rateLimit: 240 },
+  front: { syncSec: 4.5, sessionMin: 30, offline: true, density: "مريحة", sound: true, autoSave: true },
+  backup: { fullDaily: true, diffHours: 6, gzip: true, encrypt: true, retainDays: 30, path: "/var/backups/okyanus-ifs/", autoLocal: true },
+  quick: {
+    visible: true,
+    items: [
+      { id: "inv:base.items", module: "inv", path: "base.items", label: "دليل الأصناف", icon: "box" },
+      { id: "inv:mv.grn", module: "inv", path: "mv.grn", label: "سند توريد مخزني", icon: "down" },
+      { id: "sal:mv.inv", module: "sal", path: "mv.inv", label: "فواتير المبيعات", icon: "tag" },
+      { id: "pur:mv.inv", module: "pur", path: "mv.inv", label: "فواتير المشتريات", icon: "truck" },
+      { id: "gl:rep.trial", module: "gl", path: "rep.trial", label: "ميزان المراجعة", icon: "scale" },
+      { id: "pos:", module: "pos", path: "", label: "نقاط البيع", icon: "coins" },
+    ],
+  },
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   /* القاعدة تُحمَّل من التخزين المركزي المشترك (تبقى بعد التحديث وتُشارك بين النوافذ) */
   const [db, setDb] = useState(() => {
@@ -224,17 +250,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<Account[]>(ACCOUNTS);
   const [trash, setTrash] = useState<{ coll: CollKey; row: AnyR; at: string }[]>([]);
   const [seq, setSeq] = useState<Record<string, number>>({ SIN: 260, PIN: 120, SRT: 18, GRN: 8, ISS: 22, TR: 4, ADJ: 4, JC: 2, JE: 1010, RC: 107, PV: 107, PR: 36, QT: 48, OB: 2, FYE: 2, REQ: 5 });
-  const [settings, setSettings] = useState<Settings>({
-    vat: 5, discMax: 15, round: 2, autoNum: true, blockOverCredit: true, negStock: false,
-    lowStockAlert: true, requireCC: true, fiscalStart: "2026-01-01",
-    prefixes: { SIN: "SIN", PIN: "PIN", SRT: "SRT", GRN: "GRN", ISS: "ISS", TR: "TR", ADJ: "ADJ", JC: "JC", JE: "JE", RC: "RC", PV: "PV", PR: "PR", QT: "QT" },
-    suspense: { salesCash: "41111", salesCredit: "41112", purchases: "11311", vatOut: "21211", vatIn: "21212", customers: "11211", suppliers: "21111", cogs: "31511", cash: "11111", bank: "11121" },
-    dbCfg: { host: "localhost", port: 3306, user: "erp_admin", pass: "", name: "okyanus_ifs", engine: "InnoDB", charset: "utf8mb4", tz: "Asia/Aden", ssl: false, pool: 40, queue: 200, timeout: 30 },
-    deviceName: "جهاز الإدارة الرئيسي",
-    api: { baseUrl: "http://localhost:4000", wsPath: "/ws", jwtExp: "8h", refresh: true, cors: "*", rateLimit: 240 },
-    front: { syncSec: 4.5, sessionMin: 30, offline: true, density: "مريحة", sound: true, autoSave: true },
-    backup: { fullDaily: true, diffHours: 6, gzip: true, encrypt: true, retainDays: 30, path: "/var/backups/okyanus-ifs/", autoLocal: true },
-  });
+  const [settings, setSettingsState] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...engine.loadJson("@settings", {} as Partial<Settings>) }));
+  const setSettings = (s: Settings) => { setSettingsState(s); engine.publishState("@settings", s); }; /* حفظ مركزي + بث لحظي */
   const [prefs, setPrefsState] = useState<Prefs>({ theme: "azure", font: 100, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" });
   const [session, setSession] = useState<Session | null>(null);
   const [route, setRoute] = useState<Route>({ module: "dashboard", path: "" });
@@ -247,9 +264,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [perms, setPerms] = useState(DEF_PERMS);
   const [matrix, setMatrix] = useState<Record<string, PermRole>>(DEF_MATRIX);
 
-  /* ═══════ الأنظمة المتخصصة والأنشطة ═══════ */
-  const [activeSystems, setActiveSystems] = useState<string[]>(["restaurants", "hospitals", "construction"]);
-  const [primaryActivity, setPrimaryActivityState] = useState("restaurants");
+  /* ═══════ الأنظمة المتخصصة والأنشطة — لا يُفعَّل أي نظام افتراضياً، يفعّلها مالك النظام ═══════ */
+  const [activeSystems, setActiveSystems] = useState<string[]>([]);
+  const [primaryActivity, setPrimaryActivityState] = useState("");
   const [ownerUnlocked, setOwnerUnlocked] = useState(false);
   const [specData, setSpecData] = useState<Record<string, AnyR[]>>(() => {
     const init: Record<string, AnyR[]> = {};
@@ -1176,6 +1193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else if (m.kind === "state") {
       if (m.key === "@hr") setHrState(m.val as typeof hr);
       else if (m.key === "@assets") setAssetsState(m.val as AnyR[]);
+      else if (m.key === "@settings") setSettingsState(m.val as Settings);
     }
   }), []);
 

@@ -24,6 +24,7 @@ export default function Dashboard() {
   const purchTotal = useMemo(() => active(purchases).reduce((a, i) => a + app.invoiceTotal(i), 0), [purchases]);
   const receivables = db.customers.reduce((a: number, c: any) => a + c.balance, 0);
   const payables = db.suppliers.reduce((a: number, s: any) => a + s.balance, 0);
+  const quick = app.settings.quick || { visible: false, items: [] as { id: string; module: string; path: string; label: string; icon: string }[] };
 
   const monthly = ["يناير", "فبراير", "مارس"].map((m, idx) => ({
     label: m,
@@ -51,13 +52,36 @@ export default function Dashboard() {
                 {SYSTEM.name} — {app.session?.company} • {app.session?.branch} • قيد مزدوج متوازن ({fmtN(jeSum)} ر.ي)
               </p>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <button className="btn btn-brand" onClick={() => nav({ module: "sal", path: "mv.inv" })}><I n="plus" size={16} /> فاتورة مبيعات</button>
-              <button className="btn !bg-white/10 !text-white border border-white/20 hover:!bg-white/20" onClick={() => nav({ module: "gl", path: "mv.je" })}><I n="book" size={16} /> قيد يومية</button>
-            </div>
+            <span className="chip !bg-white/10 !text-white/85 border border-white/15"><I n="cal" size={12} /> السنة المالية {app.session?.year}</span>
           </div>
         </div>
       </Reveal>
+
+      {/* ═══ شريط الوصول السريع — يُدار من: إدارة النظام ← الوصول السريع ═══ */}
+      {quick.visible && quick.items.length > 0 && (
+        <Reveal delay={40}>
+          <div className="card relative overflow-hidden px-4 py-3 flex items-center gap-3">
+            <span className="absolute top-0 inset-x-0 h-[3px]" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent) 55%, var(--brand))" }} />
+            <span className="shrink-0 flex items-center gap-1.5 text-[0.72rem] font-bold text-[var(--brand)] pe-3 border-e border-line">
+              <I n="star" size={15} className="text-[var(--warn)]" /> الوصول السريع
+            </span>
+            <div className="flex-1 flex items-center gap-2 overflow-x-auto py-1" style={{ scrollbarWidth: "none" }}>
+              {quick.items.map((it, i) => (
+                <button key={it.id} onClick={() => nav({ module: it.module, path: it.path })}
+                  className="group shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl border border-line bg-panel/70 hover:border-[color-mix(in_srgb,var(--brand)_50%,transparent)] hover:bg-[color-mix(in_srgb,var(--brand)_8%,transparent)] hover:-translate-y-0.5 transition-all anim-rise"
+                  style={{ animationDelay: `${i * 45}ms` }} title={it.label}>
+                  <span className="w-6 h-6 rounded-md grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] group-hover:scale-110 transition-transform"><I n={it.icon} size={13} /></span>
+                  <span className="text-[0.76rem] font-bold whitespace-nowrap">{it.label}</span>
+                  <I n="arrow" size={11} className="text-mute opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              ))}
+            </div>
+            <button onClick={() => nav({ module: "adm", path: "quick" })} className="shrink-0 w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-[var(--brand)] hover:bg-[color-mix(in_srgb,var(--brand)_8%,transparent)] transition-colors" title="إدارة الوصول السريع">
+              <I n="gear" size={16} />
+            </button>
+          </div>
+        </Reveal>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <Stat icon="tag" label="إجمالي المبيعات (الربع الأول)" value={Math.round(salesTotal)} sub={`${active(sales).length} فاتورة مرحّلة`} tone="var(--brand)" />
@@ -84,7 +108,7 @@ export default function Dashboard() {
                 }, 0);
                 const isPrimary = app.primaryActivity === a.id;
                 return (
-                  <button key={a.id} onClick={() => nav({ module: `spec:${a.id}`, path: "" })}
+                  <button key={a.id} onClick={() => nav({ module: `spec.${a.id}`, path: "" })}
                     className="card card-lift p-3.5 text-start relative overflow-hidden group">
                     <span className="absolute top-0 inset-x-0 h-0.5" style={{ background: a.color }} />
                     <div className="flex items-start gap-2.5">
