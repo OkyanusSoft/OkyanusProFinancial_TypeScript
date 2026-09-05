@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { I } from "./ui";
 
 /* ════════════════════════════════════════════════════════════
@@ -67,7 +68,8 @@ function Chip({ icon, label, tone, on, lockedTitle, onClick, strong }: {
   );
 }
 
-/* ═══════ شريط إجراءات المستند — يتشكل حسب الحالة والصلاحيات ═══════ */
+/* ═══════ شريط إجراءات المستند — يتشكل حسب الحالة والصلاحيات ═══════
+   الحذف نهائي: نقرتان — الأولى تحوّل الزر إلى «تأكيد؟» والثانية تحذف من السجل نهائياً */
 export function DocActions({ app, module, status, onView, onEdit, onDelete, onPost, onUnpost, onPrint }: {
   app: AppLike; module: string; status?: string;
   onView?: () => void; onEdit?: () => void; onDelete?: () => void;
@@ -76,13 +78,29 @@ export function DocActions({ app, module, status, onView, onEdit, onDelete, onPo
   const c = normStatus(status);
   const can = (perm: string) => app.can(module, perm) || (perm === "استعراض" && app.can(module, "عرض"));
   const isAdmin = app.can(module, "إلغاء ترحيل");
+  const [armDel, setArmDel] = useState(false);
+
+  /* تسليح زر الحذف: إن لم يكن مسلّحاً يتحول إلى «تأكيد؟» ثم يعود بعد 2.5ث */
+  const handleDelete = () => {
+    if (!onDelete) return;
+    if (!armDel) {
+      setArmDel(true);
+      window.setTimeout(() => setArmDel(false), 2500);
+      return;
+    }
+    setArmDel(false);
+    onDelete();
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-1">
       {onView && <Chip icon="eye" label="استعراض" tone="var(--brand)" on={can("استعراض")} lockedTitle="صلاحية «استعراض» غير مخوّلة" onClick={onView} />}
 
       {c === "draft" && onEdit && <Chip icon="edit" label="تعديل" tone="var(--accent)" on={can("تعديل")} lockedTitle="صلاحية «تعديل» غير مخوّلة" onClick={onEdit} />}
-      {c === "draft" && onDelete && <Chip icon="trash" label="حذف" tone="var(--bad)" on={can("حذف")} lockedTitle="صلاحية «حذف» غير مخوّلة" onClick={onDelete} />}
+      {c === "draft" && onDelete && (
+        <Chip icon={armDel ? "alert" : "trash"} label={armDel ? "تأكيد الحذف؟" : "حذف"} tone="var(--bad)" on={can("حذف")}
+          lockedTitle="صلاحية «حذف» غير مخوّلة" onClick={handleDelete} strong={armDel} />
+      )}
       {c === "draft" && onPost && <Chip icon="check" label="ترحيل" tone="var(--good)" on={can("ترحيل")} lockedTitle="صلاحية «ترحيل» غير مخوّلة" onClick={onPost} strong />}
 
       {c === "posted" && onUnpost && (

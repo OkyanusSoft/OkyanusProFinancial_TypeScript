@@ -126,6 +126,8 @@ interface AppCtx {
   lockPeriod: (id: string) => void;
   setQuoteStatus: (id: string, status: string) => void;
   setRequestStatus: (id: string, status: string) => void;
+  deleteRequest: (id: string) => void;
+  deleteQuote: (id: string) => void;
   /* أدوات عرض */
   fmtN: (n: number) => string;
   fmtMoney: (n: number) => string;
@@ -952,6 +954,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDb((old) => ({ ...old, requests: old.requests.map((r: AnyR) => (r.id === id ? { ...r, status } : r)) }));
     toast(`حُدّث طلب الشراء إلى «${status}»`);
   };
+  /* ═══ حذف نهائي من السجل: يختفي المستند تماماً وينتشر شاهد الحذف ═══ */
+  const eraseDoc = (coll: CollKey, id: string, label: string) => {
+    setDb((old) => ({ ...old, [coll]: old[coll].filter((x: AnyR) => x.id !== id) }));
+    engine.publishTombstone(coll, id);
+    logLocal(COLL_CAT[coll] || "النظام", `حذف نهائي — «${label}» أُزيل من السجل تماماً`, "delete");
+    toast(`حُذف «${label}» نهائياً من السجل`, "err");
+  };
+  const deleteRequest = (id: string) => eraseDoc("requests", id, `طلب الشراء ${id}`);
+  const deleteQuote = (id: string) => eraseDoc("quotes", id, `عرض السعر ${id}`);
 
   /* ── محرك الصلاحيات الرباعي (نظام / شاشات / تقارير / أزرار) ── */
   const emptyPerm = (): PermRole => ({ modules: {}, screens: {}, reports: {}, buttons: {} });
@@ -1463,7 +1474,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       save, remove, restore, purge, emptyTrash, importRows,
       addInvDoc, saveDraftInvDoc, postInvDoc, unpostInvDoc, updateInvDoc, deleteInvDoc, voidInvDoc,
       addInvoice, saveDraftInvoice, postInvoice, unpostInvoice, updateInvoice, deleteInvoice, voidInvoice, payInvoice,
-      addJournal, saveDraftJournal, postJournal, unpostJournal, deleteJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
+      addJournal, saveDraftJournal, postJournal, unpostJournal, deleteJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus, deleteRequest, deleteQuote,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       matrix, setModulePerm, setScreenPerm, setAllScreens, setReportAction, setButtonPerm, setAllButtons,
       grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot, resetFactory, clearTombstones,

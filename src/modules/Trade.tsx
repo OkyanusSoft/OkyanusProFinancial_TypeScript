@@ -170,8 +170,11 @@ function PurchaseRequests() {
   const app = useApp();
   const [show, setShow] = useState(false);
   const [view, setView] = useState<any>(null);
+  const [editReq, setEditReq] = useState<any>(null);
   const [f, setF] = useState({ desc: "", qty: 10, est: 0, item: app.db.items[0]?.id || "" });
   const rows = app.db.requests;
+  const openEdit = (r: any) => { setF({ desc: r.desc, qty: r.qty, est: r.est, item: r.item }); setEditReq(r); };
+  const reqStatusChip = (r: any) => r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مسودة" ? "مسودة" : "بانتظار الموافقة";
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -182,7 +185,7 @@ function PurchaseRequests() {
             <p className="text-mute text-[0.82rem] font-medium mt-0.5">دورة عمل كاملة: مسودة ← اعتماد ← تحويل إلى فاتورة مشتريات</p>
           </div>
         </div>
-        <button className="btn btn-brand" onClick={() => setShow(true)}><I n="plus" size={16} /> طلب شراء جديد</button>
+        <button className="btn btn-brand" onClick={() => { setF({ desc: "", qty: 10, est: 0, item: app.db.items[0]?.id || "" }); setShow(true); }}><I n="plus" size={16} /> طلب شراء جديد</button>
       </div>
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -197,14 +200,20 @@ function PurchaseRequests() {
                   <td className="font-bold">{r.desc}</td>
                   <td className="font-num">{app.fmtN(r.qty)}</td>
                   <td className="font-num">{app.fmtN(r.est)}</td>
-                  <td><Chip s={r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مرفوض" ? "مرفوض" : "بانتظار الموافقة"} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
+                  <td><Chip s={reqStatusChip(r)} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
                   <td>
-                    <div className="flex flex-wrap gap-1 justify-start max-w-[260px]">
-                      <ActionBtn k="view" allowed={app.can("pur", "عرض")} onClick={() => setView(r)} />
-                      <ActionBtn k="print" allowed={app.can("pur", "طباعة")} onClick={() => printRequestDoc(app, r)} title="طباعة الطلب (A4)" />
-                      {r.status === "مسودة" && <ActionBtn k="approve" allowed={app.can("pur", "اعتماد")} onClick={() => app.setRequestStatus(r.id, "معتمد")} title="اعتماد الطلب" />}
-                      {r.status === "معتمد" && <ActionBtn k="post" allowed={app.can("pur", "ترحيل")} onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }} title="تحويل إلى فاتورة" />}
-                      {r.status === "مسودة" && <ActionBtn k="del" allowed={app.can("pur", "حذف")} onClick={() => app.setRequestStatus(r.id, "مرفوض")} title="رفض الطلب" />}
+                    <div className="flex flex-wrap gap-1 justify-start max-w-[300px]">
+                      <DocActions app={app} module="pur" status={r.status === "تم التحويل" ? "مرحّل" : r.status}
+                        onView={() => setView(r)}
+                        onEdit={r.status === "مسودة" ? () => openEdit(r) : undefined}
+                        onDelete={r.status === "مسودة" ? () => app.deleteRequest(r.id) : undefined}
+                        onPost={r.status === "مسودة" ? () => app.setRequestStatus(r.id, "معتمد") : undefined}
+                        onPrint={() => printRequestDoc(app, r)} />
+                      {r.status === "معتمد" && (
+                        <button className="act-chip act-strong" style={{ ["--tone" as any]: "var(--brand)" }} onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }}>
+                          <I n="check" size={12} /><span>تحويل لفاتورة</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -236,14 +245,19 @@ function PurchaseRequests() {
         ); })()}
       </Modal>
 
-      <Modal open={show} onClose={() => setShow(false)} title="طلب شراء جديد" icon="clip" subtitle="يُحفظ كمسودة ثم يمر بدورة اعتماد وتحويل"
+      <Modal open={show || !!editReq} onClose={() => { setShow(false); setEditReq(null); }} title={editReq ? `تعديل الطلب ${editReq.no}` : "طلب شراء جديد"} icon="clip" subtitle="يُحفظ كمسودة ثم يمر بدورة اعتماد وتحويل"
         footer={<>
-          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
+          <button className="btn btn-ghost" onClick={() => { setShow(false); setEditReq(null); }}>إلغاء</button>
           <button className="btn btn-brand" onClick={() => {
             if (!f.desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
-            const no = app.nextNo(app.settings.prefixes.PR);
-            app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, status: "مسودة" });
-            app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
+            if (editReq) {
+              app.save("requests", { ...editReq, desc: f.desc, qty: f.qty, est: f.est, item: f.item, status: "مسودة" });
+              app.toast(`حُدّث الطلب ${editReq.no} وأُعيد إلى «مسودة»`, "ok"); setEditReq(null);
+            } else {
+              const no = app.nextNo(app.settings.prefixes.PR);
+              app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, item: f.item, status: "مسودة" });
+              app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
+            }
           }}><I n="check" size={15} /> حفظ الطلب (مسودة)</button>
         </>}>
         <div className="space-y-3">
@@ -298,10 +312,17 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
                 <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(q.total)}</td>
                 <td><Chip s={q.status} /></td>
                 <td>
-                  <div className="flex flex-wrap gap-1 justify-start max-w-[240px]">
-                    <ActionBtn k="print" allowed={app.can(isSale ? "sal" : "pur", "طباعة")} onClick={() => printQuoteDoc(app, q, partners, isSale)} title="طباعة العرض (A4)" />
-                    {q.status === "ساري" && isSale && <ActionBtn k="approve" allowed={app.can("sal", "اعتماد")} onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }} title="قبول وتحويل" />}
-                    {q.status === "ساري" && <ActionBtn k="del" allowed={app.can(isSale ? "sal" : "pur", "حذف")} onClick={() => app.setQuoteStatus(q.id, "مرفوض")} title="رفض العرض" />}
+                  <div className="flex flex-wrap gap-1 justify-start max-w-[300px]">
+                    <DocActions app={app} module={isSale ? "sal" : "pur"} status={q.status === "ساري" ? "مرحّل" : q.status === "مسودة" ? "مسودة" : q.status}
+                      onView={() => printQuoteDoc(app, q, partners, isSale)}
+                      onDelete={q.status === "مسودة" ? () => app.deleteQuote(q.id) : undefined}
+                      onPost={q.status === "مسودة" ? () => app.setQuoteStatus(q.id, "ساري") : undefined}
+                      onPrint={() => printQuoteDoc(app, q, partners, isSale)} />
+                    {q.status === "ساري" && isSale && (
+                      <button className="act-chip act-strong" style={{ ["--tone" as any]: "var(--good)" }} onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }}>
+                        <I n="check" size={12} /><span>قبول وتحويل</span>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -315,9 +336,9 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
           <button className="btn btn-brand" onClick={() => {
             if (!f.partner) { app.toast("اختر الطرف أولاً", "err"); return; }
             const no = app.nextNo(isSale ? app.settings.prefixes.QT : "PQ");
-            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "ساري" });
-            app.toast(`أُنشئ العرض ${no} — ساري حتى ${f.valid}`, "ok"); setShow(false);
-          }}><I n="check" size={15} /> إصدار العرض</button>
+            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "مسودة" });
+            app.toast(`أُنشئ العرض ${no} كمسودة — اضغط «ترحيل» لنشره حتى ${f.valid}`, "ok"); setShow(false);
+          }}><I n="check" size={15} /> حفظ العرض (مسودة)</button>
         </>}>
         <div className="space-y-3">
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">{isSale ? "العميل" : "المورد"}</span>
