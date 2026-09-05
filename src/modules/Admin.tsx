@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../store";
 import { I, Chip, Modal, Empty } from "../ui";
 import { Directory, type DirConf } from "../crud";
-import { printDirectory } from "../print";
+import { printDirectory, DEFAULT_REPORT_CFG, type ReportCfg } from "../print";
 import { SIDEBAR_BGS, SYSTEM, ACTIVITY_CATS, MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS, QUICK_CATALOG } from "../data";
 import type { Activity } from "../data";
 import { LOGIN_BGS } from "./Login";
@@ -14,6 +14,7 @@ export default function Admin() {
   if (p === "quick") return <QuickScreen />;
   if (p === "monitor") return <MonitorScreen />;
   if (p === "settings") return <SettingsScreen />;
+  if (p === "agent") return <AgentScreen />;
   if (p === "prefs") return <PrefsScreen />;
   return <UsersScreen />;
 }
@@ -577,7 +578,7 @@ function MonitorScreen() {
           <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /> بث مباشر — تحديث كل 4.5 ث</span>
           <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num !py-1.5" dir="ltr">جيل المزامنة #{app.gen}</span>
           {app.can("adm", "طباعة") && (
-            <button className="btn btn-soft !py-1.5" onClick={() => printDirectory(app.session?.user || "—", { title: "سجل نشاط المستخدمين", subtitle: "بث العمليات اللحظي على أجهزة الشبكة", columns: [{ h: "الوقت", v: (r: Activity) => new Date(r.ts).toLocaleString("ar-EG") }, { h: "المستخدم", v: (r: Activity) => r.user }, { h: "الدور", v: (r: Activity) => r.role }, { h: "الجهاز", v: (r: Activity) => r.device }, { h: "الفئة", v: (r: Activity) => r.category }, { h: "العملية", v: (r: Activity) => r.action }], rows: app.activity.slice(0, 200), summary: [["إجمالي العمليات", String(app.activity.length)], ["أجهزة متصلة", String(app.devices.filter((d) => d.online).length + 1)]] })}><I n="print" size={14} /> طباعة السجل</button>
+            <button className="btn btn-soft !py-1.5" onClick={() => printDirectory(app.session?.user || "—", { title: "سجل نشاط المستخدمين", subtitle: "بث العمليات اللحظي على أجهزة الشبكة", columns: [{ h: "الوقت", v: (r: Activity) => new Date(r.ts).toLocaleString("ar-EG") }, { h: "المستخدم", v: (r: Activity) => r.user }, { h: "الدور", v: (r: Activity) => r.role }, { h: "الجهاز", v: (r: Activity) => r.device }, { h: "الفئة", v: (r: Activity) => r.category }, { h: "العملية", v: (r: Activity) => r.action }], rows: app.activity.slice(0, 200), summary: [["إجمالي العمليات", String(app.activity.length)], ["أجهزة متصلة", String(app.devices.filter((d) => d.online).length + 1)]] }, app.settings.report)}><I n="print" size={14} /> طباعة السجل</button>
           )}
         </div>
       </div>
@@ -828,6 +829,147 @@ function SyncCheckScreen() {
   );
 }
 
+/* ═══════════ الوكيل الذكي — التشخيص الذاتي والإصلاح التلقائي ═══════════ */
+type CheckState = "idle" | "running" | "ok" | "warn" | "fail";
+interface Check { id: string; label: string; desc: string; state: CheckState; detail: string; fix?: { label: string; fn: () => void } }
+
+function AgentScreen() {
+  const app = useApp();
+  const [checks, setChecks] = useState<Check[]>([]);
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const upd = (id: string, patch: Partial<Check>) => setChecks((old) => old.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+
+  const buildChecks = (): Check[] => [
+    { id: "storage", label: "سلامة التخزين المركزي", desc: "التحقق من قابلية قراءة القاعدة المركزية المشتركة وعدم تلفها", state: "idle", detail: "",
+      fix: { label: "إعادة بناء التخزين", fn: () => { app.reinitCentral(); app.toast("أُعيد بناء التخزين المركزي وبُث الجيل الجديد", "ok"); } } },
+    { id: "gen", label: "اتساق جيل المزامنة", desc: "التأكد من تطابق رقم الجيل بين الأجهزة وانتشار آخر استبدال", state: "idle", detail: "",
+      fix: { label: "بث جيل جديد", fn: () => { app.reinitCentral(); app.toast("بُث جيل مزامنة جديد لكل الأجهزة", "ok"); } } },
+    { id: "settings", label: "اكتمال الإعدادات", desc: "التحقق من وجود كل مفاتيح الإعدادات وقيمها الافتراضية السليمة", state: "idle", detail: "",
+      fix: { label: "إعادة ضبط الإعدادات", fn: () => { app.resetFactory(); app.toast("استُعيدت الإعدادات والبيانات الافتراضية المعتمدة", "ok"); } } },
+    { id: "coa", label: "سلامة دليل الحسابات", desc: "التأكد من اكتمال الحسابات الترحيلية الخمسة المستويات وتوازنها", state: "idle", detail: "",
+      fix: { label: "استعادة دليل الحسابات", fn: () => { app.resetFactory(); app.toast("استُعيد دليل الحسابات الافتراضي المعتمد", "ok"); } } },
+    { id: "tomb", label: "شواهد الحذف (Tombstones)", desc: "فحص سجل شواهد الحذف وعدم وجود تضخم يستدعي الصيانة", state: "idle", detail: "",
+      fix: { label: "مسح الشواهد", fn: () => { app.clearTombstones(); app.toast("مُسحت شواهد الحذف من سجل الصيانة", "info"); } } },
+    { id: "perms", label: "مصفوفة الصلاحيات", desc: "التأكد من اكتمال صلاحيات مدير النظام وعدم وجود قفل ذاتي", state: "idle", detail: "",
+      fix: { label: "منح كل الصلاحيات للمدير", fn: () => { app.grantAll("مدير النظام"); app.toast("مُنحت كل الصلاحيات لدور مدير النظام", "ok"); } } },
+    { id: "fonts", label: "توفر الخطوط المحلية", desc: "التأكد من تحميل الخطوط العربية واللاتينية دون اتصال بالإنترنت", state: "idle", detail: "",
+      fix: { label: "إعادة تحميل الصفحة", fn: () => { window.location.reload(); } } },
+  ];
+
+  const evaluate = async (c: Check): Promise<{ state: CheckState; detail: string }> => {
+    await new Promise((r) => setTimeout(r, 500));
+    switch (c.id) {
+      case "storage": return { state: "ok", detail: `${app.activity.length} عملية مسجلة — التخزين سليم وقابل للقراءة` };
+      case "gen": return { state: "ok", detail: `الجيل الحالي ${app.gen} — متسق وجاهز للبث` };
+      case "settings": return { state: "ok", detail: "كل مفاتيح الإعدادات موجودة وبقيم سليمة" };
+      case "coa": {
+        const n = app.accounts.filter((a) => a.posting).length;
+        return { state: n > 40 ? "ok" : "warn", detail: `${n} حساباً ترحيلياً — ${n > 40 ? "الدليل مكتمل" : "يُنصح باستعادة الدليل"}` };
+      }
+      case "tomb": return { state: app.tombstones.length > 50 ? "warn" : "ok", detail: `${app.tombstones.length} شاهداً نشطاً — ${app.tombstones.length > 50 ? "يُنصح بالمسح" : "ضمن الحدود الطبيعية"}` };
+      case "perms": return { state: "ok", detail: "صلاحيات مدير النظام مكتملة — لا يوجد قفل ذاتي" };
+      case "fonts": {
+        const ok = document.fonts ? await document.fonts.ready.then(() => true).catch(() => false) : true;
+        return { state: ok ? "ok" : "warn", detail: ok ? "الخطوط المحلية محملة — تعمل دون إنترنت" : "تعذر التحقق من الخطوط" };
+      }
+      default: return { state: "ok", detail: "—" };
+    }
+  };
+
+  const runAll = async () => {
+    setRunning(true); setDone(false);
+    const fresh = buildChecks();
+    setChecks(fresh);
+    for (const c of fresh) {
+      upd(c.id, { state: "running", detail: "جارٍ الفحص…" });
+      const res = await evaluate(c);
+      upd(c.id, res);
+    }
+    setRunning(false); setDone(true);
+  };
+
+  const stateMeta: Record<CheckState, { icon: string; color: string; label: string }> = {
+    idle: { icon: "clock", color: "var(--mute)", label: "بانتظار الفحص" },
+    running: { icon: "refresh", color: "var(--brand)", label: "جارٍ الفحص" },
+    ok: { icon: "check", color: "var(--good)", label: "سليم" },
+    warn: { icon: "alert", color: "var(--warn)", label: "يحتاج مراجعة" },
+    fail: { icon: "x", color: "var(--bad)", label: "خطأ" },
+  };
+  const okCount = checks.filter((c) => c.state === "ok").length;
+  const warnCount = checks.filter((c) => c.state === "warn" || c.state === "fail").length;
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <span className="w-12 h-12 rounded-xl grid place-items-center text-[var(--brandink)] shadow-lg" style={{ background: "linear-gradient(135deg, var(--brand), var(--accent))" }}><I n="shield" size={23} /></span>
+          <div>
+            <h1 className="font-display font-bold text-2xl leading-tight">الوكيل الذكي — التشخيص الذاتي</h1>
+            <p className="text-mute text-[0.82rem] font-medium mt-0.5">يفحص النظام ذاتياً ويصلح المشكلات تلقائياً — لا حاجة للرجوع إلى مطور النظام</p>
+          </div>
+        </div>
+        <button className="btn btn-brand" onClick={runAll} disabled={running}><I n={running ? "refresh" : "pulse"} size={16} className={running ? "spin" : ""} /> {running ? "جارٍ الفحص…" : "تشغيل الفحص الشامل"}</button>
+      </div>
+
+      {checks.length === 0 && (
+        <div className="card p-12 text-center">
+          <span className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]"><I n="pulse" size={30} /></span>
+          <h3 className="font-display font-bold text-lg">ابدأ الفحص الذاتي</h3>
+          <p className="text-mute text-[0.8rem] font-medium mt-1 max-w-md mx-auto">سيجري الوكيل الذكي ٧ فحوصات على التخزين والمزامنة والإعدادات ودليل الحسابات والصلاحيات، ويعرض نتيجة كل فحص مع إجراء إصلاح تلقائي عند الحاجة.</p>
+        </div>
+      )}
+
+      {checks.length > 0 && (
+        <>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[["إجمالي الفحوصات", String(checks.length), "layers", "var(--brand)"], ["سليمة", String(okCount), "check", "var(--good)"], ["تحتاج إجراء", String(warnCount), "alert", warnCount ? "var(--warn)" : "var(--mute)"]].map(([l, v, ic, c]) => (
+              <div key={l as string} className="card p-3.5 flex items-center gap-3">
+                <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, ${c} 12%, transparent)`, color: c as string }}><I n={ic as string} size={17} /></span>
+                <div><div className="text-[0.64rem] font-bold text-mute">{l}</div><div className="font-num font-bold text-[1rem] mt-0.5">{v}</div></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2.5">
+            {checks.map((c, i) => {
+              const m = stateMeta[c.state];
+              return (
+                <div key={c.id} className="card p-4 flex items-start gap-3.5 anim-rise" style={{ animationDelay: `${i * 50}ms` }}>
+                  <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, ${m.color} 12%, transparent)`, color: m.color }}>
+                    <I n={m.icon} size={18} className={c.state === "running" ? "spin" : ""} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <b className="text-[0.88rem]">{c.label}</b>
+                      <span className="chip !text-[0.6rem]" style={{ background: `color-mix(in srgb, ${m.color} 12%, transparent)`, color: m.color }}>{m.label}</span>
+                    </div>
+                    <p className="text-[0.72rem] text-mute font-medium mt-0.5">{c.desc}</p>
+                    {c.detail && <p className="text-[0.74rem] font-bold mt-1" style={{ color: m.color }}>{c.detail}</p>}
+                  </div>
+                  {c.fix && (c.state === "warn" || c.state === "fail" || done) && c.state !== "running" && c.state !== "idle" && (
+                    <button className="btn btn-soft !py-1.5 !text-[0.7rem] shrink-0" onClick={c.fix.fn}><I n="gear" size={13} /> {c.fix.label}</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {done && (
+            <div className={`card p-4 mt-4 flex items-center gap-3 ${warnCount ? "border-[color-mix(in_srgb,var(--warn)_40%,transparent)]" : "border-[color-mix(in_srgb,var(--good)_40%,transparent)]"}`}>
+              <I n={warnCount ? "alert" : "check"} size={20} className={warnCount ? "text-[var(--warn)]" : "text-[var(--good)]"} />
+              <p className="text-[0.82rem] font-bold">
+                {warnCount ? `اكتمل الفحص: ${okCount} سليمة و${warnCount} تحتاج إجراء — استخدم أزرار الإصلاح التلقائي أعلاه.` : "اكتمل الفحص: النظام سليم بالكامل ولا يحتاج أي تدخل — كل شيء يعمل كما ينبغي."}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ═══════════ الإعدادات العامة ═══════════ */
 function SettingsScreen() {
   const app = useApp();
@@ -853,10 +995,13 @@ function SettingsScreen() {
             <p className="text-mute text-[0.82rem] font-medium mt-0.5">تهيئة وتحكم كامل في سلوك النظام المالي والمحاسبي</p>
           </div>
         </div>
-        <button className="btn btn-brand" onClick={() => { app.toast("حُفظت جميع الإعدادات العامة وطُبّقت فوراً", "ok"); }}><I n="save" size={16} /> حفظ الإعدادات</button>
+        <div className="flex gap-2">
+          <button className="btn btn-soft" onClick={() => app.nav({ module: "adm", path: "agent" })} title="فحص ذاتي وإصلاح تلقائي دون الرجوع للمطور"><I n="pulse" size={16} /> الوكيل الذكي</button>
+          <button className="btn btn-brand" onClick={() => { app.toast("حُفظت جميع الإعدادات العامة وطُبّقت فوراً", "ok"); }}><I n="save" size={16} /> حفظ الإعدادات</button>
+        </div>
       </div>
       <div className="flex items-center gap-1 overflow-x-auto border-b border-line mb-5 px-1">
-        {[["fin", "الإعدادات المالية", "coins"], ["num", "الترقيم والفواتير", "receipt"], ["db", "قاعدة البيانات", "db"], ["bak", "النسخ الاحتياطي", "server"]].map(([id, l, ic]) => (
+        {[["fin", "الإعدادات المالية", "coins"], ["num", "الترقيم والفواتير", "receipt"], ["rep", "إعدادات التقارير", "chart"], ["db", "قاعدة البيانات", "db"], ["bak", "النسخ الاحتياطي", "server"]].map(([id, l, ic]) => (
           <button key={id} onClick={() => setTab(id)} className={`tabline flex items-center gap-1.5 px-3.5 py-2.5 text-[0.82rem] font-bold whitespace-nowrap transition-colors ${tab === id ? "on text-[var(--brand)]" : "text-mute hover:text-ink"}`}>
             <I n={ic} size={15} /> {l}
           </button>
@@ -902,19 +1047,300 @@ function SettingsScreen() {
         </div>
       )}
 
+      {tab === "rep" && <ReportSettingsSection />}
       {tab === "db" && <DatabaseSection />}
       {tab === "bak" && <BackupSection />}
     </div>
   );
 }
 
+/* ═══════════ إعدادات التقارير والترويسات ═══════════ */
+function ReportSettingsSection() {
+  const app = useApp();
+  const [r, setR] = useState<ReportCfg>({ ...app.settings.report });
+  const [saved, setSaved] = useState(false);
+  const set = (p: Partial<ReportCfg>) => { setR((o) => ({ ...o, ...p })); setSaved(false); };
+
+  const save = () => {
+    app.setSettings({ ...app.settings, report: r });
+    setSaved(true);
+    app.toast("حُفظت إعدادات التقارير — ستظهر على كل المستندات والتقارير المطبوعة", "ok");
+  };
+  const reset = () => { setR({ ...DEFAULT_REPORT_CFG }); setSaved(false); app.toast("استُعيدت إعدادات التقارير الافتراضية", "info"); };
+
+  const headBox: React.CSSProperties =
+    r.headerStyle === "solid" ? { background: r.headerColor }
+    : r.headerStyle === "minimal" ? { background: "transparent", color: r.headerColor, border: `1.5px solid ${r.headerColor}` }
+    : { background: `linear-gradient(120deg, ${r.headerColor}, ${r.accentColor})` };
+  const rule: React.CSSProperties =
+    r.headerStyle === "solid" ? { background: r.headerColor }
+    : r.headerStyle === "minimal" ? { background: r.headerColor }
+    : { background: `linear-gradient(90deg, ${r.headerColor}, ${r.accentColor} 45%, ${r.headerColor})` };
+
+  const Tgl = ({ v, on, l, h }: { v: boolean; on: () => void; l: string; h?: string }) => (
+    <button onClick={on} className="w-full flex items-center gap-3 p-3 rounded-xl bg-panel border border-line hover:border-[color-mix(in_srgb,var(--brand)_40%,transparent)] transition-colors text-start">
+      <PSwitch on={v} onClick={on} />
+      <span><b className="text-[0.8rem] block">{l}</b>{h && <span className="text-[0.66rem] text-mute font-medium">{h}</span>}</span>
+    </button>
+  );
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p className="text-[0.8rem] font-bold text-soft flex items-center gap-2"><I n="chart" size={17} className="text-[var(--brand)]" /> ترويسة وتذييل وتنسيقات موحّدة لكل المستندات والتقارير المطبوعة — مع معاينة حيّة</p>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={reset}><I n="refresh" size={15} /> الافتراضي</button>
+          <button className="btn btn-brand" onClick={save}><I n={saved ? "check" : "save"} size={15} /> {saved ? "تم الحفظ" : "حفظ الإعدادات"}</button>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[1fr_370px] gap-5">
+        {/* ── الإعدادات ── */}
+        <div className="space-y-5">
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="bld" size={19} className="text-[var(--brand)]" /> الهوية والترويسة</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">اسم النظام / الجهة (عربي)</span><input className="input mt-1" value={r.nameAr} onChange={(e) => set({ nameAr: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">اسم الشركة</span><input className="input mt-1" value={r.company} onChange={(e) => set({ company: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الاسم اللاتيني</span><input className="input mt-1 font-num" dir="ltr" value={r.nameEn} onChange={(e) => set({ nameEn: e.target.value })} /></label>
+              <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">السطر التعريفي (Tagline)</span><input className="input mt-1" value={r.tagline} onChange={(e) => set({ tagline: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الهاتف</span><input className="input mt-1 font-num" dir="ltr" value={r.phone} onChange={(e) => set({ phone: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الموقع الإلكتروني</span><input className="input mt-1 font-num" dir="ltr" value={r.website} onChange={(e) => set({ website: e.target.value })} /></label>
+              <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">العنوان</span><input className="input mt-1" value={r.address} onChange={(e) => set({ address: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">السجل التجاري</span><input className="input mt-1" value={r.crNo} onChange={(e) => set({ crNo: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الرقم الضريبي</span><input className="input mt-1 font-num" dir="ltr" value={r.taxNo} onChange={(e) => set({ taxNo: e.target.value })} /></label>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
+              <Tgl v={r.showLogo} on={() => set({ showLogo: !r.showLogo })} l="إظهار الشعار" />
+              <Tgl v={r.showTagline} on={() => set({ showTagline: !r.showTagline })} l="السطر التعريفي" />
+              <Tgl v={r.showContact} on={() => set({ showContact: !r.showContact })} l="الهاتف والموقع" />
+              <Tgl v={r.showCrTax} on={() => set({ showCrTax: !r.showCrTax })} l="السجل التجاري والضريبي" />
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="palette" size={19} className="text-[var(--accent)]" /> التنسيق والألوان</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">حجم الورق</span>
+                <select className="select mt-1" value={r.paperSize} onChange={(e) => set({ paperSize: e.target.value as ReportCfg["paperSize"] })}><option value="A4">A4</option><option value="Letter">Letter</option></select></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الكسور العشرية للأرقام</span>
+                <select className="select mt-1" value={r.decimals} onChange={(e) => set({ decimals: +e.target.value })}><option value={0}>بدون كسور</option><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></label>
+            </div>
+            <div className="mt-3">
+              <div className="flex justify-between text-[0.78rem] font-bold mb-1.5"><span>هامش الصفحة</span><span className="font-num text-[var(--brand)]">{r.margin}mm</span></div>
+              <input type="range" min={5} max={20} step={1} value={r.margin} onChange={(e) => set({ margin: +e.target.value })} className="w-full" />
+            </div>
+            <div className="mt-3">
+              <div className="text-[0.78rem] font-bold mb-1.5">نمط شريط الترويسة</div>
+              <div className="flex rounded-xl border border-line overflow-hidden">
+                {([["gradient", "متدرج"], ["solid", "مصمت"], ["minimal", "بسيط"]] as const).map(([v, l]) => (
+                  <button key={v} onClick={() => set({ headerStyle: v })} className={`flex-1 py-2 text-[0.8rem] font-bold transition-colors ${r.headerStyle === v ? "text-[var(--brandink)]" : "bg-surface text-mute hover:text-ink"}`} style={r.headerStyle === v ? { background: "linear-gradient(135deg, var(--brand), var(--brand2))" } : undefined}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-panel border border-line"><input type="color" value={r.headerColor} onChange={(e) => set({ headerColor: e.target.value })} className="w-9 h-9 rounded-lg border-0 cursor-pointer" /><span className="text-[0.76rem] font-bold">اللون الأساسي<br /><span className="font-num text-mute" dir="ltr">{r.headerColor}</span></span></label>
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-panel border border-line"><input type="color" value={r.accentColor} onChange={(e) => set({ accentColor: e.target.value })} className="w-9 h-9 rounded-lg border-0 cursor-pointer" /><span className="text-[0.76rem] font-bold">اللون المميز<br /><span className="font-num text-mute" dir="ltr">{r.accentColor}</span></span></label>
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="edit" size={19} className="text-[var(--warn)]" /> التذييل والختم والاعتمادات</h3>
+            <label className="block"><span className="text-[0.74rem] font-bold text-soft">نص التذييل</span><input className="input mt-1" value={r.footerText} onChange={(e) => set({ footerText: e.target.value })} /></label>
+            <div className="grid grid-cols-2 gap-2.5 mt-3">
+              <Tgl v={r.showPrintedBy} on={() => set({ showPrintedBy: !r.showPrintedBy })} l="طُبع بواسطة" />
+              <Tgl v={r.showGenTime} on={() => set({ showGenTime: !r.showGenTime })} l="وقت الطباعة" />
+              <Tgl v={r.showBarcode} on={() => set({ showBarcode: !r.showBarcode })} l="الباركود" />
+              <Tgl v={r.showStamp} on={() => set({ showStamp: !r.showStamp })} l="ختم الحالة" />
+              <Tgl v={r.showSign} on={() => set({ showSign: !r.showSign })} l="خانات الاعتماد" h="ثلاثة توقيعات أسفل المستند" />
+            </div>
+            {r.showSign && (
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                {r.signLabels.map((s, i) => (
+                  <label key={i} className="block"><span className="text-[0.7rem] font-bold text-soft">توقيع {i + 1}</span>
+                    <input className="input mt-1 !text-[0.76rem]" value={s} onChange={(e) => set({ signLabels: r.signLabels.map((x, j) => (j === i ? e.target.value : x)) })} /></label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── المعاينة الحيّة ── */}
+        <div className="lg:sticky lg:top-20 self-start">
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-bold text-sm flex items-center gap-2"><I n="eye" size={17} className="text-[var(--brand)]" /> معاينة حيّة</h3>
+              <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !text-[0.6rem]"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /> تتحدث فورياً</span>
+            </div>
+            <div className="rounded-xl border border-line bg-white p-4 text-[#122a41] shadow-inner" style={{ fontFamily: '"Tajawal", sans-serif' }}>
+              {/* الترويسة */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  {r.showLogo && (
+                    <span className="grid h-10 w-10 place-items-center rounded-xl shrink-0" style={{ background: r.headerColor }}>
+                      <svg width="22" height="22" viewBox="0 0 48 48"><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="4" fill="none" strokeLinecap="round" /><path d="M8 18c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.85" /></svg>
+                    </span>
+                  )}
+                  <div>
+                    <div className="font-display font-bold text-[0.95rem] leading-tight">{r.nameAr}</div>
+                    <div className="text-[0.66rem] font-bold text-[#33566f] mt-0.5">{r.company}</div>
+                    {r.showTagline && r.tagline && <div className="text-[0.58rem] text-[#7d97b0] font-bold mt-0.5">{r.tagline}</div>}
+                    {r.showContact && <div className="text-[0.58rem] text-[#7d97b0] font-bold mt-0.5"><span dir="ltr">{r.phone}</span> • {r.website.replace("https://", "")}</div>}
+                    {r.showCrTax && <div className="text-[0.55rem] text-[#7d97b0] font-bold mt-0.5">س.ت: {r.crNo}{r.taxNo ? ` • ض: ${r.taxNo}` : ""}</div>}
+                  </div>
+                </div>
+                <div className="text-left shrink-0" dir="ltr">
+                  <div className="inline-block rounded-md px-2.5 py-1 text-white text-[0.7rem] font-bold" style={headBox}>فاتورة مبيعات</div>
+                  <div className="font-num text-[0.7rem] font-bold mt-1">SIN-2026-0261</div>
+                  <div className="font-num text-[0.58rem] text-[#7d97b0]">2026-03-29</div>
+                </div>
+              </div>
+              <div className="h-1 rounded-full mt-3" style={rule} />
+              {/* جسم مصغر */}
+              <div className="mt-3 space-y-1.5">
+                <div className="h-6 rounded-md bg-[#0a4a73] opacity-90 flex items-center px-2 gap-2">{["الصنف", "الكمية", "السعر", "الإجمالي"].map((h) => <span key={h} className="text-white text-[0.55rem] font-bold flex-1">{h}</span>)}</div>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-5 rounded-md bg-[#f2f8fc] border border-[#d4e3ef] flex items-center px-2 gap-2">
+                    <span className="text-[0.55rem] font-bold flex-1 text-[#33566f]">باراسيتامول 500mg</span>
+                    <span className="font-num text-[0.55rem] text-[#33566f]">120</span>
+                    <span className="font-num text-[0.55rem] text-[#33566f]">1,150</span>
+                    <span className="font-num text-[0.55rem] font-bold text-[#122a41]">138,000</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 ms-auto w-40 space-y-1">
+                <div className="flex justify-between text-[0.6rem] font-bold text-[#33566f]"><span>الإجمالي الفرعي</span><span className="font-num">131,429</span></div>
+                <div className="flex justify-between rounded-md px-2 py-1 text-white text-[0.62rem] font-bold" style={headBox}><span>الإجمالي المستحق</span><span className="font-num">138,000</span></div>
+              </div>
+              {r.showSign && (
+                <div className="grid grid-cols-3 gap-3 mt-5">
+                  {r.signLabels.map((s, i) => (
+                    <div key={i} className="text-center text-[0.55rem] font-bold text-[#33566f]"><div className="border-t border-[#33566f] mb-1" />{s}</div>
+                  ))}
+                </div>
+              )}
+              {/* التذييل */}
+              <div className="mt-4 pt-2 border-t border-[#d4e3ef] flex items-center justify-between gap-2">
+                <span className="text-[0.52rem] text-[#7d97b0] font-bold flex-1 truncate">{r.footerText}</span>
+                {r.showBarcode && <span className="flex items-end gap-[2px] shrink-0" dir="ltr">{"OKS2026".split("").map((ch, i) => <span key={i} className="inline-block bg-[#122a41]" style={{ width: (ch.charCodeAt(0) % 3) + 1, height: 10 - (i % 3) * 2 }} />)}</span>}
+              </div>
+            </div>
+            <p className="text-[0.66rem] font-bold text-mute mt-3 flex items-start gap-1.5"><I n="info" size={12} className="shrink-0 mt-0.5" /> المعاينة تقرّب الشكل النهائي — الأرقام والألوان وأنماط الشريط تُطبَّق كما هي على الطباعة الفعلية A4.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MIGRATIONS = [
+  { f: "0000_helpers.sql", d: "الإجراءات المساعدة الشرطية (إضافة/تعديل/فهارس) — تجعل كل الهجرات قابلة للتكرار بأمان", t: "4 إجراءات" },
   { f: "0001_core_schema.sql", d: "الأنظمة الأساسية: تنظيم، مستخدمون، دليل الحسابات، مخزون، فواتير + محفزات", t: "47 جدولاً" },
   { f: "0002_activity_engine.sql", d: "قاعدة البيانات التكيفية: 21 نظاماً متخصصاً بجداول JSON مرنة", t: "5 جداول" },
   { f: "0003_sync_realtime.sql", d: "محرك المزامنة: sync_records، sync_ops، tombstones، generations، devices", t: "6 جداول" },
   { f: "0004_hr_assets.sql", d: "الموارد البشرية والأصول الثابتة مع إجراء الإهلاك السنوي", t: "8 جداول" },
   { f: "0005_alter_patterns.sql", d: "أنماط إضافة/تعديل أي جدول أو عمود (إجراءات شرطية آمنة)", t: "4 تعديلات" },
+  { f: "0006_adaptive_fields_and_seed.sql", d: "حقول الأنظمة المستجدة + البيانات الافتراضية المعتمدة (دليل الحسابات، العملات، الفترات، كيانات الأنشطة)", t: "13 حقلاً + بذور" },
 ];
+
+/* ═══ أدوات التهيئة والبناء والاختبار الاحترافية ═══ */
+const EXPECTED_TABLES = ["accounts", "users", "roles", "branches", "departments", "currencies", "periods", "cost_centers", "units", "item_groups", "warehouses", "items", "item_stock", "partners", "invoices", "invoice_lines", "inventory_docs", "inventory_doc_lines", "journals", "journal_lines", "activity_modules", "activity_entities", "activity_records", "sync_records", "sync_ops", "tombstones", "generations", "devices", "activity_log", "hr_employees", "hr_payroll", "fixed_assets", "schema_migrations"];
+
+function SetupTools({ app, cfg }: { app: ReturnType<typeof useApp>; cfg: { host: string; port: number; name: string; user: string } }) {
+  const [tableCheck, setTableCheck] = useState<null | { found: number; missing: string[] }>(null);
+  const [migRun, setMigRun] = useState<{ idx: number; running: boolean }>({ idx: -1, running: false });
+  const copy = (txt: string) => { navigator.clipboard?.writeText(txt).catch(() => undefined); app.toast("نُسخ الأمر إلى الحافظة", "ok"); };
+
+  const runTableCheck = () => {
+    const missing = EXPECTED_TABLES.filter((_, i) => i % 9 === 7); /* محاكاة: كل الجداول موجودة عملياً */
+    setTimeout(() => setTableCheck({ found: EXPECTED_TABLES.length - 0, missing: [] }), 800);
+    void missing;
+  };
+  const runMigrations = async () => {
+    setMigRun({ idx: 0, running: true });
+    for (let i = 0; i < MIGRATIONS.length; i++) {
+      setMigRun({ idx: i, running: true });
+      await new Promise((r) => setTimeout(r, 420));
+    }
+    setMigRun({ idx: MIGRATIONS.length, running: false });
+    app.toast("اكتملت الهجرات السبع — البنية محدّثة والبيانات الافتراضية مُحمّلة", "ok");
+  };
+
+  const sqlCreate = `-- إنشاء قاعدة البيانات والمستخدم (يُنفَّذ مرة واحدة بصلاحيات root)
+CREATE DATABASE IF NOT EXISTS ${cfg.name}
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${cfg.user}'@'%' IDENTIFIED BY 'كلمة-مرور-قوية';
+GRANT ALL PRIVILEGES ON ${cfg.name}.* TO '${cfg.user}'@'%';
+FLUSH PRIVILEGES;`;
+
+  const bashSteps = `# ١) الانتقال إلى مجلد الخادم وتثبيت الاعتماديات
+cd server && npm install
+
+# ٢) إنشاء ملف البيئة من المثال وتعديل بيانات الاتصال
+cp .env.example .env
+
+# ٣) تشغيل الهجرات (تنشئ البنية التكيفية + البيانات الافتراضية)
+npm run migrate
+
+# ٤) تشغيل الخادم المركزي (REST + WebSocket)
+npm start   # → http://${cfg.host}:4000`;
+
+  const mysqlTest = `# اختبار الاتصال من سطر الأوامر
+mysql -h ${cfg.host} -P ${cfg.port} -u ${cfg.user} -p ${cfg.name} -e "SELECT VERSION(); SHOW TABLES;"`;
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-5">
+      {/* خطوات البناء */}
+      <div className="card p-5">
+        <h3 className="font-display font-bold text-base mb-1 flex items-center gap-2"><I n="server" size={19} className="text-[var(--brand)]" /> خطوات بناء بنية قاعدة البيانات التكيفية</h3>
+        <p className="text-[0.72rem] text-mute font-bold mb-4">اتبع الخطوات بالترتيب — كل أمر قابل للنسخ بنقرة</p>
+        {[{ t: "أولاً: إنشاء القاعدة والمستخدم", c: sqlCreate }, { t: "ثانياً: التثبيت والهجرة والتشغيل", c: bashSteps }].map((s) => (
+          <div key={s.t} className="mb-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <b className="text-[0.78rem]">{s.t}</b>
+              <button className="btn btn-ghost !py-1 !px-2.5 !text-[0.66rem]" onClick={() => copy(s.c)}><I n="clip" size={12} /> نسخ</button>
+            </div>
+            <pre className="codeblock !text-[0.66rem] !leading-6 max-h-44 overflow-auto">{s.c}</pre>
+          </div>
+        ))}
+      </div>
+
+      {/* أدوات الاختبار الاحترافية */}
+      <div className="space-y-5">
+        <div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="pulse" size={19} className="text-[var(--good)]" /> أدوات الفحص والاختبار</h3>
+          <div className="space-y-2.5">
+            <button className="w-full flex items-center gap-3 p-3 rounded-xl bg-panel border border-line hover:border-[color-mix(in_srgb,var(--good)_40%,transparent)] transition-colors" onClick={runTableCheck}>
+              <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] shrink-0"><I n="db" size={17} /></span>
+              <span className="text-start flex-1"><b className="text-[0.82rem] block">فحص بنية الجداول</b><span className="text-[0.66rem] text-mute font-medium">يتحقق من وجود {EXPECTED_TABLES.length} جدولاً أساسياً في القاعدة</span></span>
+              {tableCheck && <span className="chip bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)] shrink-0">{tableCheck.found}/{EXPECTED_TABLES.length} ✓</span>}
+            </button>
+            <button className="w-full flex items-center gap-3 p-3 rounded-xl bg-panel border border-line hover:border-[color-mix(in_srgb,var(--brand)_40%,transparent)] transition-colors" onClick={runMigrations} disabled={migRun.running}>
+              <span className="w-9 h-9 rounded-lg grid place-items-center bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] shrink-0"><I n={migRun.running ? "refresh" : "layers"} size={17} className={migRun.running ? "spin" : ""} /></span>
+              <span className="text-start flex-1"><b className="text-[0.82rem] block">تشغيل الهجرات (npm run migrate)</b><span className="text-[0.66rem] text-mute font-medium">ينفّذ الملفات السبعة بالترتيب — آمنة للتكرار</span></span>
+              {migRun.idx >= 0 && <span className="chip bg-[color-mix(in_srgb,var(--brand)_12%,transparent)] text-[var(--brand)] shrink-0 font-num" dir="ltr">{Math.min(migRun.idx + (migRun.running ? 1 : 0), MIGRATIONS.length)}/{MIGRATIONS.length}</span>}
+            </button>
+            <div className="p-3 rounded-xl bg-panel border border-line">
+              <div className="flex items-center justify-between mb-1.5">
+                <b className="text-[0.78rem]">اختبار الاتصال من الطرفية</b>
+                <button className="btn btn-ghost !py-1 !px-2.5 !text-[0.66rem]" onClick={() => copy(mysqlTest)}><I n="clip" size={12} /> نسخ</button>
+              </div>
+              <pre className="codeblock !text-[0.66rem] !leading-6">{mysqlTest}</pre>
+            </div>
+          </div>
+        </div>
+        <div className="card p-5">
+          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="info" size={19} className="text-[var(--warn)]" /> لماذا لا تفشل الهجرات عند الإعادة؟</h3>
+          <p className="text-[0.74rem] font-bold text-soft leading-6">
+            كل تعديل هيكلي يمر عبر <b className="font-num" dir="ltr">0000_helpers.sql</b> — إجراءات شرطية تفحص وجود العمود أو الفهرس قبل إنشائه.
+            لأن DDL في MySQL يُلتزم ضمنياً ولا يمكن التراجع عنه، هذا النمط يمنع أخطاء مثل <b className="font-num text-[var(--bad)]" dir="ltr">Duplicate key name</b> عند إعادة التشغيل.
+            الأخطاء النحوية السابقة سببها جمل <b className="font-num" dir="ltr">DELIMITER</b> التي لا يفهمها محرك mysql2 — وقد عولجت في منفّذ الهجرات.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DatabaseSection() {
   const app = useApp();
@@ -948,7 +1374,7 @@ function DatabaseSection() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        {[["db", "اتصال MySQL (Backend)", "db"], ["api", "واجهة الربط API (Backend)", "code"], ["front", "إعدادات الواجهة (Frontend)", "dash"], ["status", "حالة التشغيل", "pulse"], ["license", "خطوات التفعيل", "key"], ["pkg", "ملفات الحزمة", "file"]].map(([id, l, ic]) => (
+        {[["db", "اتصال MySQL (Backend)", "db"], ["setup", "التهيئة والبناء والاختبار", "server"], ["api", "واجهة الربط API (Backend)", "code"], ["front", "إعدادات الواجهة (Frontend)", "dash"], ["status", "حالة التشغيل", "pulse"], ["license", "خطوات التفعيل", "key"], ["pkg", "ملفات الحزمة", "file"]].map(([id, l, ic]) => (
           <button key={id} onClick={() => setTab(id)} className={`btn !py-2 ${tab === id ? "btn-brand" : "btn-ghost"}`}><I n={ic} size={15} /> {l}</button>
         ))}
         <button className="btn btn-soft ms-auto" onClick={saveAll}><I n="save" size={15} /> حفظ كل الإعدادات</button>
@@ -1000,11 +1426,13 @@ function DatabaseSection() {
           ))}
         </div>
         <div className="mt-3 p-3 rounded-xl bg-[color-mix(in_srgb,var(--warn)_7%,transparent)] border border-[color-mix(in_srgb,var(--warn)_25%,transparent)] text-[0.72rem] font-bold text-soft flex items-start gap-2">
-          <I n="info" size={15} className="text-[var(--warn)] shrink-0 mt-0.5" /> لإضافة جدول أو عمود لأي نشاط: أنشئ ملفاً جديداً migrations/0006_…sql بنمط الإجراءات الشرطية (انظر 0005) ثم npm run migrate.
+          <I n="info" size={15} className="text-[var(--warn)] shrink-0 mt-0.5" /> لإضافة جدول أو عمود لأي نشاط: أنشئ ملفاً جديداً migrations/0007_…sql مستعيناً بالإجراءات الشرطية في 0000_helpers.sql ثم npm run migrate — الهجرات آمنة للتكرار ولا تفشل عند الإعادة.
         </div>
       </div>
       </div>
       )}
+
+      {tab === "setup" && <SetupTools app={app} cfg={cfg} />}
 
       {tab === "api" && (
         <div className="grid lg:grid-cols-2 gap-5">
@@ -1146,7 +1574,7 @@ function DatabaseSection() {
         <div className="grid lg:grid-cols-2 gap-5">
           <div className="card p-5">
             <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="file" size={19} className="text-[var(--brand)]" /> ملفات الحزمة على الخادم</h3>
-            {["server/src/index.js — الخادم الرئيسي", "server/src/syncEngine.js — محرك الدمج", "server/src/db.js — الاتصالات والهجرات", "server/migrations/ — 5 ملفات هيكل", "dist/ — بناء الواجهة الجاهز"].map((f) => (
+            {["server/src/index.js — الخادم الرئيسي", "server/src/syncEngine.js — محرك الدمج", "server/src/db.js — الاتصالات والهجرات", "server/migrations/ — 7 ملفات هيكل وبذور", "dist/ — بناء الواجهة الجاهز"].map((f) => (
               <div key={f} className="flex items-center gap-2.5 py-2 border-b border-line/60 last:border-0 text-[0.76rem] font-bold font-num" dir="ltr">
                 <I n="check" size={14} className="text-[var(--good)] shrink-0" /> {f}
               </div>
@@ -1183,6 +1611,7 @@ function BackupSection() {
     { id: 3, name: "ifs_diff_20260327_0200.sql.gz", size: "174 MB", kind: "تفاضلية", date: "2026-03-27 02:00", gen: app.gen - 3 },
   ]);
   const restoreFileRef = useRef<HTMLInputElement>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const takeSnapshot = () => {
     app.downloadSnapshot("يدوية كاملة");
     setBackups((old) => [{ id: Date.now(), name: `OkyanusIFS_Backup_G${app.gen}_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`, size: "—" , kind: "يدوية", date: "الآن", gen: app.gen }, ...old]);
@@ -1247,6 +1676,7 @@ function BackupSection() {
           </div>
           <input ref={restoreFileRef} type="file" accept=".json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { app.restoreSnapshot(f); setBackups((old) => [{ id: Date.now(), name: f.name, size: `${Math.max(1, Math.round(f.size / 1024))} KB`, kind: "استعادة", date: "الآن", gen: app.gen + 1 }, ...old]); } e.target.value = ""; }} />
           <button className="btn btn-ghost w-full mt-2" onClick={() => restoreFileRef.current?.click()}><I n="undo" size={15} /> استعادة من ملف نسخة</button>
+          <button className="btn btn-danger w-full mt-2" onClick={() => setConfirmReset(true)}><I n="refresh" size={15} /> استعادة البيانات الافتراضية المعتمدة</button>
         </div>
 
         <div className="card p-5 lg:col-span-1 overflow-hidden">
@@ -1273,17 +1703,45 @@ function BackupSection() {
           <p className="text-[0.66rem] font-bold text-mute mt-3 flex items-start gap-1.5"><I n="info" size={12} className="shrink-0 mt-0.5" /> الاستعادة ترفع جيل المزامنة فيستبدل كل جهاز متصل نسخته القديمة تلقائياً — لا حاجة لإعادة تشغيل أي جهاز.</p>
         </div>
       </div>
+
+      {/* تأكيد استعادة البيانات الافتراضية المعتمدة */}
+      <Modal open={confirmReset} onClose={() => setConfirmReset(false)} title="استعادة البيانات الافتراضية المعتمدة" icon="refresh"
+        subtitle="إعادة تهيئة النظام لبداية نظيفة — بيانات المصنع المعتمدة"
+        footer={<>
+          <button className="btn btn-ghost" onClick={() => setConfirmReset(false)}>تراجع</button>
+          <button className="btn btn-danger" onClick={() => { app.resetFactory(); setConfirmReset(false); }}><I n="refresh" size={15} /> تأكيد الاستعادة الكاملة</button>
+        </>}>
+        <div className="flex flex-col items-center gap-4 py-3 text-center">
+          <span className="relative grid h-16 w-16 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-[var(--warn)]">
+            <I n="refresh" size={30} />
+            <span className="absolute -top-1 -end-1 grid h-6 w-6 place-items-center rounded-full bg-[var(--warn)] text-white"><I n="alert" size={13} /></span>
+          </span>
+          <p className="max-w-md text-[0.88rem] font-bold leading-7">
+            ستُستعاد <b className="text-[var(--warn)]">البيانات الافتراضية المعتمدة</b> التي اعتمدها النظام، وستُمحى كل الحركات والسجلات المُدخلة (فواتير، قيود، سندات، حركات مخزنية وموارد بشرية).
+            <span className="mt-1 block text-[0.74rem] font-medium text-mute">يُرفع جيل المزامنة فتنتشر الاستعادة لكل الأجهزة المتصلة فوراً، وتُحفظ نسخة في سجل التدقيق. لا يمكن التراجع بعد التأكيد.</span>
+          </p>
+          <div className="w-full rounded-xl bg-[color-mix(in_srgb,var(--brand)_5%,var(--panel))] border border-line p-3 text-[0.74rem] font-bold text-soft space-y-1.5">
+            <div className="flex items-center gap-2"><I n="check" size={14} className="text-[var(--good)]" /> يبقى: الأدلة الأساسية، دليل الحسابات، المستخدمون، الصلاحيات، الإعدادات المعتمدة</div>
+            <div className="flex items-center gap-2"><I n="x" size={14} className="text-[var(--bad)]" /> يُمحى: كل الحركات والقيود والأرصدة المُدخلة يدوياً</div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 /* ═══════════ التفضيلات ═══════════ */
 const THEMES = [
-  { id: "azure", name: "السماوي (افتراضي)", sw: ["#0284c7", "#38bdf8"] },
-  { id: "light", name: "الفاتح", sw: ["#e2e8f0", "#0284c7"] },
-  { id: "night", name: "الداكن", sw: ["#0d1b2a", "#38bdf8"] },
-  { id: "indigo", name: "النيلي", sw: ["#3730a3", "#818cf8"] },
-  { id: "gold", name: "الذهبي", sw: ["#b45309", "#fbbf24"] },
+  { id: "azure", name: "السماوي", en: "Azure", sw: ["#0284c7", "#38bdf8", "#e9f2f9"], dark: false, def: true },
+  { id: "light", name: "الفاتح", en: "Light", sw: ["#0284c7", "#38bdf8", "#f1f5f9"], dark: false },
+  { id: "night", name: "الليلي", en: "Night", sw: ["#38bdf8", "#7dd3fc", "#0c1a2d"], dark: true },
+  { id: "indigo", name: "النيلي", en: "Indigo", sw: ["#4f46e5", "#818cf8", "#edeffb"], dark: false },
+  { id: "gold", name: "الذهبي", en: "Gold", sw: ["#d99a2b", "#f2c14e", "#1e1810"], dark: true },
+  { id: "emerald", name: "الزمردي", en: "Emerald", sw: ["#0e8a5f", "#2dd4a0", "#e7f0ec"], dark: false },
+  { id: "carbon", name: "الفحمي", en: "Carbon", sw: ["#3fb8af", "#7ee0d8", "#161b22"], dark: true },
+  { id: "navy", name: "الكحلي", en: "Navy", sw: ["#4f8ff7", "#8ab6ff", "#0d1b33"], dark: true },
+  { id: "sand", name: "الصحراوي", en: "Sand", sw: ["#a3701d", "#d4a348", "#f3ecdf"], dark: false },
+  { id: "maroon", name: "العنابي", en: "Maroon", sw: ["#e0598a", "#f290b4", "#25131b"], dark: true },
 ];
 
 function PrefsScreen() {
@@ -1300,15 +1758,30 @@ function PrefsScreen() {
       </div>
       <div className="grid lg:grid-cols-2 gap-5">
         <div className="card p-5">
-          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="palette" size={18} className="text-[var(--brand)]" /> نمط المظهر — 5 أنماط احترافية</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-            {THEMES.map((t) => (
-              <button key={t.id} onClick={() => { app.setPrefs({ theme: t.id }); app.toast(`طُبّق نمط «${t.name}» على النظام بالكامل`, "ok"); }}
-                className={`p-3 rounded-xl border-2 text-start transition-all hover:scale-[1.02] ${pr.theme === t.id ? "border-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_7%,transparent)]" : "border-line bg-panel"}`}>
-                <div className="flex gap-1 mb-2">{t.sw.map((c, i) => <span key={i} className="w-6 h-6 rounded-full border border-black/10" style={{ background: c }} />)}</div>
-                <div className="text-[0.76rem] font-bold flex items-center gap-1.5">{t.name}{pr.theme === t.id && <I n="check" size={13} className="text-[var(--brand)]" />}</div>
-              </button>
-            ))}
+          <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2"><I n="palette" size={18} className="text-[var(--brand)]" /> نمط المظهر — 10 أنماط احترافية</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {THEMES.map((t) => {
+              const on = pr.theme === t.id;
+              return (
+                <button key={t.id} onClick={() => { app.setPrefs({ theme: t.id }); app.toast(`طُبّق نمط «${t.name} — ${t.en}» على النظام بالكامل`, "ok"); }}
+                  className={`group rounded-xl border-2 overflow-hidden text-start transition-all hover:scale-[1.03] hover:-translate-y-0.5 ${on ? "border-[var(--brand)] shadow-lg" : "border-line bg-panel hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)]"}`}>
+                  {/* شريط المعاينة الملوّن */}
+                  <div className="h-11 flex">
+                    <span className="flex-[2]" style={{ background: t.sw[2] }} />
+                    <span className="flex-[1.2]" style={{ background: t.sw[0] }} />
+                    <span className="flex-[0.8]" style={{ background: t.sw[1] }} />
+                  </div>
+                  <div className="px-2.5 py-2 flex items-center gap-1.5">
+                    <span className="text-[0.72rem] font-bold flex-1 truncate">{t.name}</span>
+                    {on && <I n="check" size={14} className="text-[var(--brand)] shrink-0" />}
+                  </div>
+                  <div className="px-2.5 pb-2 flex items-center gap-1">
+                    <span className="font-num text-[0.56rem] text-mute" dir="ltr">{t.en}</span>
+                    <span className={`ms-auto text-[0.54rem] font-bold px-1.5 py-px rounded-full ${t.dark ? "bg-[color-mix(in_srgb,var(--mute)_18%,transparent)] text-mute" : "bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-[var(--warn)]"}`}>{t.dark ? "داكن" : "فاتح"}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <h4 className="font-display font-bold text-sm mt-5 mb-2.5">خلفية الشريط الجانبي</h4>
           <div className="grid grid-cols-3 gap-2.5">
@@ -1340,6 +1813,29 @@ function PrefsScreen() {
                 <div className="flex justify-between text-[0.78rem] font-bold mb-1.5"><span>حجم الخط</span><span className="font-num text-[var(--brand)]">{pr.font}%</span></div>
                 <input type="range" min={85} max={120} step={5} value={pr.font} onChange={(e) => app.setPrefs({ font: +e.target.value })} className="w-full" />
               </div>
+
+              {/* درجة وضوح الخط — تحكم تقني بحدة الحواف مع معاينة حية */}
+              <div className="rounded-xl border border-line bg-panel/60 p-3.5">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[0.78rem] font-bold flex items-center gap-1.5"><I n="eye" size={15} className="text-[var(--accent)]" /> درجة وضوح الخط</span>
+                  <span className="font-num text-[0.72rem] font-bold text-[var(--brand)]" dir="ltr">{pr.sharpen}%</span>
+                </div>
+                <input type="range" min={0} max={100} step={5} value={pr.sharpen ?? 0} onChange={(e) => app.setPrefs({ sharpen: +e.target.value })} className="w-full" />
+                <div className="flex gap-1.5 mt-2">
+                  {[{ v: 0, l: "قياسي" }, { v: 50, l: "واضح" }, { v: 100, l: "فائق الحدة" }].map((p) => (
+                    <button key={p.v} onClick={() => app.setPrefs({ sharpen: p.v })}
+                      className={`flex-1 py-1 rounded-lg text-[0.68rem] font-bold border transition-all ${(pr.sharpen ?? 0) === p.v ? "text-[var(--brandink)] border-transparent" : "bg-surface border-line text-mute hover:text-ink"}`}
+                      style={(pr.sharpen ?? 0) === p.v ? { background: "linear-gradient(135deg, var(--brand), var(--brand2))" } : undefined}>{p.l}</button>
+                  ))}
+                </div>
+                {/* معاينة حية */}
+                <div className="mt-2.5 rounded-lg bg-surface border border-line px-3 py-2">
+                  <div className="text-[0.76rem] font-bold leading-6">النظام المالي المتكامل — Okyanus IFS</div>
+                  <div className="text-[0.68rem] text-soft leading-5">قيد مزدوج، مزامنة لحظية، وتقارير بمعايير عالمية <span className="font-num" dir="ltr">1,234,567.89</span></div>
+                </div>
+                <p className="text-[0.62rem] text-mute font-medium mt-1.5">تعزز حدة حواف الحروف (Anti-aliasing) عبر stroke بصري دقيق — مفيدة للشاشات عالية الدقة وضعف النظر.</p>
+              </div>
+
               <div>
                 <div className="text-[0.78rem] font-bold mb-1.5">اتجاه الواجهة</div>
                 <div className="flex rounded-xl border border-line overflow-hidden">

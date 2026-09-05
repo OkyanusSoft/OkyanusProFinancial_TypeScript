@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
-import { I, Modal, Chip, Empty, Reveal } from "../ui";
+import { I, Modal, Chip, Empty, Reveal, FormSection } from "../ui";
 import { Directory, type DirConf } from "../crud";
-import { openPrint, DocSheet, PTable, ReportSheet } from "../print";
+import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
 
 export default function GL() {
@@ -347,6 +347,7 @@ function CoaScreen() {
 function FragmentRow({ children }: { children: React.ReactNode }) { return <>{children}</>; }
 
 function printCoa(app: ReturnType<typeof useApp>) {
+  setReportCfg(app.settings.report);
   const user = app.session?.user || "—";
   const today = new Date().toLocaleDateString("en-GB");
   const typeTone = (t: string) => (t === "أصول" ? "var(--brand)" : t === "إيرادات" ? "var(--good)" : t === "مصروفات" ? "var(--warn)" : t === "خصوم" ? "var(--bad)" : "var(--accent)");
@@ -624,13 +625,14 @@ function JEScreen({ kind }: { kind: string }) {
         })}
         {list.length === 0 && <div className="card"><Empty msg="لا توجد قيود من هذا النوع بعد" /></div>}
       </div>
-      {show && <JEBuilder kind={kind} onClose={() => setShow(false)} />}
+      {show && (kind === "rv" || kind === "pv" ? <VoucherBuilder kind={kind} onClose={() => setShow(false)} /> : <JEBuilder kind={kind} onClose={() => setShow(false)} />)}
     </div>
   );
 }
 
 /* ── بناء مستند طباعة قيد/سند مالي ── */
 function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
+  setReportCfg(app.settings.report);
   const lines = j.lines.filter((l) => l.debit || l.credit);
   const dr = lines.reduce((a, l) => a + l.debit * l.rate, 0);
   const cr = lines.reduce((a, l) => a + l.credit * l.rate, 0);
@@ -646,7 +648,10 @@ function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
         ["عدد الأسطر", String(lines.length)],
         ["الحالة", j.status],
       ]}
-      totals={{ items: [["إجمالي الطرف المدين", app.fmtN(dr)], ["إجمالي الطرف الدائن", app.fmtN(cr)], ["فرق التوازن", app.fmtN(dr - cr)]], grand: ["قيمة السند", app.fmtN(dr)] }}
+      totals={{ items: [["إجمالي الطرف المدين", app.fmtN(dr)], ["إجمالي الطرف الدائن", app.fmtN(cr)], ["فرق التوازن", app.fmtN(dr - cr)], ["المبلغ بالحروف", tafqit(dr)]], grand: ["قيمة السند", app.fmtN(dr) + " ر.ي"] }}
+      stampText={j.source || "قيد يومية"} stampSub={j.status === "بانتظار الموافقة" ? "بانتظار الاعتماد" : j.status === "ملغي" ? "ملغي" : "معتمد"}
+      amountBox={{ num: app.fmtN(dr) + " ر.ي", words: tafqit(dr) }}
+      signLabels={j.status === "بانتظار الموافقة" ? ["المحاسب", "المدير المالي"] : ["المحاسب", "المراجع", "المدير المالي"]}
       user={app.session?.user || "—"}
     >
       <PTable
@@ -666,6 +671,240 @@ function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
   );
 }
 
+/* ═══════════ باني سندات القبض والصرف — حقول رأس وبنود احترافية ═══════════ */
+interface VLine { account: string; amount: string; currency: string; desc: string; cc: string }
+function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => void }) {
+  const app = useApp();
+  const isRV = kind === "rv";
+  const boxes = app.db.cashboxes as any[];
+  const posting = app.accounts.filter((a) => a.posting);
+  const [date, setDate] = useState("2026-03-29");
+  const [box, setBox] = useState(boxes[0]?.id || "");
+  const [payMethod, setPayMethod] = useState("نقداً");
+  const [payRef, setPayRef] = useState("");
+  const [party, setParty] = useState("");
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("YER");
+  const [cc, setCc] = useState("CC-01");
+  const [desc, setDesc] = useState("");
+  const [lines, setLines] = useState<VLine[]>([
+    { account: isRV ? app.settings.suspense.customers : app.settings.suspense.suppliers, amount: "", currency: "YER", desc: "", cc: "CC-01" },
+  ]);
+  const rate = (app.db.currencies.find((c: any) => c.id === currency) as any)?.rate || 1;
+  const boxAcc: string = (boxes.find((b) => b.id === box) as any)?.account || app.settings.suspense.cash;
+  const boxAccName = app.accounts.find((a) => a.code === boxAcc)?.name || "—";
+  const linesSum = lines.reduce((a, l) => a + (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), 0);
+  const headerVal = (+amount || 0) * rate;
+  const matched = Math.abs(linesSum - headerVal) < 0.01 && headerVal > 0;
+  /* رقم السند يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const vPrefix = isRV ? app.settings.prefixes.RC : app.settings.prefixes.PV;
+  const [no, setNo] = useState<string | null>(null);
+
+  const setL = (i: number, p: Partial<VLine>) => setLines((old) => old.map((l, j) => (j === i ? { ...l, ...p } : l)));
+
+  const save = () => {
+    if (!desc.trim()) { app.toast("حقل «البيان» إلزامي", "err"); return; }
+    if (!party.trim()) { app.toast(isRV ? "حقل «استلمنا من» إلزامي" : "حقل «صُرف إلى» إلزامي", "err"); return; }
+    if (!(+amount > 0)) { app.toast("أدخل المبلغ رقماً — يجب أن يكون أكبر من صفر", "err"); return; }
+    if (!matched) { app.toast(`إجمالي البنود (${app.fmtN(linesSum)}) لا يطابق مبلغ السند (${app.fmtN(headerVal)})`, "err"); return; }
+    const n = no || app.nextNo(vPrefix);
+    const je: Journal = {
+      id: n, no: n, date, user: app.session?.user || "—", status: "مرحّل",
+      desc: `${isRV ? "سند قبض" : "سند صرف"} — ${isRV ? "استلمنا من" : "صُرف إلى"} ${party} — ${desc}`,
+      kind: isRV ? "قبض" : "صرف", source: isRV ? "سند قبض" : "سند صرف",
+      lines: [
+        ...(isRV
+          ? [{ account: boxAcc, debit: headerVal, credit: 0, currency, rate, costCenter: cc }]
+          : lines.filter((l) => +l.amount > 0).map((l) => ({ account: l.account, debit: (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), credit: 0, currency: l.currency, rate: (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1, costCenter: l.cc || cc }))),
+        ...(isRV
+          ? lines.filter((l) => +l.amount > 0).map((l) => ({ account: l.account, debit: 0, credit: (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), currency: l.currency, rate: (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1, costCenter: l.cc || cc }))
+          : [{ account: boxAcc, debit: 0, credit: headerVal, currency, rate, costCenter: cc }]),
+      ],
+    } as unknown as Journal;
+    const res = app.addJournal(je);
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) { printVoucher(app, { no: n, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
+  };
+
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
+  const printFinal = () => {
+    if (!(+amount > 0)) { app.toast("أدخل المبلغ أولاً قبل الطباعة", "err"); return; }
+    if (!matched) { app.toast("طابق إجمالي البنود مع مبلغ السند أولاً", "err"); return; }
+    const n = no || app.nextNo(vPrefix);
+    setNo(n);
+    printVoucher(app, { no: n, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" });
+  };
+
+  return (
+    <Modal open onClose={onClose} wide icon={isRV ? "down" : "wallet"}
+      title={`${isRV ? "سند قبض" : "سند صرف"} جديد — رقم يُولّد تلقائياً`}
+      subtitle={isRV ? "تحصيل نقدي أو بنكي — يُرحَّل قيداً متوازناً: من ح/ الصندوق إلى الحسابات الدائنة" : "صرف نقدي أو بنكي — يُرحَّل قيداً متوازناً: من الحسابات المدينة إلى ح/ الصندوق"}
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-brand" onClick={save} disabled={!matched}><I n="check" size={15} /> حفظ وترحيل السند</button>
+      </>}>
+      {/* ── أولاً: رأس المستند ── */}
+      <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] overflow-hidden mb-4">
+        <div className="px-4 py-2 flex items-center gap-2 text-[0.72rem] font-bold" style={{ background: "color-mix(in srgb, var(--brand) 9%, var(--panel))" }}>
+          <I n="receipt" size={15} className="text-[var(--brand)]" /> أولاً — رأس المستند (Header)
+        </div>
+        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft flex items-center gap-1">اسم الصندوق <b className="text-[var(--bad)]">*</b></span>
+            <select className="select mt-1" value={box} onChange={(e) => setBox(e.target.value)}>
+              {boxes.map((b) => <option key={b.id} value={b.id}>{b.name} (ح/ {b.account})</option>)}
+            </select>
+            <span className="text-[0.62rem] font-bold text-[var(--brand)] mt-1 block">ح/ {boxAcc} — {boxAccName}</span>
+          </label>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft flex items-center gap-1">التاريخ <b className="text-[var(--bad)]">*</b></span>
+            <input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft flex items-center gap-1">المبلغ رقماً <b className="text-[var(--bad)]">*</b></span>
+            <input type="number" className="input mt-1 font-num !font-bold !text-[1.05rem]" dir="ltr" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" /></label>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">عملة الحساب</span>
+            <select className="select mt-1" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {app.db.currencies.map((c: any) => <option key={c.id} value={c.id}>{c.id}{c.rate !== 1 ? ` (×${app.fmtN(c.rate)})` : " — أساس"}</option>)}
+            </select>
+            {rate !== 1 && <span className="text-[0.62rem] font-bold text-[var(--warn)] mt-1 block">المعادل: {app.fmtN(headerVal)} ر.ي</span>}
+          </label>
+          <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft flex items-center gap-1">{isRV ? "استلمنا من" : "صُرف إلى"} <b className="text-[var(--bad)]">*</b></span>
+            <input className="input mt-1" list={`parties-${kind}`} value={party} onChange={(e) => setParty(e.target.value)} placeholder={isRV ? "اسم العميل أو الجهة المسلِّمة…" : "اسم المورد أو الجهة المستلمة…"} />
+            <datalist id={`parties-${kind}`}>{(isRV ? app.db.customers : app.db.suppliers).map((p: any) => <option key={p.id} value={p.name} />)}</datalist>
+          </label>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">طريقة الدفع</span>
+            <select className="select mt-1" value={payMethod} onChange={(e) => { setPayMethod(e.target.value); if (e.target.value === "نقداً") setPayRef(""); }}>
+              {["نقداً", "شيك", "حوالة بنكية", "بطاقة"].map((m) => <option key={m}>{m}</option>)}
+            </select></label>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">{payMethod === "شيك" ? "رقم الشيك" : payMethod === "حوالة بنكية" ? "رقم الحوالة" : "مرجع مستندي"}</span>
+            <input className="input mt-1 font-num" dir="ltr" value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="اختياري…" /></label>
+          <label className="block col-span-2 md:col-span-4">
+            <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
+            <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)}
+              placeholder={isRV ? "مثال: استلمنا من العميل … مبلغاً وقدره … وذلك سداداً للدفعة رقم … بموجب الفاتورة …" : "مثال: صُرف إلى المورد … مبلغاً وقدره … وذلك سداداً للمستحقات بموجب الفاتورة …"} />
+          </label>
+          <label className="block"><span className="text-[0.74rem] font-bold text-soft">مركز التكلفة</span>
+            <select className="select mt-1" value={cc} onChange={(e) => setCc(e.target.value)}>{app.db.costCenters.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        </div>
+      </div>
+
+      {/* ── ثانياً: بنود المستند ── */}
+      <div className="rounded-xl border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] overflow-hidden mb-4">
+        <div className="px-4 py-2 flex items-center gap-2 text-[0.72rem] font-bold" style={{ background: "color-mix(in srgb, var(--accent) 9%, var(--panel))" }}>
+          <I n="layers" size={15} className="text-[var(--accent)]" /> ثانياً — بنود المستند (Details)
+          <span className="ms-auto text-mute">الطرف المقابل للصندوق: {isRV ? "دائن" : "مدين"}</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="tbl min-w-[760px]">
+            <thead><tr>
+              <th style={{ width: "13%" }}>المبلغ <b className="text-[var(--bad)]">*</b></th>
+              <th style={{ width: "24%" }}>رقم الحساب <b className="text-[var(--bad)]">*</b></th>
+              <th style={{ width: "22%" }}>اسم الحساب</th>
+              <th style={{ width: "10%" }}>العملة</th>
+              <th>البيان</th>
+              <th style={{ width: "13%" }}>مركز التكلفة</th>
+              <th style={{ width: "4%" }}></th>
+            </tr></thead>
+            <tbody>
+              {lines.map((l, i) => {
+                const lRate = (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1;
+                const acc = app.accounts.find((a) => a.code === l.account);
+                return (
+                  <tr key={i}>
+                    <td><input type="number" className="input !py-1.5 font-num !font-bold" dir="ltr" value={l.amount} onChange={(e) => setL(i, { amount: e.target.value })} placeholder="0.00" /></td>
+                    <td><select className="select !py-1.5 !text-[0.76rem]" value={l.account} onChange={(e) => setL(i, { account: e.target.value })}>
+                      {posting.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+                    </select></td>
+                    <td><span className="text-[0.74rem] font-bold text-soft">{acc?.name || "—"}</span></td>
+                    <td><select className="select !py-1.5 !text-[0.74rem]" value={l.currency} onChange={(e) => setL(i, { currency: e.target.value })}>
+                      {app.db.currencies.map((c: any) => <option key={c.id} value={c.id}>{c.id}</option>)}
+                    </select></td>
+                    <td><input className="input !py-1.5 !text-[0.76rem]" value={l.desc} onChange={(e) => setL(i, { desc: e.target.value })} placeholder="بيان البند…" /></td>
+                    <td><select className="select !py-1.5 !text-[0.74rem]" value={l.cc} onChange={(e) => setL(i, { cc: e.target.value })}>
+                      {app.db.costCenters.map((c: any) => <option key={c.id} value={c.id}>{c.code}</option>)}
+                    </select></td>
+                    <td className="text-center"><button className="text-mute hover:text-[var(--bad)] transition-colors" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, j) => j !== i))} aria-label="حذف البند"><I n="trash" size={14} /></button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button className="w-full py-2.5 text-[0.76rem] font-bold text-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_6%,transparent)] transition-colors flex items-center justify-center gap-1.5 border-t border-line"
+          onClick={() => setLines([...lines, { account: isRV ? app.settings.suspense.customers : app.settings.suspense.suppliers, amount: "", currency: "YER", desc: "", cc }])}>
+          <I n="plus" size={14} /> إضافة بند
+        </button>
+      </div>
+
+      {/* ── شريط التوازن ── */}
+      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 border ${matched ? "border-[color-mix(in_srgb,var(--good)_35%,transparent)] bg-[color-mix(in_srgb,var(--good)_7%,transparent)]" : "border-[color-mix(in_srgb,var(--warn)_35%,transparent)] bg-[color-mix(in_srgb,var(--warn)_6%,transparent)]"}`}>
+        <div className="flex items-center gap-2 font-bold text-[0.8rem]">
+          <I n={matched ? "check" : "alert"} size={17} className={matched ? "text-[var(--good)]" : "text-[var(--warn)]"} />
+          <span className={matched ? "text-[var(--good)]" : "text-[var(--warn)]"}>{matched ? "السند متوازن — جاهز للترحيل والطباعة" : "اجعل إجمالي البنود مطابقاً لمبلغ السند"}</span>
+        </div>
+        <div className="flex gap-4 font-num font-bold text-[0.82rem] flex-wrap">
+          <span>مبلغ السند: <span className="text-[var(--brand)]">{app.fmtN(headerVal)}</span></span>
+          <span>إجمالي البنود: <span className={matched ? "text-[var(--good)]" : "text-[var(--bad)]"}>{app.fmtN(linesSum)}</span></span>
+          <span>الفرق: <span className="text-[var(--warn)]">{app.fmtN(headerVal - linesSum)}</span></span>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ── طباعة سند القبض / الصرف — مستند A4 احترافي مع التفقيط والاعتمادات ── */
+function printVoucher(app: ReturnType<typeof useApp>, v: {
+  no: string; date: string; box?: string; boxAcc: string; boxAccName: string; party: string; amount: number;
+  currency: string; rate: number; payMethod: string; payRef: string; cc: string; desc: string; lines: VLine[]; isRV: boolean; status: string;
+}) {
+  setReportCfg(app.settings.report);
+  openPrint(
+    <DocSheet
+      docTitle={v.isRV ? "سند قبض" : "سند صرف"} no={v.no} date={v.date} status={v.status}
+      stampText={v.isRV ? "سند قبض" : "سند صرف"} stampSub={v.status === "مرحّل" ? "معتمد" : v.status}
+      subtitle={app.session?.branch}
+      meta={[
+        [v.isRV ? "استلمنا من" : "صُرف إلى", v.party || "—"],
+        ["الصندوق / البنك", v.box || "—"],
+        ["حساب الصندوق", `${v.boxAcc} — ${v.boxAccName}`],
+        ["طريقة الدفع", v.payMethod + (v.payRef ? ` — ${v.payRef}` : "")],
+        ["عملة السند", v.currency + (v.rate !== 1 ? ` (×${app.fmtN(v.rate)})` : "")],
+        ["مركز التكلفة", v.cc],
+      ]}
+      amountBox={{ num: `${app.fmtN(v.amount)} ${v.currency === "YER" ? "ر.ي" : v.currency}`, words: `فقط ${tafqit(v.amount)} ${v.currency === "YER" ? "ريال يمني" : v.currency} لا غير` }}
+      totals={{ items: [[v.isRV ? "إجمالي الطرف الدائن" : "إجمالي الطرف المدين", app.fmtN(v.amount)], ["إجمالي الطرف المقابل", app.fmtN(v.amount)], ["حالة التوازن", "متوازن ✓"]], grand: ["قيمة السند", `${app.fmtN(v.amount)} ${v.currency === "YER" ? "ر.ي" : v.currency}`] }}
+      note={v.desc}
+      signLabels={v.isRV ? ["المحاسب", "أمين الصندوق", "المسلِّم (العميل)"] : ["المحاسب", "أمين الصندوق", "المستلم"]}
+      user={app.session?.user || "—"}
+    >
+      <table className="p-table">
+        <thead><tr><th style={{ width: "14%" }}>رقم الحساب</th><th style={{ width: "26%" }}>اسم الحساب</th><th style={{ width: "14%" }}>المبلغ</th><th style={{ width: "9%" }}>العملة</th><th>البيان</th><th style={{ width: "11%" }}>م. التكلفة</th></tr></thead>
+        <tbody>
+          {v.lines.filter((l) => +l.amount > 0).map((l, i) => {
+            const lRate = (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1;
+            return (
+              <tr key={i}>
+                <td className="num" dir="ltr">{l.account}</td>
+                <td>{app.accounts.find((a) => a.code === l.account)?.name || "—"}</td>
+                <td className="num">{app.fmtN((+l.amount || 0) * lRate)}{lRate !== 1 ? <span className="num" style={{ fontSize: "0.6rem" }}> ({l.amount} {l.currency})</span> : null}</td>
+                <td className="num">{l.currency}</td>
+                <td>{l.desc || v.desc}</td>
+                <td className="num">{l.cc}</td>
+              </tr>
+            );
+          })}
+          <tr>
+            <td className="num" dir="ltr">{v.boxAcc}</td>
+            <td><b>{v.boxAccName}</b> {v.isRV ? "(مدين)" : "(دائن)"}</td>
+            <td className="num"><b>{app.fmtN(v.amount)}</b></td>
+            <td className="num">{v.currency}</td>
+            <td>{v.box || "—"}</td>
+            <td className="num">{v.cc}</td>
+          </tr>
+        </tbody>
+      </table>
+    </DocSheet>
+  );
+}
+
 function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const app = useApp();
   const isReq = kind === "req";
@@ -681,26 +920,45 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const cr = rows.reduce((a, r) => a + (+r.credit || 0) * r.rate, 0);
   const balanced = Math.abs(dr - cr) < 0.01 && dr > 0;
   const setRow = (i: number, patch: Partial<typeof rows[0]>) => setRows((old) => old.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  /* رقم القيد يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const jePrefix = kind === "rv" ? app.settings.prefixes.RC : kind === "pv" ? app.settings.prefixes.PV : kind === "open" ? "FYE" : app.settings.prefixes.JE;
+  const [no, setNo] = useState<string | null>(null);
+  const jeStatus = isReq ? "بانتظار الموافقة" : "مرحّل";
+  const buildLines = (): JournalLine[] => rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
 
   const save = () => {
     if (!desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
     if (!balanced) { app.toast(`القيد غير متوازن: مدين ${app.fmtN(dr)} مقابل دائن ${app.fmtN(cr)}`, "err"); return; }
-    const prefix = kind === "rv" ? app.settings.prefixes.RC : kind === "pv" ? app.settings.prefixes.PV : kind === "open" ? "FYE" : app.settings.prefixes.JE;
-    const no = app.nextNo(prefix);
-    const lines: JournalLine[] = rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
-    const res = app.addJournal({ id: no, no, date, desc, kind: isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية", lines, user: app.session?.user || "—", status: isReq ? "بانتظار الموافقة" : "مرحّل", source: JE_META[kind].title } as Journal);
+    const n = no || app.nextNo(jePrefix);
+    const res = app.addJournal({ id: n, no: n, date, desc, kind: isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as Journal);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
 
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته) وليس نسخة مسودة */
+  const printFinal = () => {
+    if (!balanced) { app.toast("وازن القيد أولاً قبل الطباعة", "err"); return; }
+    const n = no || app.nextNo(jePrefix);
+    setNo(n);
+    printJournal(app, { id: n, no: n, date, desc, kind: "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as unknown as Journal);
+  };
+
   return (
     <Modal open onClose={onClose} wide icon="book" title={JE_META[kind].newLabel + " جديد — رقم يُولّد تلقائياً"} subtitle="قيد مزدوج متعدد العملات — يُرفض الترحيل إذا لم يتوازن المدين والدائن">
+      <FormSection n="أولاً" icon="file" title="رأس القيد" hint="البيان والتاريخ ومركز التكلفة">
+      {/* حقل البيان — كبير وكامل العرض */}
+      <label className="block mb-3">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
+        <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)}
+          placeholder={kind === "قبض" ? "مثال: سند قبض دفعة من العميل … بموجب …" : kind === "صرف" ? "مثال: سند صرف سداد مستحقات للمورد …" : "اذكر وصف القيد وطبيعة الحركة المحاسبية بوضوح…"} />
+      </label>
       <div className="grid md:grid-cols-4 gap-3 mb-4">
-        <label className="block md:col-span-2"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span><input type="date" className="input mt-1 font-num" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">مركز التكلفة</span>
           <select className="select mt-1" value={cc} onChange={(e) => setCc(e.target.value)}>{app.db.costCenters.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       </div>
+      </FormSection>
+      <FormSection n="ثانياً" icon="book" title="سطور القيد" hint="الحسابات المدينة والدائنة — يجب أن يتوازن الطرفان">
       <div className="rounded-xl border border-line overflow-hidden mb-3">
         <table className="tbl">
           <thead><tr><th>الحساب (المستوى 5)</th><th>مدين</th><th>دائن</th><th>العملة</th><th>تحليلي</th><th></th></tr></thead>
@@ -745,10 +1003,12 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
           <span>الفرق: <span className="text-[var(--warn)]">{app.fmtN(dr - cr)}</span></span>
         </div>
       </div>
+      </FormSection>
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
         <button className="btn btn-brand" disabled={!balanced} onClick={save}>
-          <I n="check" size={16} /> {isReq ? "إرسال الطلب للموافقة" : "ترحيل القيد"}
+          <I n="check" size={16} /> حفظ و{isReq ? "إرسال الطلب" : "ترحيل القيد"}
         </button>
       </div>
     </Modal>
@@ -760,6 +1020,11 @@ function GLReport({ kind }: { kind: string }) {
   const app = useApp();
   const posting = app.accounts.filter((a) => a.posting);
   const [stmtAcc, setStmtAcc] = useState("11111");
+  const [gq, setGq] = useState("");
+  const [gKind, setGKind] = useState("الكل");
+  const [gStatus, setGStatus] = useState("الكل");
+  const [gFrom, setGFrom] = useState("");
+  const [gTo, setGTo] = useState("");
   const balances = useMemo(() => {
     const map: Record<string, { dr: number; cr: number }> = {};
     (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").forEach((j) =>
@@ -778,6 +1043,7 @@ function GLReport({ kind }: { kind: string }) {
     trial: ["تقرير ميزان المراجعة", "توازن المدين والدائن لكل الحسابات حتى تاريخه", "scale"],
     bs: ["تقرير ميزان العمومية", "المركز المالي: الأصول مقابل الخصوم وحقوق الملكية", "shield"],
     pl: ["تقرير الأرباح والخسائر", "قائمة الدخل عن الفترة وفق معايير IFRS", "chart"],
+    gljournal: ["تقرير حركة القيود", "جميع القيود المولّدة من النظام المحاسبي: يدوية وتلقائية، مرحّلة أو ملغاة", "book"],
   };
   const [t, d, ic] = titles[kind] || titles.trial;
 
@@ -792,7 +1058,9 @@ function GLReport({ kind }: { kind: string }) {
           </div>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-ghost" onClick={() => app.exportCsv(t, [["الحساب", "مدين", "دائن"], ...posting.map((a) => [a.name, Math.max(0, bal(a.code)), Math.max(0, -bal(a.code))])])}><I n="xlsx" size={15} /> Excel</button>
+          <button className="btn btn-ghost" onClick={() => kind === "gljournal"
+            ? app.exportCsv(t, [["التاريخ", "رقم القيد", "البيان", "النوع", "المصدر", "مدين", "دائن", "الحالة"], ...(app.db.journals as any as Journal[]).map((j) => [String(j.date), String(j.no), String(j.desc), String(j.kind), String(j.source || "—"), j.lines.reduce((x, l) => x + l.debit, 0), j.lines.reduce((x, l) => x + l.credit, 0), String(j.status)])])
+            : app.exportCsv(t, [["الحساب", "مدين", "دائن"], ...posting.map((a) => [a.name, Math.max(0, bal(a.code)), Math.max(0, -bal(a.code))])])}><I n="xlsx" size={15} /> Excel</button>
           <button className="btn btn-soft" onClick={() => printGLReport(app, kind, { bal, sumType, stmtLines, stmtAcc, totalDr, totalCr, posting })}><I n="print" size={15} /> طباعة / PDF</button>
         </div>
       </div>
@@ -820,6 +1088,87 @@ function GLReport({ kind }: { kind: string }) {
           </div>
         </div>
       )}
+
+      {kind === "gljournal" && (() => {
+        const all = app.db.journals as any as Journal[];
+        const rows = all.filter((j) =>
+          (!gKind || gKind === "الكل" || j.kind === gKind) &&
+          (!gStatus || gStatus === "الكل" || j.status === gStatus) &&
+          (!gFrom || j.date >= gFrom) && (!gTo || j.date <= gTo) &&
+          (!gq || j.no.toLowerCase().includes(gq.toLowerCase()) || j.desc.includes(gq) || (j.user || "").includes(gq))
+        ).slice().reverse();
+        const sumDr = rows.reduce((a, j) => a + (j.status === "ملغي" ? 0 : j.lines.reduce((x, l) => x + l.debit, 0)), 0);
+        const sumCr = rows.reduce((a, j) => a + (j.status === "ملغي" ? 0 : j.lines.reduce((x, l) => x + l.credit, 0)), 0);
+        const kinds = ["الكل", ...Array.from(new Set(all.map((j) => j.kind)))];
+        return (
+          <div>
+            <div className="card p-3.5 mb-4 flex flex-wrap items-center gap-2.5">
+              <div className="relative w-64">
+                <I n="search" size={14} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
+                <input className="input !ps-9 !py-2 !text-[0.78rem]" placeholder="رقم القيد / البيان / المستخدم…" value={gq} onChange={(e) => setGq(e.target.value)} />
+              </div>
+              <select className="select !w-40 !py-2 !text-[0.78rem]" value={gKind} onChange={(e) => setGKind(e.target.value)}>
+                {kinds.map((k) => <option key={k}>{k}</option>)}
+              </select>
+              <select className="select !w-44 !py-2 !text-[0.78rem]" value={gStatus} onChange={(e) => setGStatus(e.target.value)}>
+                {["الكل", "مرحّل", "بانتظار الموافقة", "ملغي"].map((k) => <option key={k}>{k}</option>)}
+              </select>
+              <input type="date" className="input !w-40 !py-2 !text-[0.76rem] font-num" value={gFrom} onChange={(e) => setGFrom(e.target.value)} />
+              <span className="text-mute font-bold text-[0.72rem]">إلى</span>
+              <input type="date" className="input !w-40 !py-2 !text-[0.76rem] font-num" value={gTo} onChange={(e) => setGTo(e.target.value)} />
+              <span className="ms-auto chip bg-[color-mix(in_srgb,var(--brand)_11%,transparent)] text-[var(--brand)]">{rows.length} قيد</span>
+            </div>
+            <div className="card overflow-hidden">
+              {rows.length === 0 ? <Empty msg="لا توجد قيود مطابقة للفلاتر — رحّل قيداً أو اضبط الفترة" /> : (
+                <div className="overflow-x-auto"><table className="tbl min-w-[960px]">
+                  <thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>النوع</th><th>المصدر</th><th>مدين</th><th>دائن</th><th>المستخدم</th><th>الحالة</th></tr></thead>
+                  <tbody>
+                    {rows.map((j) => {
+                      const dr = j.lines.reduce((a, l) => a + l.debit, 0);
+                      const cr = j.lines.reduce((a, l) => a + l.credit, 0);
+                      const dead = j.status === "ملغي";
+                      return (
+                        <tr key={j.id} className={dead ? "opacity-50" : ""}>
+                          <td className="font-num">{app.fmtDate(j.date)}</td>
+                          <td className="font-num font-bold" dir="ltr">{j.no}</td>
+                          <td className="font-bold max-w-[280px] truncate">{j.desc}</td>
+                          <td><span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{j.kind}</span></td>
+                          <td className="text-[0.72rem] font-bold text-mute">{j.source}</td>
+                          <td className="font-num font-bold text-[var(--bad)]">{dead ? "—" : app.fmtN(dr)}</td>
+                          <td className="font-num font-bold text-[var(--good)]">{dead ? "—" : app.fmtN(cr)}</td>
+                          <td className="text-[0.72rem] font-bold">{j.user}</td>
+                          <td><Chip s={j.status} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="!bg-[color-mix(in_srgb,var(--brand)_7%,transparent)]">
+                      <td colSpan={5} className="font-display font-bold">الإجمالي ({rows.filter((j) => j.status !== "ملغي").length} قيد فعّال)</td>
+                      <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(sumDr)}</td>
+                      <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(sumCr)}</td>
+                      <td colSpan={2} className="font-bold text-[var(--good)] text-[0.74rem]">{Math.abs(sumDr - sumCr) < 0.01 ? "متوازن ✓" : "غير متوازن"}</td>
+                    </tr>
+                  </tfoot>
+                </table></div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+              {[
+                ["عدد القيود", String(rows.length), "book", "var(--brand)"],
+                ["القيود المرحّلة", String(rows.filter((j) => j.status === "مرحّل").length), "check", "var(--good)"],
+                ["بانتظار الموافقة", String(rows.filter((j) => j.status === "بانتظار الموافقة").length), "clock", "var(--warn)"],
+                ["قيمة الحركات", app.fmtN(sumDr) + " ر.ي", "coins", "var(--accent)"],
+              ].map(([l, v, ic, c]) => (
+                <div key={l as string} className="card p-3.5 flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, ${c} 12%, transparent)`, color: c as string }}><I n={ic as string} size={17} /></span>
+                  <div><div className="text-[0.64rem] font-bold text-mute">{l}</div><div className="font-num font-bold text-[0.95rem] mt-0.5">{v}</div></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {kind === "trial" && (
         <div className="card overflow-hidden">
@@ -904,9 +1253,42 @@ function printGLReport(app: ReturnType<typeof useApp>, kind: string, d: {
   bal: (c: string) => number; sumType: (t: string) => number; stmtLines: any[]; stmtAcc: string;
   totalDr: number; totalCr: number; posting: Account[];
 }) {
+  setReportCfg(app.settings.report);
   const { bal, sumType, stmtLines, stmtAcc, totalDr, totalCr, posting } = d;
   const user = app.session?.user || "—";
   const today = new Date().toLocaleDateString("en-GB");
+
+  if (kind === "gljournal") {
+    const all = app.db.journals as any as Journal[];
+    const act = all.filter((j) => j.status !== "ملغي");
+    const sumDr = act.reduce((a, j) => a + j.lines.reduce((x, l) => x + l.debit, 0), 0);
+    const sumCr = act.reduce((a, j) => a + j.lines.reduce((x, l) => x + l.credit, 0), 0);
+    openPrint(
+      <ReportSheet title="تقرير حركة القيود" subtitle="جميع القيود المولّدة من النظام المحاسبي — يدوية وتلقائية — مرتبة زمنياً" user={user}
+        filters={[["عدد القيود", String(all.length)], ["قيود فعّالة", String(act.length)], ["حتى تاريخ", today], ["حالة التوازن", Math.abs(sumDr - sumCr) < 0.01 ? "متوازن ✓" : "غير متوازن"]]}
+        summary={[["إجمالي المدين", app.fmtN(sumDr)], ["إجمالي الدائن", app.fmtN(sumCr)], ["قيمة الحركات", app.fmtN(sumDr) + " ر.ي"]]}>
+        <table className="p-table">
+          <thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>النوع</th><th>المصدر</th><th>مدين</th><th>دائن</th><th>الحالة</th></tr></thead>
+          <tbody>
+            {all.slice().reverse().map((j) => (
+              <tr key={j.id} style={j.status === "ملغي" ? { opacity: 0.5 } : undefined}>
+                <td className="num">{j.date}</td>
+                <td className="num">{j.no}</td>
+                <td>{j.desc}</td>
+                <td>{j.kind}</td>
+                <td>{j.source}</td>
+                <td className="num">{j.status === "ملغي" ? "—" : app.fmtN(j.lines.reduce((x, l) => x + l.debit, 0))}</td>
+                <td className="num">{j.status === "ملغي" ? "—" : app.fmtN(j.lines.reduce((x, l) => x + l.credit, 0))}</td>
+                <td>{j.status}</td>
+              </tr>
+            ))}
+            <tr className="tot-row"><td colSpan={5}><b>الإجمالي ({act.length} قيد فعّال)</b></td><td className="num"><b>{app.fmtN(sumDr)}</b></td><td className="num"><b>{app.fmtN(sumCr)}</b></td><td><b>{Math.abs(sumDr - sumCr) < 0.01 ? "متوازن ✓" : ""}</b></td></tr>
+          </tbody>
+        </table>
+      </ReportSheet>
+    );
+    return;
+  }
 
   if (kind === "stmt") {
     const acc = app.accounts.find((a) => a.code === stmtAcc);

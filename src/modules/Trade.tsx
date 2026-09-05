@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
-import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart } from "../ui";
+import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart, FormSection } from "../ui";
 import { Directory, ActionBtn, type DirConf } from "../crud";
-import { printTradeDoc, printDirectory } from "../print";
+import { printTradeDoc, printDirectory, tafqit, setReportCfg } from "../print";
 import type { Invoice } from "../data";
 
 /* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
 function printInvoiceDoc(app: ReturnType<typeof useApp>, inv: any, kind: "sales" | "purchases" | "returns") {
+  setReportCfg(app.settings.report);
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
   const partner = partners.find((p: any) => p.id === inv.partner);
   const sub = inv.lines.reduce((a: number, l: any) => a + l.qty * l.price * (1 - (l.disc || 0) / 100), 0);
@@ -26,12 +27,15 @@ function printInvoiceDoc(app: ReturnType<typeof useApp>, inv: any, kind: "sales"
     ],
     lines: inv.lines.map((l: any) => {
       const it = app.db.items.find((i: any) => i.id === l.item);
-      return { name: it?.name || l.item, qty: app.fmtN(l.qty), price: app.fmtN(l.price), disc: l.disc || 0, total: app.fmtN(l.qty * l.price * (1 - (l.disc || 0) / 100)) };
+      return { name: it?.name || l.item, unit: it?.unit || "—", qty: app.fmtN(l.qty), price: app.fmtN(l.price), disc: l.disc || 0, total: app.fmtN(l.qty * l.price * (1 - (l.disc || 0) / 100)) };
     }),
     totals: {
-      items: totalItems,
+      items: [...totalItems, ["المبلغ بالحروف", tafqit(total)]],
       grand: ["الإجمالي المستحق", app.fmtN(total) + " ر.ي"],
     },
+    grandValue: total,
+    stampText: docTitle,
+    signLabels: inv.status === "مسودة" ? ["البائع", "المحاسب"] : ["البائع", "المحاسب", "المدير المالي"],
     note: inv.note || "رُحّل قيد محاسبي متوازن تلقائياً في دفتر الأستاذ العام.",
     fmtN: app.fmtN,
   });
@@ -137,6 +141,7 @@ const catsConf = (app: ReturnType<typeof useApp>): DirConf => ({
 
 /* ═══════════ طلبات الشراء ═══════════ */
 function printRequestDoc(app: ReturnType<typeof useApp>, r: any) {
+  setReportCfg(app.settings.report);
   const it = app.db.items.find((i: any) => i.id === r.item);
   printTradeDoc(app.session?.user || "—", {
     docTitle: "طلب شراء", no: r.no, date: app.fmtDate(r.date), status: r.status, fmtN: app.fmtN,
@@ -148,6 +153,7 @@ function printRequestDoc(app: ReturnType<typeof useApp>, r: any) {
 }
 
 function printQuoteDoc(app: ReturnType<typeof useApp>, q: any, partners: any[], isSale: boolean) {
+  setReportCfg(app.settings.report);
   const partner = partners.find((p: any) => p.id === q.partner);
   printTradeDoc(app.session?.user || "—", {
     docTitle: isSale ? "عرض سعر بيع" : "عرض سعر شراء", no: q.no, date: app.fmtDate(q.date), status: q.status, fmtN: app.fmtN,
@@ -248,7 +254,10 @@ function PurchaseRequests() {
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">الكمية</span><input type="number" className="input mt-1 font-num" value={f.qty} onChange={(e) => { const it: any = app.db.items.find((i) => i.id === f.item); const q = +e.target.value; setF({ ...f, qty: q, est: q * (it?.cost || 0) }); }} /></label>
             <label className="block"><span className="text-[0.74rem] font-bold text-soft">القيمة التقديرية</span><input type="number" className="input mt-1 font-num" value={f.est} onChange={(e) => setF({ ...f, est: +e.target.value })} /></label>
           </div>
-          <label className="block"><span className="text-[0.74rem] font-bold text-soft">البيان</span><input className="input mt-1" value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} /></label>
+          <label className="block">
+            <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان <b className="text-[var(--bad)]">*</b></span>
+            <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={f.desc} onChange={(e) => setF({ ...f, desc: e.target.value })} placeholder="اذكر تفاصيل طلب الشراء والغرض منه…" />
+          </label>
         </div>
       </Modal>
     </div>
@@ -442,6 +451,12 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
               <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{partnerName(view.partner)}</span>
               <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{view.date} • مركز: {view.costCenter}</span>
             </div>
+            {view.note && (
+              <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] bg-[color-mix(in_srgb,var(--brand)_5%,var(--panel))] p-3.5 mb-3">
+                <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--brand)] mb-1"><I n="file" size={13} /> الــبيــان</div>
+                <p className="text-[0.84rem] font-bold text-soft leading-6">{view.note}</p>
+              </div>
+            )}
             <table className="tbl mb-3">
               <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th></tr></thead>
               <tbody>{view.lines.map((l: any, i: number) => (
@@ -493,7 +508,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
 function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean }) {
   const app = useApp();
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
-  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, lines: [] as { item: string; qty: number; price: number; disc: number }[] });
+  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, note: "", lines: [] as { item: string; qty: number; price: number; disc: number }[] });
   const rate = (app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1;
   const it: any = app.db.items.find((i: any) => i.id === s.item);
   const lineTotal = (l: any) => l.qty * l.price * (1 - l.disc / 100);
@@ -502,6 +517,9 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   const vatV = sub * (app.settings.vat / 100);
   const cust: any = app.db.customers.find((c: any) => c.id === s.partner);
   const willExceed = kind === "sales" && s.payType === "آجل" && cust?.creditLimit && cust.balance + total * rate > cust.creditLimit;
+  /* رقم الفاتورة يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
+  const [no, setNo] = useState<string | null>(null);
 
   const addLine = () => {
     if (s.qty <= 0) { app.toast("الكمية يجب أن تكون أكبر من صفر", "err"); return; }
@@ -509,20 +527,29 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   };
   const save = () => {
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
-    const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
-    const no = app.nextNo(prefix);
-    const res = app.addInvoice(kind, { id: no, no, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0 });
+    const n = no || app.nextNo(prefix);
+    const res = app.addInvoice(kind, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
+  };
+
+  /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
+  const printFinal = () => {
+    if (s.lines.length === 0) { app.toast("أضف بنداً واحداً على الأقل قبل الطباعة", "err"); return; }
+    const n = no || app.nextNo(prefix);
+    setNo(n);
+    printInvoiceDoc(app, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined }, kind);
   };
 
   return (
     <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري"
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> ترحيل الفاتورة ({s.payType})</button>
+        <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> حفظ وترحيل الفاتورة</button>
       </>}>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <FormSection n="أولاً" icon="file" title="رأس الفاتورة" hint="العميل أو المورد وطريقة السداد والعملة">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">{kind === "purchases" ? "المورد" : "العميل"}</span>
           <select className="select mt-1" value={s.partner} onChange={(e) => setS({ ...s, partner: e.target.value })}>
             {partners.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -547,6 +574,15 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
         </div>
       </div>
 
+      {/* حقل البيان — كبير وكامل العرض */}
+      <label className="block mb-4">
+        <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-soft mb-1.5"><I n="file" size={14} className="text-[var(--brand)]" /> الــبيــان</span>
+        <textarea className="input !text-[0.86rem] !leading-6" rows={2} value={s.note} onChange={(e) => setS({ ...s, note: e.target.value })}
+          placeholder={kind === "purchases" ? "مثال: فاتورة مشتريات من المورد … بموجب أمر شراء رقم … تشمل أصناف …" : kind === "returns" ? "مثال: مرتجع مبيعات من العميل … بسبب …" : "مثال: فاتورة مبيعات للعميل … تشمل أصناف …"} />
+      </label>
+      </FormSection>
+
+      <FormSection n="ثانياً" icon="box" title="بنود الفاتورة" hint="أضف الأصناف بكمياتها وأسعارها وخصوماتها">
       <div className="rounded-xl border border-line bg-panel p-3 mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 items-end">
           <label className="block col-span-2"><span className="text-[0.7rem] font-bold text-mute">الصنف</span>
@@ -564,10 +600,11 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
 
       {s.lines.length > 0 ? (
         <table className="tbl mb-4">
-          <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th><th></th></tr></thead>
+          <thead><tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th><th></th></tr></thead>
           <tbody>{s.lines.map((l, i) => (
             <tr key={i}>
               <td className="font-bold">{app.db.items.find((x: any) => x.id === l.item)?.name}</td>
+              <td className="text-[0.72rem] font-bold text-mute">{(app.db.items.find((x: any) => x.id === l.item) as any)?.unit || "—"}</td>
               <td className="font-num">{l.qty}</td><td className="font-num">{app.fmtN(l.price)}</td><td className="font-num">{l.disc}%</td>
               <td className="font-num font-bold">{app.fmtN(lineTotal(l))}</td>
               <td><button className="text-mute hover:text-[var(--bad)] transition-colors" onClick={() => setS({ ...s, lines: s.lines.filter((_, j) => j !== i) })} aria-label="حذف"><I n="trash" size={15} /></button></td>
@@ -592,6 +629,7 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
           <div className="font-num font-bold text-2xl text-[var(--brand)]">{app.fmtN(total)} <span className="text-sm">{s.currency === "YER" ? "ر.ي" : s.currency}</span></div>
         </div>
       </div>
+      </FormSection>
 
     </Modal>
   );
@@ -616,7 +654,7 @@ function PurchaseReports() {
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={() => app.exportCsv("تقرير_المشتريات_حسب_المورد", [["المورد", "الإجمالي"], ...bySup.map((s) => [s.label, s.value])])}><I n="xlsx" size={15} /> Excel</button>
           {app.can("pur", "طباعة")
-            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: "تقرير المشتريات التحليلي", subtitle: "المشتريات حسب المورد والفترة — الربع الأول 2026", columns: [{ h: "المورد", v: (r: any) => r.label }, { h: "الإجمالي (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: bySup, summary: [["إجمالي المشتريات", app.fmtN(bySup.reduce((a, s) => a + s.value, 0)) + " ر.ي"], ["عدد الموردين", String(bySup.length)]] })}><I n="print" size={15} /> طباعة / PDF</button>
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: "تقرير المشتريات التحليلي", subtitle: "المشتريات حسب المورد والفترة — الربع الأول 2026", columns: [{ h: "المورد", v: (r: any) => r.label }, { h: "الإجمالي (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: bySup, summary: [["إجمالي المشتريات", app.fmtN(bySup.reduce((a, s) => a + s.value, 0)) + " ر.ي"], ["عدد الموردين", String(bySup.length)]] }, app.settings.report)}><I n="print" size={15} /> طباعة / PDF</button>
             : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة</button>}
         </div>
       </div>
@@ -672,7 +710,7 @@ function SalesReports() {
           ))}
           <button className="btn btn-ghost" onClick={() => app.exportCsv(`تقرير_المبيعات_${period}`, [["الفترة", "القيمة"], ...(period === "daily" ? byDay : byMonth).map((d) => [d.label, d.value])])}><I n="xlsx" size={15} /> Excel</button>
           {app.can("sal", "طباعة")
-            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `تقرير المبيعات ${period === "daily" ? "اليومي" : period === "monthly" ? "الشهري" : "السنوي"}`, subtitle: "الربع الأول 2026 — نقدي وآجل", columns: [{ h: "الفترة", v: (r: any) => r.label }, { h: "القيمة (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: period === "daily" ? byDay : byMonth, summary: [["إجمالي المبيعات", app.fmtN(cashV + creditV) + " ر.ي"], ["نقدي", app.fmtN(cashV) + " ر.ي"], ["آجل", app.fmtN(creditV) + " ر.ي"], ["نسبة التحصيل النقدي", Math.round((cashV / (cashV + creditV || 1)) * 100) + "%"]] })}><I n="print" size={15} /> طباعة / PDF</button>
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `تقرير المبيعات ${period === "daily" ? "اليومي" : period === "monthly" ? "الشهري" : "السنوي"}`, subtitle: "الربع الأول 2026 — نقدي وآجل", columns: [{ h: "الفترة", v: (r: any) => r.label }, { h: "القيمة (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: period === "daily" ? byDay : byMonth, summary: [["إجمالي المبيعات", app.fmtN(cashV + creditV) + " ر.ي"], ["نقدي", app.fmtN(cashV) + " ر.ي"], ["آجل", app.fmtN(creditV) + " ر.ي"], ["نسبة التحصيل النقدي", Math.round((cashV / (cashV + creditV || 1)) * 100) + "%"]] }, app.settings.report)}><I n="print" size={15} /> طباعة / PDF</button>
             : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة</button>}
         </div>
       </div>

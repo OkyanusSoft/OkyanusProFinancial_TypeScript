@@ -2,21 +2,136 @@ import { createRoot } from "react-dom/client";
 import type { ReactNode } from "react";
 import { SYSTEM } from "./data";
 
+/* ═══════════ إعدادات التقارير والترويسات (Report Letterhead Config) ═══════════
+   تُدار من: الإعدادات العامة ← إعدادات التقارير، وتُسري على كل المستندات المطبوعة */
+export interface ReportCfg {
+  nameAr: string; nameEn: string; company: string; tagline: string;
+  phone: string; website: string; address: string; crNo: string; taxNo: string;
+  showLogo: boolean; showTagline: boolean; showContact: boolean; showCrTax: boolean;
+  footerText: string; showPrintedBy: boolean; showGenTime: boolean; showBarcode: boolean; showStamp: boolean; showSign: boolean;
+  headerStyle: "gradient" | "solid" | "minimal";
+  headerColor: string; accentColor: string; decimals: number;
+  signLabels: string[]; margin: number; paperSize: "A4" | "Letter";
+}
+
+export const DEFAULT_REPORT_CFG: ReportCfg = {
+  nameAr: SYSTEM.name,
+  nameEn: SYSTEM.en,
+  company: SYSTEM.company,
+  tagline: "نظام محاسبي مالي إداري إنتاجي متكامل",
+  phone: SYSTEM.phone,
+  website: SYSTEM.site,
+  address: "اليمن — صنعاء",
+  crNo: SYSTEM.cr,
+  taxNo: "300123456700003",
+  showLogo: true, showTagline: true, showContact: true, showCrTax: true,
+  footerText: "جميع الحقوق محفوظة لدى شركة أوكيانوس سوفت — Okyanus Soft",
+  showPrintedBy: true, showGenTime: true, showBarcode: true, showStamp: true, showSign: true,
+  headerStyle: "gradient",
+  headerColor: "#0a4a73",
+  accentColor: "#d99a2b",
+  decimals: 2,
+  signLabels: ["المُعد", "المراجع المالي", "المعتمد / المدير المالي"],
+  margin: 9,
+  paperSize: "A4",
+};
+
+let activeCfg: ReportCfg = { ...DEFAULT_REPORT_CFG };
+/** تفعيل إعدادات تقارير (تُدمج مع الافتراضي) — تُستدعى قبل كل طباعة */
+export function setReportCfg(c?: Partial<ReportCfg>) { activeCfg = { ...DEFAULT_REPORT_CFG, ...(c || {}) }; }
+export function getReportCfg(): ReportCfg { return activeCfg; }
+
+const headBoxStyle = (c: ReportCfg): React.CSSProperties =>
+  c.headerStyle === "solid" ? { background: c.headerColor }
+  : c.headerStyle === "minimal" ? { background: "transparent", color: c.headerColor, border: `1.5px solid ${c.headerColor}` }
+  : { background: `linear-gradient(120deg, ${c.headerColor}, ${c.accentColor})` };
+
+const ruleStyle = (c: ReportCfg): React.CSSProperties =>
+  c.headerStyle === "solid" ? { background: c.headerColor, height: 3 }
+  : c.headerStyle === "minimal" ? { background: c.headerColor, height: 1.5 }
+  : { background: `linear-gradient(90deg, ${c.headerColor}, ${c.accentColor} 45%, ${c.headerColor})` };
+
 /* ════════════════════════════════════════════════════════════
    محرك الطباعة الاحترافي — مستندات A4 بترويسة وختم واعتمادات
    ════════════════════════════════════════════════════════════ */
 
+/* الطباعة عبر iframe معزول تماماً — يُطبع المستند وحده ولا يمكن أبداً
+   أن تلتقط الطابعة محتويات شاشة التطبيق (الحل القوي والموثوق) */
 export function openPrint(content: ReactNode) {
-  let host = document.getElementById("print-root");
-  if (!host) { host = document.createElement("div"); host.id = "print-root"; document.body.appendChild(host); }
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.title = "طباعة مستند";
+  iframe.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;z-index:9999;background:#fff;";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  if (!doc) { iframe.remove(); return; }
+
+  /* جمع أنماط التطبيق (الخطوط + مكونات الطباعة) من ملف CSS المجمّع */
+  let css = "";
+  try {
+    for (const sheet of Array.from(document.styleSheets)) {
+      try { css += Array.from(sheet.cssRules).map((r) => r.cssText).join("\n") + "\n"; } catch { /* قواعد CORS */ }
+    }
+  } catch { /* ignore */ }
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8" />
+<title>${SYSTEM.name} — مستند للطباعة</title>
+<style>
+${css}
+/* ── عزل صارم: خلفية بيضاء والمستند فقط ── */
+html, body { background:#fff !important; margin:0 !important; }
+body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+#print-doc { position:static !important; background:#fff !important; margin:0 !important; padding:0 !important; }
+.print-doc { box-shadow:none !important; border-radius:0 !important; }
+@media print {
+  body { background:#fff !important; }
+  .print-doc { box-shadow:none !important; border-radius:0 !important; }
+  .no-print { display:none !important; }
+}
+@page { size: ${getReportCfg().paperSize}; margin: ${getReportCfg().margin}mm; }
+</style>
+</head>
+<body>
+<div id="print-doc"></div>
+</body>
+</html>`);
+  doc.close();
+
+  const host = doc.getElementById("print-doc");
+  if (!host) { iframe.remove(); return; }
   const root = createRoot(host);
   root.render(<div dir="rtl">{content}</div>);
-  const done = () => {
-    window.removeEventListener("afterprint", done);
-    setTimeout(() => { root.unmount(); host?.remove(); }, 300);
+
+  let printed = false;
+  const firePrint = () => {
+    if (printed) return;
+    printed = true;
+    const w = iframe.contentWindow;
+    if (!w) return;
+    /* انتظار اكتمال تحميل الخطوط داخل الـ iframe فتظهر الأوزان صحيحة فوراً */
+    const doPrint = () => { try { w.focus(); w.print(); } catch { /* ignore */ } };
+    const fontsReady = (w.document as Document & { fonts?: FontFaceSet }).fonts?.ready;
+    if (fontsReady && typeof fontsReady.then === "function") {
+      Promise.race([fontsReady, new Promise((r) => setTimeout(r, 900))]).then(doPrint);
+    } else {
+      setTimeout(doPrint, 120);
+    }
   };
-  window.addEventListener("afterprint", done);
-  requestAnimationFrame(() => requestAnimationFrame(() => { try { window.print(); } catch { /* ignore */ } }));
+  const cleanup = () => {
+    setTimeout(() => { try { root.unmount(); } catch { /* ignore */ } iframe.remove(); }, 500);
+  };
+
+  /* الانتظار حتى يكتمل رسم المستند داخل الـ iframe ثم الطباعة مرة واحدة */
+  iframe.onload = () => setTimeout(firePrint, 120);
+  setTimeout(firePrint, 600); /* احتياط إن لم يُطلق onload */
+
+  iframe.contentWindow?.addEventListener("afterprint", cleanup);
+  setTimeout(cleanup, 60000); /* حد أقصى للتنظيف */
 }
 
 /* ── شعار مطبوع ── */
@@ -44,27 +159,30 @@ export function PStamp({ status }: { status: string }) {
   );
 }
 
-/* ── ترويسة المستند ── */
+/* ── ترويسة المستند — تقرأ إعدادات التقارير والترويسات ── */
 export function PHead({ docTitle, no, date, status, subtitle }: { docTitle: string; no: string; date: string; status: string; subtitle?: string }) {
+  const c = getReportCfg();
   return (
     <div>
       <div className="p-head">
         <div className="p-head-side">
-          <PMark />
+          {c.showLogo && <PMark />}
           <div>
-            <div className="p-sys">{SYSTEM.name}</div>
-            <div className="p-co">{SYSTEM.company} — {subtitle || "المركز الرئيسي"}</div>
-            <div className="p-co2">{SYSTEM.en} • {SYSTEM.site.replace("https://", "")}</div>
+            <div className="p-sys">{c.nameAr}</div>
+            <div className="p-co">{c.company}{subtitle ? ` — ${subtitle}` : ""}</div>
+            {c.showTagline && c.tagline && <div className="p-co2">{c.tagline}</div>}
+            {c.showContact && <div className="p-co2"><span dir="ltr">{c.phone}</span> • {c.website.replace("https://", "")}</div>}
+            {c.showCrTax && (c.crNo || c.taxNo) && <div className="p-co2">س.ت: {c.crNo}{c.taxNo ? ` • الرقم الضريبي: ${c.taxNo}` : ""}</div>}
           </div>
         </div>
         <div className="p-head-no">
-          <div className="p-doctype">{docTitle}</div>
+          <div className="p-doctype" style={headBoxStyle(c)}>{docTitle}</div>
           <div className="p-num" dir="ltr">{no}</div>
           <div className="p-date" dir="ltr">{date}</div>
         </div>
       </div>
-      <div className="p-rule" />
-      <div className="p-stampwrap"><PStamp status={status} /></div>
+      <div className="p-rule" style={ruleStyle(c)} />
+      {c.showStamp && <div className="p-stampwrap"><PStamp status={status} /></div>}
     </div>
   );
 }
@@ -125,37 +243,59 @@ export function PSign({ labels = ["المُعد / أمين المخزن", "ال�
   );
 }
 
-/* ── تذييل الصفحة ── */
+/* ── تذييل الصفحة — يقرأ إعدادات التقارير ── */
 export function PFoot({ user }: { user: string }) {
+  const c = getReportCfg();
   const now = new Date();
   return (
     <div className="p-foot">
-      <div>طُبع بواسطة: <b>{user}</b> — {now.toLocaleString("ar-EG")} </div>
-      <div className="p-foot-mid">{SYSTEM.name} — {SYSTEM.company} <span dir="ltr">{SYSTEM.phone}</span></div>
-      <div dir="ltr">{SYSTEM.site}</div>
-      <div className="p-bar" aria-hidden="true">
-        {`OKS-${now.getTime().toString().slice(-8)}`.split("").map((c, i) => (
-          <span key={i} style={{ width: (c.charCodeAt(0) % 3) + 1, height: 16 - (i % 3) * 3 }} />
-        ))}
+      <div>
+        {c.showPrintedBy && <>طُبع بواسطة: <b>{user}</b></>}
+        {c.showGenTime && <> — {now.toLocaleString("ar-EG")}</>}
       </div>
+      <div className="p-foot-mid">{c.footerText} <span dir="ltr">{c.phone}</span></div>
+      <div dir="ltr">{c.website}</div>
+      {c.showBarcode && (
+        <div className="p-bar" aria-hidden="true">
+          {`OKS-${now.getTime().toString().slice(-8)}`.split("").map((ch, i) => (
+            <span key={i} style={{ width: (ch.charCodeAt(0) % 3) + 1, height: 16 - (i % 3) * 3 }} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 /* ── غلاف سند كامل ── */
-export function DocSheet({ docTitle, no, date, status, subtitle, meta, children, totals, note, user, signLabels }: {
+export function DocSheet({ docTitle, no, date, status, subtitle, meta, children, totals, note, user, signLabels, stampText, stampSub, amountBox }: {
   docTitle: string; no: string; date: string; status: string; subtitle?: string;
   meta: [string, ReactNode][]; children: ReactNode; totals?: { items: [string, string][]; grand: [string, string] };
   note?: string; user: string; signLabels?: string[];
+  stampText?: string; stampSub?: string; amountBox?: { num: string; words: string };
 }) {
+  const c = getReportCfg();
   return (
     <div className="print-doc">
       <PHead docTitle={docTitle} no={no} date={date} status={status} subtitle={subtitle} />
+      <div className="p-rule" style={ruleStyle(c)} />
+      {c.showStamp && stampText && (
+        <div className="p-stampwrap">
+          <div className="p-stamp" style={{ color: docTitle.includes("قبض") ? "#15803d" : "#b45309" }}>
+            {stampText}<small>{stampSub}</small>
+          </div>
+        </div>
+      )}
       <PMeta rows={meta} />
+      {amountBox && (
+        <div className="p-amountbox">
+          <div><span>المبلغ رقماً</span><b dir="ltr">{amountBox.num}</b></div>
+          <div><span>المبلغ بالحروف</span><b>{amountBox.words}</b></div>
+        </div>
+      )}
       {children}
       {totals && <PTotals items={totals.items} grand={totals.grand} />}
       <PNote text={note} />
-      <PSign labels={signLabels} />
+      {c.showSign && <PSign labels={signLabels && signLabels.length ? signLabels : c.signLabels} />}
       <PFoot user={user} />
     </div>
   );
@@ -166,24 +306,26 @@ export function ReportSheet({ title, subtitle, filters, summary, children, user 
   title: string; subtitle?: string; filters?: [string, ReactNode][]; summary?: [string, ReactNode][];
   children: ReactNode; user: string;
 }) {
+  const c = getReportCfg();
   return (
     <div className="print-doc">
       <div className="p-head">
         <div className="p-head-side">
-          <PMark />
+          {c.showLogo && <PMark />}
           <div>
-            <div className="p-sys">{SYSTEM.name}</div>
-            <div className="p-co">{SYSTEM.company}</div>
-            <div className="p-co2">{SYSTEM.en}</div>
+            <div className="p-sys">{c.nameAr}</div>
+            <div className="p-co">{c.company}</div>
+            {c.showTagline && c.tagline && <div className="p-co2">{c.tagline}</div>}
+            {c.showContact && <div className="p-co2"><span dir="ltr">{c.phone}</span> • {c.website.replace("https://", "")}</div>}
           </div>
         </div>
         <div className="p-head-no">
-          <div className="p-doctype">{title}</div>
+          <div className="p-doctype" style={headBoxStyle(c)}>{title}</div>
           <div className="p-num" dir="ltr">RPT-{new Date().toISOString().slice(0, 10)}</div>
           <div className="p-date" dir="ltr">{new Date().toLocaleDateString("en-GB")}</div>
         </div>
       </div>
-      <div className="p-rule" />
+      <div className="p-rule" style={ruleStyle(c)} />
       {subtitle && <div className="p-repsub">{subtitle}</div>}
       {filters && filters.length > 0 && <PMeta rows={filters} />}
       {children}
@@ -197,12 +339,40 @@ export function ReportSheet({ title, subtitle, filters, summary, children, user 
   );
 }
 
+/* ═══════ التفقيط — كتابة المبلغ بالحروف العربية للسندات المالية ═══════ */
+const TF_ONES = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة", "عشرة", "أحد عشر", "اثنا عشر", "ثلاثة عشر", "أربعة عشر", "خمسة عشر", "ستة عشر", "سبعة عشر", "ثمانية عشر", "تسعة عشر"];
+const TF_TENS = ["", "", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"];
+const TF_HUND = ["", "مائة", "مائتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"];
+const TF_SCALE: [string, string, string][] = [["", "", ""], ["ألف", "ألفان", "آلاف"], ["مليون", "مليونان", "ملايين"], ["مليار", "ملياران", "مليارات"]];
+export function tafqit(n: number): string {
+  n = Math.floor(Math.abs(n));
+  if (n === 0) return "صفر";
+  let out = "", si = 0;
+  while (n > 0) {
+    const g = n % 1000; n = Math.floor(n / 1000);
+    if (g) {
+      let t = "";
+      const h = Math.floor(g / 100), r = g % 100;
+      if (h) t = TF_HUND[h];
+      if (r) t += (t ? " و" : "") + (r < 20 ? TF_ONES[r] : TF_TENS[Math.floor(r / 10)] + (r % 10 ? " و" + TF_ONES[r % 10] : ""));
+      const [s1, s2, sp] = TF_SCALE[si];
+      let seg: string;
+      if (si === 0) seg = t;
+      else if (g === 1) seg = s1; else if (g === 2) seg = s2; else seg = t + " " + (g <= 10 ? sp : s1);
+      out = out ? seg + " و" + out : seg;
+    }
+    si++;
+  }
+  return out;
+}
+
 /* ═══════ طابعة السجلات العامة — أي دليل أو قائمة سجلات ═══════ */
 export interface PrintCol { h: string; v: (r: any) => ReactNode; w?: string }
 export function printDirectory(user: string, opts: {
   title: string; subtitle?: string; columns: PrintCol[]; rows: any[];
   filters?: [string, ReactNode][]; summary?: [string, ReactNode][];
-}) {
+}, cfg?: Partial<ReportCfg>) {
+  if (cfg) setReportCfg(cfg);
   openPrint(
     <ReportSheet title={opts.title} subtitle={opts.subtitle || `سجل كامل — ${opts.rows.length} سجل`} filters={opts.filters} summary={opts.summary} user={user}>
       <PTable
@@ -218,18 +388,23 @@ export function printDirectory(user: string, opts: {
 export function printTradeDoc(user: string, d: {
   docTitle: string; no: string; date: string; status: string;
   meta: [string, ReactNode][];
-  lines: { name: string; qty: number | string; price: number | string; disc?: number | string; total: number | string }[];
+  lines: { name: string; unit?: string; qty: number | string; price: number | string; disc?: number | string; total: number | string }[];
   totals?: { items: [string, string][]; grand: [string, string] };
-  note?: string; signLabels?: string[]; fmtN: (n: number) => string;
-}) {
+  grandValue?: number;
+  note?: string; signLabels?: string[]; stampText?: string; fmtN: (n: number) => string;
+}, cfg?: Partial<ReportCfg>) {
+  if (cfg) setReportCfg(cfg);
   openPrint(
     <DocSheet docTitle={d.docTitle} no={d.no} date={d.date} status={d.status} meta={d.meta}
-      totals={d.totals} note={d.note} user={user} signLabels={d.signLabels}>
+      stampText={d.stampText || d.docTitle} stampSub={d.status === "مسودة" ? "معاينة" : "معتمد"}
+      amountBox={d.grandValue !== undefined ? { num: d.fmtN(d.grandValue) + " ر.ي", words: tafqit(d.grandValue) } : undefined}
+      totals={d.totals} note={d.note} user={user} signLabels={d.signLabels || ["المحاسب", "المدير المالي"]}>
       <PTable
-        head={["الصنف / البيان", "الكمية", "سعر الوحدة", "خصم %", "الإجمالي"]}
-        widths={["44%", "11%", "15%", "10%", "20%"]}
+        head={["الصنف / البيان", "الوحدة", "الكمية", "سعر الوحدة", "خصم %", "الإجمالي"]}
+        widths={["40%", "8%", "10%", "14%", "9%", "19%"]}
         rows={d.lines.map((l) => [
           <b key="n">{l.name}</b>,
+          <span key="u" dir="ltr">{l.unit || "—"}</span>,
           <span key="q" dir="ltr">{l.qty}</span>,
           <span key="p" dir="ltr">{l.price}</span>,
           <span key="d" dir="ltr">{l.disc ?? "—"}</span>,

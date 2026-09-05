@@ -122,10 +122,10 @@ export function Directory({ conf }: { conf: DirConf }) {
   const printLog = () => printDirectory(app.session?.user || "—", {
     title: conf.title, subtitle: conf.desc, columns: printCols, rows: filtered,
     summary: [["عدد السجلات", String(filtered.length)], ["المجموعة", conf.coll]],
-  });
+  }, app.settings.report);
   const printCard = (r: AnyR) => printDirectory(app.session?.user || "—", {
     title: `بطاقة — ${conf.title}`, subtitle: String(r[nameF] ?? r.id), columns: printCols, rows: [r],
-  });
+  }, app.settings.report);
 
   const filtered = useMemo(() => rows.filter((r) =>
     !q || Object.values(r).some((v) => String(v ?? "").toLowerCase().includes(q.toLowerCase()))
@@ -428,7 +428,7 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {allowed("طباعة")
-            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `سجل — ${title}`, subtitle: desc, columns: cols.map((c) => ({ h: c.label, v: (r: AnyR) => String(r[c.k] ?? "—") })), rows: filtered, summary: [["عدد السندات", String(filtered.length)]] })}><I n="print" size={15} /> طباعة السجل</button>
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `سجل — ${title}`, subtitle: desc, columns: cols.map((c) => ({ h: c.label, v: (r: AnyR) => String(r[c.k] ?? "—") })), rows: filtered, summary: [["عدد السندات", String(filtered.length)]] }, app.settings.report)}><I n="print" size={15} /> طباعة السجل</button>
             : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة السجل</button>}
           {onNew && <button className="btn btn-brand" onClick={onNew}><I n="plus" size={16} /> {newLabel || "سند جديد"}</button>}
         </div>

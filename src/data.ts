@@ -330,6 +330,7 @@ export const REPORTS: { id: string; name: string; module: string }[] = [
   { id: "rep-gl-trial", name: "ميزان المراجعة", module: "gl" },
   { id: "rep-gl-bs", name: "الميزانية العمومية", module: "gl" },
   { id: "rep-gl-pl", name: "الأرباح والخسائر", module: "gl" },
+  { id: "rep-gl-journal", name: "حركة القيود المحاسبية", module: "gl" },
   { id: "rep-gl-coa", name: "دليل الحسابات", module: "gl" },
   { id: "rep-hr-pay", name: "كشف الرواتب الشهري", module: "hr" },
   { id: "rep-hr-att", name: "تقرير الحضور والانصراف", module: "hr" },

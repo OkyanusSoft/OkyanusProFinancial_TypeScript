@@ -12,6 +12,8 @@ import {
 export type { AnyR, Activity, Device, Tombstone } from "./data";
 import { engine } from "./sync";
 export { engine };
+import { DEFAULT_REPORT_CFG, type ReportCfg } from "./print";
+export type { ReportCfg };
 
 /* ═══════ توليد أرقام دليل الحسابات حسب آخر رقم في المستوى ═══════
    القاعدة: الرقم الجديد = كود الحساب الأب + (آخر رقم للأشقاء + 1)
@@ -69,10 +71,11 @@ export interface Settings {
   front: { syncSec: number; sessionMin: number; offline: boolean; density: "مريحة" | "مضغوطة"; sound: boolean; autoSave: boolean };
   backup: { fullDaily: boolean; diffHours: number; gzip: boolean; encrypt: boolean; retainDays: number; path: string; autoLocal: boolean };
   quick: { visible: boolean; items: QuickItem[] };
+  report: ReportCfg;
 }
 export interface QuickItem { id: string; module: string; path: string; label: string; icon: string }
 
-export interface Prefs { theme: string; font: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
+export interface Prefs { theme: string; font: number; sharpen: number; dir: "rtl" | "ltr"; nums: "west" | "ar" | "plain"; dates: "iso" | "dmy" | "long"; notifEmail: boolean; notifSys: boolean; sidebarBg: string; loginBg: string }
 
 interface AppCtx {
   db: Record<CollKey, AnyR[]>;
@@ -131,6 +134,8 @@ interface AppCtx {
   /* النسخ الاحتياطي الحقيقي */
   downloadSnapshot: (label: string) => void;
   restoreSnapshot: (file: File) => void;
+  resetFactory: () => void;
+  clearTombstones: () => void;
   accounts: Account[];
   addAccount: (a: Account) => boolean;
   nextAccountCode: (parentCode: string) => string;
@@ -233,6 +238,7 @@ const DEFAULT_SETTINGS: Settings = {
       { id: "pos:", module: "pos", path: "", label: "نقاط البيع", icon: "coins" },
     ],
   },
+  report: { ...DEFAULT_REPORT_CFG },
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -252,7 +258,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [seq, setSeq] = useState<Record<string, number>>({ SIN: 260, PIN: 120, SRT: 18, GRN: 8, ISS: 22, TR: 4, ADJ: 4, JC: 2, JE: 1010, RC: 107, PV: 107, PR: 36, QT: 48, OB: 2, FYE: 2, REQ: 5 });
   const [settings, setSettingsState] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...engine.loadJson("@settings", {} as Partial<Settings>) }));
   const setSettings = (s: Settings) => { setSettingsState(s); engine.publishState("@settings", s); }; /* حفظ مركزي + بث لحظي */
-  const [prefs, setPrefsState] = useState<Prefs>({ theme: "azure", font: 100, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" });
+  const [prefs, setPrefsState] = useState<Prefs>(() => {
+    const def: Prefs = { theme: "azure", font: 100, sharpen: 0, dir: "rtl", nums: "west", dates: "iso", notifEmail: true, notifSys: true, sidebarBg: "ocean", loginBg: "sea" };
+    try { const raw = localStorage.getItem("okyanus_ifs_prefs"); return raw ? { ...def, ...(JSON.parse(raw) as Partial<Prefs>) } : def; } catch { return def; }
+  });
   const [session, setSession] = useState<Session | null>(null);
   const [route, setRoute] = useState<Route>({ module: "dashboard", path: "" });
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -347,7 +356,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifs((old) => [{ id: Date.now(), time: new Date().toTimeString().slice(0, 5), ...n }, ...old]);
   const markNotifs = () => setNotifs([]);
 
-  const setPrefs = (p: Partial<Prefs>) => setPrefsState((old) => ({ ...old, ...p }));
+  const setPrefs = (p: Partial<Prefs>) => setPrefsState((old) => {
+    const next = { ...old, ...p };
+    try { localStorage.setItem("okyanus_ifs_prefs", JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
   const nav = (r: Partial<Route>) => setRoute((old) => ({ module: r.module || old.module, path: r.path !== undefined ? r.path : old.path }));
   const login = (s: Session) => {
     setSession(s); setRoute({ module: "dashboard", path: "" });
@@ -837,12 +850,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (Array.isArray(snap.accounts) && snap.accounts.length) setAccounts(snap.accounts);
         const g = gen + 1;
         setGen(g);
-        engine.publishGen(dbRef.current, `استعادة النسخة ${file.name}`);
+        engine.publishGen(restored, `استعادة النسخة ${file.name}`); /* بث القاعدة المستعادة نفسها — لا النسخة القديمة */
         logLocal("النظام", `استعادة نسخة احتياطية من «${file.name}» — ارتفع الجيل إلى ${g} وبُث الاستبدال لكل الأجهزة`, "update");
         toast("اكتملت الاستعادة وبُث جيل جديد — استُبدلت النسخ القديمة على كل الأجهزة", "ok");
       } catch { toast("ملف النسخة الاحتياطية غير صالح", "err"); }
     };
     rd.readAsText(file);
+  };
+
+  /* ── استعادة البيانات الافتراضية المعتمدة (إعادة تهيئة النظام لبداية نظيفة) ── */
+  const resetFactory = () => {
+    const fresh: Record<string, AnyR[]> = JSON.parse(JSON.stringify(initDb));
+    engine.saveDb(fresh);
+    setDb(fresh);
+    setAccounts(ACCOUNTS);
+    const spec: Record<string, AnyR[]> = {};
+    ACTIVITIES.forEach((a) => a.entities.forEach((e) => { spec[`${a.id}:${e.id}`] = JSON.parse(JSON.stringify(e.seed)); }));
+    setSpecData(spec);
+    setHrState({ employees: HR_EMPLOYEES, attendance: [], rewards: [], warnings: [], leaves: [], payroll: [] });
+    setAssetsState(ASSETS);
+    setTombstones([]);
+    setSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+    const g = gen + 1;
+    setGen(g);
+    engine.publishGen(fresh, "استعادة البيانات الافتراضية المعتمدة");
+    logLocal("النظام", `استعادة البيانات الافتراضية المعتمدة — ارتفع الجيل إلى ${g} وبُث الاستبدال الشامل لكل الأجهزة`, "update");
+    toast("استُعيدت البيانات الافتراضية المعتمدة كاملة — النظام يبدأ من جديد وجميع الأجهزة محدّثة", "ok");
+  };
+
+  /* ── مسح شواهد الحذف (صيانة) ── */
+  const clearTombstones = () => {
+    setTombstones([]);
+    engine.publishTombstonesClear?.();
+    toast("مُسحت شواهد الحذف من سجل الصيانة", "info");
   };
 
   /* ── التنسيقات ── */
@@ -1181,6 +1221,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setTombstones((t) => [{ id: `TB-${Date.now()}`, coll: m.coll as any, recordId: m.id, label: m.id, by: "جهاز بعيد", ts: Date.now() }, ...t]);
       engine.stats.tombstones++;
+    } else if (m.kind === "tombs-clear") {
+      setTombstones([]); /* مسح شواهد الحذف انتشر من جهاز آخر */
     } else if (m.kind === "gen") {
       setDb(m.db as Record<CollKey, AnyR[]>); /* استبدال شامل — الجيل انتشر */
       setGen(m.gen);
@@ -1227,7 +1269,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       matrix, setModulePerm, setScreenPerm, setAllScreens, setReportAction, setButtonPerm, setAllButtons,
-      grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot,
+      grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot, resetFactory, clearTombstones,
       accounts, addAccount, nextAccountCode: (p: string) => nextAccountCode(accounts, p),
       activity, devices, tombstones, gen, deviceId, mergeSync, sync: engine, reinitCentral,
       activities: ACTIVITIES, activeSystems, primaryActivity, toggleSystem, setPrimaryActivity,

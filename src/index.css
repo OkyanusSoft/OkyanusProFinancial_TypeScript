@@ -25,6 +25,8 @@
   --side2: #0a5c8f;
   --sideink: #eaf6ff;
   --shadow: 0 10px 30px -12px rgb(7 42 74 / 0.18);
+  /* درجة وضوح الخط: 0px (قياسي) ← 0.5px (فائق الحدة) — تُضبط من التفضيلات */
+  --font-sharpen: 0px;
 }
 
 html[data-theme="light"] {
@@ -109,6 +111,114 @@ html[data-theme="gold"] {
   --shadow: 0 12px 32px -12px rgb(0 0 0 / 0.5);
 }
 
+/* الزمردي — أخضر عميق يوحي بالثقة المالية */
+html[data-theme="emerald"] {
+  --bg: #e7f0ec;
+  --surface: #ffffff;
+  --panel: #f0f7f4;
+  --ink: #0c2e24;
+  --soft: #35604f;
+  --mute: #7a9c8e;
+  --line: #d5e5dd;
+  --brand: #0e8a5f;
+  --brand2: #2dd4a0;
+  --brandink: #ffffff;
+  --accent: #d97706;
+  --good: #15803d;
+  --bad: #dc2626;
+  --warn: #b45309;
+  --side1: #04281d;
+  --side2: #0e6e52;
+  --sideink: #e8faf2;
+}
+
+/* الفحمي — رمادي داكن مع مينت تقني */
+html[data-theme="carbon"] {
+  --bg: #0e1116;
+  --surface: #161b22;
+  --panel: #1d242e;
+  --ink: #e6edf3;
+  --soft: #b7c2cf;
+  --mute: #7d8a99;
+  --line: #2a3442;
+  --brand: #3fb8af;
+  --brand2: #7ee0d8;
+  --brandink: #06201e;
+  --accent: #e5b567;
+  --good: #4ade80;
+  --bad: #f87171;
+  --warn: #fbbf24;
+  --side1: #0a0d12;
+  --side2: #1c2530;
+  --sideink: #e6edf3;
+  --shadow: 0 12px 32px -12px rgb(0 0 0 / 0.55);
+}
+
+/* الكحلي — أزرق ليلي عميق مع فضي سماوي */
+html[data-theme="navy"] {
+  --bg: #081226;
+  --surface: #0d1b33;
+  --panel: #132544;
+  --ink: #e4edfa;
+  --soft: #b3c4de;
+  --mute: #7c90b3;
+  --line: #22375c;
+  --brand: #4f8ff7;
+  --brand2: #8ab6ff;
+  --brandink: #04102a;
+  --accent: #f0b429;
+  --good: #4ade80;
+  --bad: #f87171;
+  --warn: #fbbf24;
+  --side1: #050d1e;
+  --side2: #16305e;
+  --sideink: #e4edfa;
+  --shadow: 0 12px 32px -12px rgb(0 0 0 / 0.55);
+}
+
+/* الصحراوي — رملي دافئ مع كهرماني */
+html[data-theme="sand"] {
+  --bg: #f3ecdf;
+  --surface: #fffdf7;
+  --panel: #f8f2e6;
+  --ink: #3a2f1c;
+  --soft: #6b5b3e;
+  --mute: #a08f6c;
+  --line: #e3d7bd;
+  --brand: #a3701d;
+  --brand2: #d4a348;
+  --brandink: #ffffff;
+  --accent: #7c5cbf;
+  --good: #4d7c0f;
+  --bad: #b91c1c;
+  --warn: #b45309;
+  --side1: #2c2210;
+  --side2: #6e5522;
+  --sideink: #f8f2e6;
+}
+
+/* العنابي — عنابي داكن مع وردي فاتح هادئ */
+html[data-theme="maroon"] {
+  --bg: #1a0d12;
+  --surface: #25131b;
+  --panel: #2f1a24;
+  --ink: #f7e6ec;
+  --soft: #d3aebc;
+  --mute: #9c7486;
+  --line: #452736;
+  --brand: #e0598a;
+  --brand2: #f290b4;
+  --brandink: #2a0715;
+  --accent: #f0b429;
+  --good: #4ade80;
+  --bad: #f87171;
+  --warn: #fbbf24;
+  --side1: #140a0e;
+  --side2: #4a2033;
+  --sideink: #f7e6ec;
+  --shadow: 0 12px 32px -12px rgb(0 0 0 / 0.55);
+}
+
 /* ── الأساس ── */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--mute) 45%, transparent) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -121,6 +231,11 @@ body {
   background: var(--bg);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  font-optical-sizing: auto;            /* الضبط البصري التلقائي لأوزان الخط */
+  text-rendering: optimizeLegibility;   /* تحسين التقاء الحروف والوضوح */
+  /* درجة وضوح الخط — stroke خفيف يعزز حدة الحواف عند رفعها من التفضيلات */
+  -webkit-text-stroke-width: var(--font-sharpen);
+  -webkit-text-stroke-color: currentColor;
   transition: background 0.35s ease, color 0.35s ease;
 }
 
@@ -131,7 +246,9 @@ body {
 
 input[type="range"] { accent-color: var(--brand); }
 input[type="date"] { color-scheme: light; }
-html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type="date"] { color-scheme: dark; }
+html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type="date"],
+html[data-theme="carbon"] input[type="date"], html[data-theme="navy"] input[type="date"],
+html[data-theme="maroon"] input[type="date"] { color-scheme: dark; }
 
 /* ── الخلفية المحيطة ── */
 .ambient { background: var(--bg); position: relative; }
@@ -266,11 +383,9 @@ html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type=
 .stagger > *:nth-child(8) { animation-delay: 420ms; }
 
 /* ═══════════ الطباعة A4 ═══════════ */
-#print-root {
-  position: fixed; inset: 0; z-index: 400; overflow: auto;
-  background: #dfe7ee; padding: 26px 12px;
-}
-#print-root > div { max-width: 830px; margin: 0 auto; }
+/* حاوية المستند داخل iframe الطباعة المعزول */
+#print-doc { background: #fff; }
+#print-doc > div { max-width: 830px; margin: 0 auto; }
 
 .print-doc {
   background: #ffffff; color: #122a41; border-radius: 8px;
@@ -326,6 +441,12 @@ html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type=
   font-weight: 800; font-size: 0.88rem;
 }
 
+.p-amountbox { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin: 12px 0 4px; }
+.p-amountbox > div { border: 1.5px solid #0a4a73; border-radius: 10px; padding: 9px 14px; }
+.p-amountbox span { display: block; font-size: 0.6rem; font-weight: 700; color: #7d97b0; }
+.p-amountbox b { font-size: 0.95rem; color: #0a4a73; font-weight: 800; }
+.p-amountbox > div:last-child b { font-size: 0.82rem; line-height: 1.6; }
+
 .p-note { margin-top: 12px; font-size: 0.72rem; color: #33566f; background: #fdf6e3; border: 1px dashed #e3c98a; border-radius: 9px; padding: 8px 12px; }
 .p-note span { font-weight: 800; color: #8a6420; }
 
@@ -343,10 +464,9 @@ html[data-theme="night"] input[type="date"], html[data-theme="gold"] input[type=
 .p-bar { display: flex; align-items: flex-end; gap: 2px; justify-content: flex-end; }
 .p-bar span { display: inline-block; background: #122a41; }
 
+/* الطباعة تتم داخل iframe معزول (انظر print.tsx) — قواعد احتياطية للتوافق */
 @media print {
-  body > #root { display: none !important; }
-  #print-root { position: static; overflow: visible; background: #fff; padding: 0; }
-  #print-root > div { max-width: none; }
-  .print-doc { box-shadow: none; border-radius: 0; padding: 8mm 6mm; }
+  .print-doc { box-shadow: none !important; border-radius: 0 !important; }
+  .no-print { display: none !important; }
   @page { size: A4; margin: 9mm; }
 }

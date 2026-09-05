@@ -368,6 +368,22 @@ export function Stat({ icon, label, value, sub, tone = "var(--brand)", delay = 0
   );
 }
 
+/* ═══════════════ قسم نموذج مستند — رأس / بنود ═══════════════ */
+export function FormSection({ n, icon, title, hint, children }: { n: string; icon: string; title: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="w-7 h-7 rounded-lg grid place-items-center font-num font-bold text-[0.72rem] text-[var(--brandink)]" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}>{n}</span>
+        <I n={icon} size={17} className="text-[var(--brand)]" />
+        <h4 className="font-display font-bold text-[0.98rem] leading-none">{title}</h4>
+        {hint && <span className="text-[0.64rem] font-bold text-mute hidden md:block">— {hint}</span>}
+        <span className="flex-1 h-px" style={{ background: "linear-gradient(90deg, color-mix(in srgb, var(--brand) 35%, transparent), transparent)" }} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /* ═══════════════ حالة فارغة ═══════════════ */
 export function Empty({ msg }: { msg: string }) {
   return (

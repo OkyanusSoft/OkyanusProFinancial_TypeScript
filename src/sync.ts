@@ -24,6 +24,7 @@ type BusMsg =
   | { kind: "spec"; from: string; key: string; rows: AnyR[]; ts: number }
   | { kind: "accounts"; from: string; rows: AnyR[]; ts: number }
   | { kind: "tomb"; from: string; coll: string; id: string }
+  | { kind: "tombs-clear"; from: string }
   | { kind: "gen"; from: string; gen: number; db: Record<string, AnyR[]>; ts: number }
   | { kind: "op"; from: string; op: SyncOp }
   | { kind: "state"; from: string; key: string; val: unknown }
@@ -130,6 +131,12 @@ class SyncEngine {
     }
     this.send({ kind: "tomb", from: this.deviceId, coll, id });
   }
+
+  /* حفظ كامل للقاعدة المركزية (استعادة / إعادة تهيئة) */
+  saveDb(db: Record<string, AnyR[]>) { write(DB_KEY, db); }
+
+  /* مسح سجل شواهد الحذف (صيانة — بعد استعادة افتراضية) */
+  publishTombstonesClear() { write(TOMB_KEY, []); this.send({ kind: "tombs-clear", from: this.deviceId }); }
 
   /* ── سجل العمليات المشترك (يظهر في مراقبة النشاط بكل جهاز) ── */
   loadActivity(seed: SyncOp[]): SyncOp[] {

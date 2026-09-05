@@ -85,7 +85,7 @@ const BASE_TREE: NavNode[] = [
         ["base.banks", "البنوك والحسابات البنكية"], ["base.pay", "شروط وطرق الدفع"], ["base.coa", "دليل الحسابات"], ["base.ana", "الحسابات التحليلية"],
       ]),
       G("الحركات", "receipt", [["mv.open", "سند قيد افتتاحي مالي"], ["mv.req", "طلب سند قيد يومية"], ["mv.je", "سند قيد يومية"], ["mv.pv", "سند صرف"], ["mv.rv", "سند قبض"]]),
-      G("التقارير", "scale", [["rep.stmt", "تقرير كشف حساب"], ["rep.trial", "تقرير ميزان المراجعة"], ["rep.bs", "تقرير ميزان العمومية"], ["rep.pl", "تقرير الأرباح والخسائر"]]),
+      G("التقارير", "scale", [["rep.stmt", "تقرير كشف حساب"], ["rep.trial", "تقرير ميزان المراجعة"], ["rep.bs", "تقرير ميزان العمومية"], ["rep.pl", "تقرير الأرباح والخسائر"], ["rep.gljournal", "تقرير حركة القيود"]]),
     ],
   },
   { id: "hr", label: "نظام الموارد البشرية", icon: "users" },
@@ -97,6 +97,7 @@ const TAIL_TREE: NavNode[] = [
     id: "adm", label: "إدارة النظام", icon: "shield", leaves: [
       { id: "users", label: "المستخدمون والصلاحيات" },
       { id: "quick", label: "الوصول السريع" },
+      { id: "agent", label: "الوكيل الذكي — التشخيص الذاتي" },
       { id: "monitor", label: "مراقبة النشاط" },
       { id: "activation", label: "تفعيل الأنظمة والأنشطة" },
       { id: "settings", label: "الإعدادات العامة" },
@@ -174,13 +175,15 @@ function Shell() {
   const [userMenu, setUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  /* تطبيق النمط والخط والاتجاه على كامل النظام */
+  /* تطبيق النمط والخط ودرجة الوضوح والاتجاه على كامل النظام */
   useEffect(() => {
     const el = document.documentElement;
     el.dataset.theme = prefs.theme;
     el.style.fontSize = `${prefs.font}%`;
     el.dir = prefs.dir;
-  }, [prefs.theme, prefs.font, prefs.dir]);
+    /* درجة وضوح الخط: 0 (قياسي) ← 100 (فائق الحدة) → تُترجم إلى stroke بحد أقصى 0.5px */
+    el.style.setProperty("--font-sharpen", `${((prefs.sharpen ?? 0) / 100) * 0.5}px`);
+  }, [prefs.theme, prefs.font, prefs.dir, prefs.sharpen]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setUserMenu(false); };
