@@ -12,6 +12,7 @@ import {
 export type { AnyR, Activity, Device, Tombstone } from "./data";
 import { engine } from "./sync";
 export { engine };
+import { normStatus } from "./flow";
 import { DEFAULT_REPORT_CFG, type ReportCfg } from "./print";
 export type { ReportCfg };
 
@@ -72,6 +73,7 @@ export interface Settings {
   backup: { fullDaily: boolean; diffHours: number; gzip: boolean; encrypt: boolean; retainDays: number; path: string; autoLocal: boolean };
   quick: { visible: boolean; items: QuickItem[] };
   report: ReportCfg;
+  company: { name: string; en: string; phone: string; cr: string; tax: string; address: string; manager: string };
 }
 export interface QuickItem { id: string; module: string; path: string; label: string; icon: string }
 
@@ -98,13 +100,28 @@ interface AppCtx {
   purge: (idx: number) => void;
   emptyTrash: () => void;
   importRows: (coll: CollKey, rows: AnyR[], keyField: string, prefix: string) => { added: number; skipped: number };
-  /* الحركات المالية والمخزنية */
+  /* الحركات المالية والمخزنية + سير حالة المستند (مسودة ← معتمد ← مرحّل ← ملغي) */
   addInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  saveDraftInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  approveInvDoc: (id: string) => void;
+  unapproveInvDoc: (id: string) => void;
+  postInvDoc: (id: string) => { ok: boolean; msg: string };
+  updateInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  deleteInvDoc: (id: string) => { ok: boolean; msg: string };
   voidInvDoc: (id: string) => void;
   addInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
+  saveDraftInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
+  approveInvoice: (kind: "sales" | "purchases" | "returns", id: string) => void;
+  unapproveInvoice: (kind: "sales" | "purchases" | "returns", id: string) => void;
+  postInvoice: (kind: "sales" | "purchases" | "returns", id: string) => { ok: boolean; msg: string };
+  updateInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
+  deleteInvoice: (kind: "sales" | "purchases" | "returns", id: string) => { ok: boolean; msg: string };
   voidInvoice: (kind: "sales" | "purchases" | "returns", id: string) => void;
   payInvoice: (kind: "sales" | "purchases", id: string, amount: number) => { ok: boolean; msg: string };
   addJournal: (j: Journal) => { ok: boolean; msg: string };
+  saveDraftJournal: (j: Journal) => { ok: boolean; msg: string };
+  postJournal: (id: string) => { ok: boolean; msg: string };
+  deleteJournal: (id: string) => { ok: boolean; msg: string };
   voidJournal: (id: string) => void;
   approveJournal: (id: string) => void;
   lockPeriod: (id: string) => void;
@@ -205,14 +222,14 @@ const ALL_BTNS = Object.fromEntries(Object.keys(MODULE_SCREENS).map((m) => [m, [
 const ALL_REPS = Object.keys(MODULE_SCREENS);
 const DEF_MATRIX: Record<string, PermRole> = {
   "مدير النظام": mkPerm(ALL_MODS, ALL_BTNS, ALL_REPS),
-  "محاسب رئيسي": mkPerm({ ...ALL_MODS, adm: true }, { ...ALL_BTNS, adm: ["تصدير"] }, ALL_REPS),
+  "محاسب رئيسي": mkPerm({ ...ALL_MODS, adm: true }, { ...ALL_BTNS, adm: ["استعراض", "بحث", "طباعة"] }, ALL_REPS),
   "أمين مخزن": mkPerm({ dash: true, inv: true, pos: true, pur: true, sal: true },
-    { inv: ["إضافة", "تعديل", "ترحيل", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد"], pos: ["ترحيل", "طباعة"] },
+    { inv: ["إضافة", "تعديل", "بحث", "حذف", "استعراض", "طباعة", "ترحيل", "إلغاء"], pos: ["ترحيل", "طباعة", "استعراض"] },
     ["inv", "pos"]),
   "مسؤولة مشتريات": mkPerm({ dash: true, inv: true, pur: true, gl: true },
-    { pur: [...BUTTON_ACTIONS], inv: ["إضافة", "ترحيل"], gl: ["إضافة"] }, ["pur"]),
+    { pur: [...BUTTON_ACTIONS], inv: ["إضافة", "ترحيل", "استعراض"], gl: ["إضافة", "استعراض"] }, ["pur"]),
   "مسؤول مبيعات": mkPerm({ dash: true, sal: true, pos: true, inv: true },
-    { sal: [...BUTTON_ACTIONS], pos: ["ترحيل", "طباعة"] }, ["sal"]),
+    { sal: [...BUTTON_ACTIONS], pos: ["ترحيل", "طباعة", "استعراض"] }, ["sal"]),
   "مدقق خارجي": mkPerm(ALL_MODS, {}, ALL_REPS),
 };
 
@@ -239,6 +256,7 @@ const DEFAULT_SETTINGS: Settings = {
     ],
   },
   report: { ...DEFAULT_REPORT_CFG },
+  company: { name: SYSTEM.company, en: SYSTEM.companyEn, phone: SYSTEM.phone, cr: "2019004571", tax: "300123456700003", address: "اليمن — صنعاء، شارع حدة", manager: "م.وائل الشرفي" },
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -461,7 +479,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return it ? Object.values(it.qty as Record<string, number>).reduce((a: number, b: any) => a + (b as number), 0) : 0;
   };
 
-  const addInvDoc = (d: InvDoc) => {
+  /* ── الالتزام الفعلي للسند المخزني: الأثر المخزني + القيد المحاسبي (إدراج أو تحديث) ── */
+  const commitInvDoc = (d: InvDoc) => {
     if (periodLocked(d.date)) { toast(`الفترة ${d.date.slice(0, 7)} مقفلة مالياً — لا يمكن الترحيل إليها`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
     if (!settings.negStock) {
       for (const l of d.lines) {
@@ -541,7 +560,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         else qty[d.warehouse] = (qty[d.warehouse] || 0) + delta;
         return { ...it, qty };
       });
-      return { ...old, items, invDocs: [...old.invDocs, d as any], journals: je ? [...old.journals, je as any] : old.journals };
+      return {
+        ...old, items,
+        invDocs: old.invDocs.some((x: any) => x.id === d.id) ? old.invDocs.map((x: any) => (x.id === d.id ? d : x)) : [...old.invDocs, d as any],
+        journals: je ? [...old.journals, je as any] : old.journals,
+      };
     });
     /* بث لحظي: السند وأثره المخزني لكل الأجهزة */
     const now = Date.now();
@@ -562,9 +585,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true, msg: `رُحّل السند ${d.ref}` };
   };
 
+  /* ═══ سير حالة السند المخزني: مسودة ← معتمد ← مرحّل ← ملغي ═══ */
+  const addInvDoc = (d: InvDoc) => commitInvDoc({ ...d, status: "مرحّل", postedBy: session?.user || "—" });
+  const patchInvDoc = (id: string, patch: Record<string, any>) => {
+    const cur: any = db.invDocs.find((x: any) => x.id === id);
+    if (!cur) return;
+    const next = { ...cur, ...patch };
+    setDb((old) => ({ ...old, invDocs: old.invDocs.map((x: any) => (x.id === id ? next : x)) }));
+    engine.publishPatches([{ coll: "invDocs", rows: [{ ...next, updatedAt: Date.now() } as any] }]);
+  };
+  const saveDraftInvDoc = (d: InvDoc) => {
+    const doc = { ...d, status: "مسودة" as const };
+    setDb((old) => ({ ...old, invDocs: old.invDocs.some((x: any) => x.id === doc.id) ? old.invDocs.map((x: any) => (x.id === doc.id ? doc : x)) : [...old.invDocs, doc as any] }));
+    engine.publishPatches([{ coll: "invDocs", rows: [{ ...doc, updatedAt: Date.now() } as any] }]);
+    toast(`حُفظ السند ${doc.ref} كمسودة — لا أثر مخزني أو محاسبي قبل الاعتماد والترحيل`, "ok");
+    return { ok: true, msg: "حُفظت المسودة" };
+  };
+  const approveInvDoc = (id: string) => { patchInvDoc(id, { status: "معتمد", approvedBy: session?.user || "—" }); toast("اعتُمد السند — أصبح محمياً من التعديل والحذف حتى إلغاء الاعتماد", "ok"); };
+  const unapproveInvDoc = (id: string) => { patchInvDoc(id, { status: "مسودة", approvedBy: undefined }); toast("أُلغي الاعتماد — أصبح السند قابلاً للتعديل أو الحذف", "info"); };
+  const postInvDoc = (id: string) => {
+    const d: any = db.invDocs.find((x: any) => x.id === id);
+    if (!d) return { ok: false, msg: "السند غير موجود" };
+    const c = normStatus(d.status);
+    if (c !== "draft" && c !== "approved") return { ok: false, msg: "الترحيل متاح للمسودة أو المعتمد فقط" };
+    return commitInvDoc({ ...d, status: "مرحّل", postedBy: session?.user || "—" });
+  };
+  const updateInvDoc = (d: InvDoc) => {
+    const cur: any = db.invDocs.find((x: any) => x.id === d.id);
+    if (cur && normStatus(cur.status) !== "draft") return { ok: false, msg: "التعديل متاح للمسودات فقط — ألغِ الاعتماد أولاً" };
+    saveDraftInvDoc(d);
+    return { ok: true, msg: "حُدّثت المسودة" };
+  };
+  const deleteInvDoc = (id: string) => {
+    const cur: any = db.invDocs.find((x: any) => x.id === id);
+    if (!cur) return { ok: false, msg: "السند غير موجود" };
+    if (normStatus(cur.status) !== "draft") { toast("الحذف النهائي للمسودات فقط — المعتمد يُعاد كمسودة، والمرحّل يُلغى بأثر عكسي", "err"); return { ok: false, msg: "محمي" }; }
+    setDb((old) => ({ ...old, invDocs: old.invDocs.filter((x: any) => x.id !== id) }));
+    engine.publishTombstone("invDocs", id);
+    toast(`حُذفت المسودة ${cur.ref} نهائياً ونُشر شاهد الحذف لكل الأجهزة`, "err");
+    return { ok: true, msg: "حُذفت المسودة" };
+  };
+
   const voidInvDoc = (id: string) => {
     const doc: any = db.invDocs.find((d: any) => d.id === id);
     if (!doc || doc.status === "ملغي") return;
+    if (normStatus(doc.status) !== "posted") { toast("الإلغاء بأثر عكسي متاح فقط للسندات المرحّلة", "err"); return; }
     setDb((old) => {
       const items = old.items.map((it: AnyR) => {
         const line = doc.lines.find((l: any) => l.item === it.id);
@@ -589,7 +654,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const partnerOf = (kind: string, code: string) => (kind === "purchases" ? db.suppliers : db.customers).find((p) => p.id === code);
 
-  const addInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+  /* ── الالتزام الفعلي للفاتورة: الأثر المخزني + قيد المجموعات + الذمم (إدراج أو تحديث) ── */
+  const commitInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
     if (periodLocked(inv.date)) return { ok: false, msg: `الفترة ${inv.date.slice(0, 7)} مقفلة مالياً — رُفض الترحيل` };
     const total = invoiceTotal(inv);
     const coll: CollKey = kind;
@@ -660,7 +726,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const pList = old[partners as CollKey].map((p: AnyR) =>
         p.id === inv.partner && inv.payType === "آجل" ? { ...p, balance: p.balance + total } : p
       );
-      return { ...old, items, [coll]: [...old[coll], inv as any], [partners]: pList, journals: [...old.journals, je] };
+      return {
+        ...old, items, [partners]: pList, journals: [...old.journals, je],
+        [coll]: old[coll].some((x: any) => x.id === inv.id) ? old[coll].map((x: any) => (x.id === inv.id ? inv : x)) : [...old[coll], inv as any],
+      };
     });
     /* بث لحظي: الفاتورة وقيدها المحاسبي وأثرها المخزني تصل للمدير والمحاسب خلال ثوانٍ */
     const now = Date.now();
@@ -683,9 +752,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true, msg: `رُحّلت الفاتورة ${inv.no}` };
   };
 
+  /* ═══ سير حالة الفاتورة: مسودة ← معتمدة ← مرحّلة ← ملغاة ═══ */
+  const addInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => commitInvoice(kind, { ...inv, status: "مرحّلة", postedBy: session?.user || "—" });
+  const patchInvoice = (kind: "sales" | "purchases" | "returns", id: string, patch: Record<string, any>) => {
+    const cur: any = db[kind].find((x: any) => x.id === id);
+    if (!cur) return;
+    const next = { ...cur, ...patch };
+    setDb((old) => ({ ...old, [kind]: old[kind].map((x: any) => (x.id === id ? next : x)) }));
+    engine.publishPatches([{ coll: kind, rows: [{ ...next, updatedAt: Date.now() } as any] }]);
+  };
+  const saveDraftInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+    const doc = { ...inv, status: "مسودة" as const };
+    setDb((old) => ({ ...old, [kind]: old[kind].some((x: any) => x.id === doc.id) ? old[kind].map((x: any) => (x.id === doc.id ? doc : x)) : [...old[kind], doc as any] }));
+    engine.publishPatches([{ coll: kind, rows: [{ ...doc, updatedAt: Date.now() } as any] }]);
+    toast(`حُفظت الفاتورة ${doc.no} كمسودة — بلا أثر مخزني أو محاسبي قبل الاعتماد والترحيل`, "ok");
+    return { ok: true, msg: "حُفظت المسودة" };
+  };
+  const approveInvoice = (kind: "sales" | "purchases" | "returns", id: string) => { patchInvoice(kind, id, { status: "معتمدة", approvedBy: session?.user || "—" }); toast("اعتُمدت الفاتورة — محمية من التعديل والحذف حتى إلغاء الاعتماد", "ok"); };
+  const unapproveInvoice = (kind: "sales" | "purchases" | "returns", id: string) => { patchInvoice(kind, id, { status: "مسودة", approvedBy: undefined }); toast("أُلغي اعتماد الفاتورة — يمكن التعديل أو الحذف الآن", "info"); };
+  const postInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
+    const inv: any = db[kind].find((x: any) => x.id === id);
+    if (!inv) return { ok: false, msg: "الفاتورة غير موجودة" };
+    const c = normStatus(inv.status);
+    if (c !== "draft" && c !== "approved") return { ok: false, msg: "الترحيل متاح للمسودة أو المعتمدة فقط" };
+    return commitInvoice(kind, { ...inv, status: "مرحّلة", postedBy: session?.user || "—" });
+  };
+  const updateInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+    const cur: any = db[kind].find((x: any) => x.id === inv.id);
+    if (cur && normStatus(cur.status) !== "draft") return { ok: false, msg: "التعديل متاح للمسودات فقط — ألغِ الاعتماد أولاً" };
+    saveDraftInvoice(kind, inv);
+    return { ok: true, msg: "حُدّثت المسودة" };
+  };
+  const deleteInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
+    const cur: any = db[kind].find((x: any) => x.id === id);
+    if (!cur) return { ok: false, msg: "الفاتورة غير موجودة" };
+    if (normStatus(cur.status) !== "draft") { toast("الحذف النهائي للمسودات فقط — المعتمدة تُعاد كمسودة، والمرحّلة تُلغى بأثر عكسي", "err"); return { ok: false, msg: "محمية" }; }
+    setDb((old) => ({ ...old, [kind]: old[kind].filter((x: any) => x.id !== id) }));
+    engine.publishTombstone(kind, id);
+    toast(`حُذفت المسودة ${cur.no} نهائياً ونُشر شاهد الحذف لكل الأجهزة`, "err");
+    return { ok: true, msg: "حُذفت المسودة" };
+  };
+
   const voidInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
     const inv: any = db[kind].find((i: any) => i.id === id);
     if (!inv || inv.status === "ملغاة") return;
+    if (normStatus(inv.status) !== "posted") { toast("الإلغاء بأثر عكسي متاح فقط للفواتير المرحّلة", "err"); return; }
     const total = invoiceTotal(inv);
     setDb((old) => {
       const list = old[kind].map((i: any) => (i.id === id ? { ...i, status: "ملغاة" } : i));
@@ -735,13 +846,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast(`رُحّل القيد ${j.no} — متوازن (${Math.round(dr).toLocaleString("en-US")})`);
     return { ok: true, msg: `رُحّل القيد ${j.no}` };
   };
+  /* ═══ سير حالة القيد: مسودة/بانتظار ← مرحّل ← ملغي ═══ */
+  const saveDraftJournal = (j: Journal) => {
+    const doc = { ...j, status: "بانتظار الموافقة" as const };
+    setDb((old) => ({ ...old, journals: old.journals.some((x: any) => x.id === doc.id) ? old.journals.map((x: any) => (x.id === doc.id ? doc : x)) : [...old.journals, doc as any] }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...doc, updatedAt: Date.now() } as any] }]);
+    toast(`حُفظ القيد ${doc.no} بانتظار الموافقة — لا أثر على الأرصدة قبل الاعتماد`, "ok");
+    return { ok: true, msg: "حُفظ بانتظار الموافقة" };
+  };
+  const postJournal = (id: string) => {
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return { ok: false, msg: "القيد غير موجود" };
+    const c = normStatus(j.status);
+    if (c !== "draft" && c !== "pending") return { ok: false, msg: "الترحيل متاح للقيود المعلقة فقط" };
+    if (periodLocked(j.date)) { toast(`الفترة ${j.date.slice(0, 7)} مقفلة — لا يمكن الترحيل`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
+    const dr = j.lines.reduce((a: number, l: any) => a + l.debit, 0), cr = j.lines.reduce((a: number, l: any) => a + l.credit, 0);
+    if (Math.abs(dr - cr) > 0.01) { toast("القيد غير متوازن — رُفض الترحيل", "err"); return { ok: false, msg: "غير متوازن" }; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "مرحّل" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "مرحّل", updatedAt: Date.now() } as any] }]);
+    toast(`رُحّل القيد ${j.no} إلى دفتر الأستاذ — متوازن (${Math.round(dr).toLocaleString("en-US")})`, "ok");
+    return { ok: true, msg: `رُحّل القيد ${j.no}` };
+  };
   const voidJournal = (id: string) => {
-    setDb((old) => ({ ...old, journals: old.journals.map((j: any) => (j.id === id ? { ...j, status: "ملغي" } : j)) }));
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return;
+    if (j.status !== "مرحّل") { toast("إلغاء القيود متاح للمرحّلة فقط — المعلّقة تُحذف كمسودة", "err"); return; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "ملغي" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "ملغي", updatedAt: Date.now() } as any] }]);
     toast("أُلغي القيد وأُبعد عن الأرصدة والتقارير", "ok");
   };
   const approveJournal = (id: string) => {
-    setDb((old) => ({ ...old, journals: old.journals.map((j: any) => (j.id === id ? { ...j, status: "مرحّل" } : j)) }));
-    toast("اعتُمد الطلب ورُحّل القيد إلى دفتر الأستاذ");
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return;
+    if (periodLocked(j.date)) { toast(`الفترة ${j.date.slice(0, 7)} مقفلة — لا يمكن الاعتماد`, "err"); return; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "مرحّل" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "مرحّل", updatedAt: Date.now() } as any] }]);
+    toast("اعتُمد القيد ورُحّل إلى دفتر الأستاذ", "ok");
+  };
+  const deleteJournal = (id: string) => {
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return { ok: false, msg: "القيد غير موجود" };
+    if (normStatus(j.status) !== "draft" && normStatus(j.status) !== "pending") { toast("الحذف النهائي للقيود المعلّقة فقط — المرحّل يُلغى بأثر عكسي", "err"); return { ok: false, msg: "محمي" }; }
+    setDb((old) => ({ ...old, journals: old.journals.filter((x: any) => x.id !== id) }));
+    engine.publishTombstone("journals", id);
+    toast(`حُذف القيد المعلّق ${j.no} نهائياً`, "err");
+    return { ok: true, msg: "حُذف" };
   };
   const lockPeriod = (id: string) => {
     setDb((old) => ({ ...old, periods: old.periods.map((p: any) => (p.id === id ? { ...p, locked: true, closedAt: "2026-03-29" } : p)) }));
@@ -1265,8 +1414,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       db, trash, seq, settings, setSettings, prefs, setPrefs, session, route, toasts, notifs,
       toast, pushNotif, markNotifs, nav, login, logout, nextNo,
       save, remove, restore, purge, emptyTrash, importRows,
-      addInvDoc, voidInvDoc, addInvoice, voidInvoice, payInvoice,
-      addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
+      addInvDoc, saveDraftInvDoc, approveInvDoc, unapproveInvDoc, postInvDoc, updateInvDoc, deleteInvDoc, voidInvDoc,
+      addInvoice, saveDraftInvoice, approveInvoice, unapproveInvoice, postInvoice, updateInvoice, deleteInvoice, voidInvoice, payInvoice,
+      addJournal, saveDraftJournal, postJournal, deleteJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       matrix, setModulePerm, setScreenPerm, setAllScreens, setReportAction, setButtonPerm, setAllButtons,
       grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot, resetFactory, clearTombstones,

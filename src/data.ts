@@ -18,8 +18,9 @@ export const SYSTEM = {
 export type AnyR = Record<string, any> & { id: string };
 
 export interface Account { code: string; name: string; en: string; level: number; parent: string; type: "أصول" | "خصوم" | "إيرادات" | "مصروفات"; posting: boolean; analytical?: boolean }
-export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string; subType?: string; partyKind?: "supplier" | "customer" | "cashbox"; party?: string; extRef?: string; clearAccount?: string }
-export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number }
+/* سير حالة المستند: مسودة ← معتمد ← مرحّل ← ملغي */
+export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مسودة" | "معتمد" | "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string; subType?: string; partyKind?: "supplier" | "customer" | "cashbox"; party?: string; extRef?: string; clearAccount?: string; approvedBy?: string; postedBy?: string }
+export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مسودة" | "معتمدة" | "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number; approvedBy?: string; postedBy?: string }
 export interface JournalLine { account: string; debit: number; credit: number; currency: string; rate: number; analytical?: string; costCenter?: string }
 export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة"; source?: string }
 
@@ -307,9 +308,9 @@ export const MODULE_SCREENS: Record<string, { label: string; screens: { id: stri
   sal: { label: "المبيعات والعملاء", screens: [{ id: "base", label: "إدارة العملاء والتصنيفات" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المبيعات" }, { id: "ret", label: "مرتجعات المبيعات" }] },
   pos: { label: "نقاط البيع", screens: [{ id: "retail", label: "نمط متاجر التجزئة (باركود وسلة)" }, { id: "rest", label: "نمط المطاعم (الطاولات)" }, { id: "shifts", label: "ورديات الكاشير" }] },
   gl: { label: "الحسابات العامة", screens: [{ id: "base", label: "الأدلة والفترات والعملات (10 شاشات)" }, { id: "docs", label: "القيود والسندات المالية (5 أنواع)" }, { id: "rep", label: "التقارير المالية (4 تقارير)" }] },
-  hr: { label: "الموارد البشرية", screens: [{ id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
+  hr: { label: "الموارد البشرية", screens: [{ id: "org", label: "الهيكل الإداري والتنظيمي" }, { id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
   ast: { label: "الأصول الثابتة", screens: [{ id: "reg", label: "سجل الأصول" }, { id: "dep", label: "الإهلاك بالقسط الثابت" }, { id: "rep", label: "تقارير الأصول" }] },
-  adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "prefs", label: "التفضيلات" }] },
+  adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "appr", label: "الاعتمادات وسير حالة المستندات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "co", label: "الشركات والفروع" }, { id: "prefs", label: "التفضيلات" }] },
   help: { label: "المساعدة", screens: [{ id: "guide", label: "دليل المستخدم ووثائق المطورين" }] },
 };
 
@@ -338,7 +339,8 @@ export const REPORTS: { id: string; name: string; module: string }[] = [
   { id: "rep-ast-dep", name: "جدول الإهلاك السنوي", module: "ast" },
 ];
 export const REPORT_ACTIONS = ["عرض", "Excel", "PDF", "طباعة"];
-export const BUTTON_ACTIONS = ["إضافة", "تعديل", "حذف", "ترحيل", "اعتماد", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد", "إقفال"];
+/* الصلاحيات الرسمية الثمانية على مستوى الأزرار + إلغاء بأثر عكسي */
+export const BUTTON_ACTIONS = ["إضافة", "تعديل", "بحث", "حذف", "استعراض", "طباعة", "اعتماد", "ترحيل", "إلغاء"];
 
 export const SIDEBAR_BGS = [
   { id: "ocean", name: "أعماق المحيط", style: "linear-gradient(168deg,#05263d,#0a5c8f)" },

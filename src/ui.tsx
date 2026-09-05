@@ -221,6 +221,9 @@ export function Modal({ open, onClose, title, icon, children, subtitle, footer }
 /* ═══════════════ شارات الحالة ═══════════════ */
 export function Chip({ s }: { s: string }) {
   const map: Record<string, string> = {
+    "مسودة": "bg-[color-mix(in_srgb,var(--mute)_16%,transparent)] text-[var(--soft)]",
+    "معتمد": "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]",
+    "معتمدة": "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]",
     "مرحّل": "bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)]",
     "مرحّلة": "bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-[var(--good)]",
     "ملغي": "bg-[color-mix(in_srgb,var(--bad)_13%,transparent)] text-[var(--bad)]",

@@ -61,7 +61,7 @@ export const DOC_ACTIONS: DocActionDef[] = [
   { id: "approve", label: "اعتماد", perm: "اعتماد", icon: "shield", tone: "var(--warn)" },
   { id: "unapprove", label: "إلغاء الاعتماد", perm: "اعتماد", icon: "unlock", tone: "var(--soft)" },
   { id: "post", label: "ترحيل", perm: "ترحيل", icon: "check", tone: "var(--good)" },
-  { id: "void", label: "إلغاء", perm: "إلغاء/تراجع", icon: "undo", tone: "var(--bad)" },
+  { id: "void", label: "إلغاء", perm: "إلغاء", icon: "undo", tone: "var(--bad)" },
 ];
 
 interface AppLike { can: (module: string, action: string) => boolean; toast: (msg: string, kind?: "ok" | "err" | "info") => void }

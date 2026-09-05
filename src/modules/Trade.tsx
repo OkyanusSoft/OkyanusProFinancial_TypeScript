@@ -3,6 +3,7 @@ import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart, FormSection } from "../ui";
 import { Directory, ActionBtn, type DirConf } from "../crud";
 import { printTradeDoc, printDirectory, tafqit, setReportCfg } from "../print";
+import { DocActions, StatusSteps } from "../flow";
 import type { Invoice } from "../data";
 
 /* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
@@ -338,6 +339,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
   const app = useApp();
   const [show, setShow] = useState(false);
   const [view, setView] = useState<any>(null);
+  const [edit, setEdit] = useState<any>(null);
   const [payFor, setPayFor] = useState<any>(null);
   const [payAmt, setPayAmt] = useState(0);
   const [q, setQ] = useState("");
@@ -423,11 +425,18 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
                   </td>}
                   <td><Chip s={inv.status} />{credit && inv.status === "مرحّلة" && rem < 1 && <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] ms-1">مسددة ✓</span>}</td>
                   <td>
-                    <div className="flex flex-wrap gap-1 justify-start max-w-[260px]">
-                      <ActionBtn k="view" allowed={app.can(mod, "عرض")} onClick={() => setView(inv)} />
-                      <ActionBtn k="print" allowed={app.can(mod, "طباعة")} onClick={() => printInvoiceDoc(app, inv, kind)} title="طباعة الفاتورة (A4)" />
+                    <div className="flex flex-wrap items-center gap-1 justify-start max-w-[300px]">
+                      <DocActions app={app} module={mod} status={inv.status} on={{
+                        view: () => setView(inv),
+                        edit: () => setEdit(inv),
+                        del: () => app.deleteInvoice(kind, inv.id),
+                        print: () => printInvoiceDoc(app, inv, kind),
+                        approve: () => app.approveInvoice(kind, inv.id),
+                        unapprove: () => app.unapproveInvoice(kind, inv.id),
+                        post: () => app.postInvoice(kind, inv.id),
+                        void: () => app.voidInvoice(kind, inv.id),
+                      }} />
                       {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.62rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={12} /> سداد</button>}
-                      {inv.status !== "ملغاة" && !credit && <ActionBtn k="del" allowed={app.can(mod, "حذف")} onClick={() => app.voidInvoice(kind, inv.id)} title="إلغاء الفاتورة وعكس أثرها" />}
                     </div>
                   </td>
                 </tr>
@@ -438,6 +447,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
       </div></div>
 
       {show && <InvoiceBuilder kind={kind} onClose={() => setShow(false)} defaultCredit={credit} />}
+      {edit && <InvoiceBuilder key={edit.id} kind={kind} edit={edit} onClose={() => setEdit(null)} defaultCredit={credit} />}
 
       <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`} subtitle="عرض الفاتورة — البنود والضريبة مع الطباعة A4 والإلغاء"
         footer={view ? <>
