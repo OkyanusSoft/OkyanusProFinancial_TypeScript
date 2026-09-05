@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SYSTEM } from "./data";
 
@@ -77,33 +77,43 @@ export function I({ n, size = 18, className = "" }: { n: string; size?: number; 
 
 /* ═══════════════ علامة النظام — أيقونة مالية (عملة ذهبية بنمو صاعد) ═══════════════ */
 export function LogoMark({ size = 40, variant = "tile" }: { size?: number; variant?: "tile" | "glass" }) {
+  /* معرفات تدرج فريدة لكل نسخة — تفادي تضارب المعرفات عند رسم الأيقونة أكثر من مرة،
+     والألوان تتبع متغيرات النمط فتتغير الأيقونة مع كل ثيم تلقائياً */
+  const uid = useId().replace(/:/g, "");
+  const gTile = `lgm-tile-${uid}`;
+  const gCoin = `lgm-coin-${uid}`;
+  const glass = variant === "glass";
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
       <defs>
-        <linearGradient id="lgm-tile" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#38bdf8" /><stop offset="100%" stopColor="#0369a1" />
+        <linearGradient id={gTile} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--brand2)" />
+          <stop offset="100%" stopColor="var(--brand)" />
         </linearGradient>
-        <linearGradient id="lgm-coin" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#7dd3fc" /><stop offset="55%" stopColor="#0ea5e9" /><stop offset="100%" stopColor="#0284c7" />
+        <linearGradient id={gCoin} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={glass ? "var(--brand2)" : "var(--brand2)"} />
+          <stop offset="55%" stopColor={glass ? "var(--brand)" : "var(--brand)"} />
+          <stop offset="100%" stopColor={glass ? "color-mix(in srgb, var(--brand) 70%, #000)" : "color-mix(in srgb, var(--brand) 65%, #0b2b45)"} />
         </linearGradient>
       </defs>
-      {variant === "tile"
-        ? <rect width="48" height="48" rx="13" fill="url(#lgm-tile)" />
-        : <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />}
-      {/* العملة الزرقاء — ألوان الهوية */}
-      <circle cx="24" cy="24.5" r="13.6" fill="url(#lgm-coin)" />
-      <circle cx="24" cy="24.5" r="13.6" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="1.3" />
-      <circle cx="24" cy="24.5" r="10.8" fill="none" stroke="rgba(240,249,255,0.4)" strokeWidth="1" />
-      {/* أعمدة النمو الصاعد */}
-      <rect x="16.7" y="26" width="3.5" height="5.4" rx="1" fill="#f0f9ff" />
-      <rect x="22.3" y="22.4" width="3.5" height="9" rx="1" fill="#f0f9ff" />
-      <rect x="27.9" y="18.6" width="3.5" height="12.8" rx="1" fill="#f0f9ff" />
-      {/* سهم الصعود */}
-      <path d="M16.8 24.6 30.4 15.8" stroke="#e0f2fe" strokeWidth="1.9" fill="none" strokeLinecap="round" />
-      <path d="M26.5 15.4h4.4v4.4" stroke="#e0f2fe" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      {/* بريق */}
-      <path d="M38 8.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="#bae6fd" />
-      <circle cx="10.5" cy="38" r="1.4" fill="#e0f2fe" opacity="0.9" />
+      {/* البلاطة — بتدرج النمط الحالي */}
+      {glass
+        ? <rect width="48" height="48" rx="13" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
+        : <rect width="48" height="48" rx="13" fill={`url(#${gTile})`} />}
+      {/* العملة المالية */}
+      <circle cx="24" cy="24.5" r="13.6" fill={`url(#${gCoin})`} />
+      <circle cx="24" cy="24.5" r="13.6" fill="none" stroke={glass ? "rgba(255,255,255,0.55)" : "var(--brandink)"} strokeOpacity={glass ? 1 : 0.55} strokeWidth="1.3" />
+      <circle cx="24" cy="24.5" r="10.8" fill="none" stroke={glass ? "rgba(255,255,255,0.3)" : "var(--brandink)"} strokeOpacity={glass ? 1 : 0.35} strokeWidth="1" />
+      {/* أعمدة النمو الصاعد — بلون نص الهوية */}
+      <rect x="16.7" y="26" width="3.5" height="5.4" rx="1" fill={glass ? "var(--sideink)" : "var(--brandink)"} />
+      <rect x="22.3" y="22.4" width="3.5" height="9" rx="1" fill={glass ? "var(--sideink)" : "var(--brandink)"} />
+      <rect x="27.9" y="18.6" width="3.5" height="12.8" rx="1" fill={glass ? "var(--sideink)" : "var(--brandink)"} />
+      {/* سهم الصعود — بلون اللمسة المميزة للنمط */}
+      <path d="M16.8 24.6 30.4 15.8" stroke="var(--accent)" strokeWidth="1.9" fill="none" strokeLinecap="round" />
+      <path d="M26.5 15.4h4.4v4.4" stroke="var(--accent)" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* شرارة — بلون اللمسة المميزة */}
+      <path d="M38 8.6l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="var(--accent)" opacity="0.9" />
+      <circle cx="10.5" cy="38" r="1.4" fill={glass ? "var(--sideink)" : "var(--brandink)"} opacity="0.8" />
     </svg>
   );
 }
