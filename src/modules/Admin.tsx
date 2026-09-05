@@ -1733,10 +1733,10 @@ function BackupSection() {
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-[0.64rem] font-bold text-mute font-num">{b.date} • {b.size} • Gen #{b.gen}</span>
-                  <div className="flex gap-1">
-                    <button className="btn btn-ghost !p-1.5" title="استعادة وبث الجيل لكل الأجهزة" onClick={() => { app.reinitCentral(); app.toast(`استُعيدت ${b.name} وارتفع الجيل — انتشرت الاستعادة لكل الأجهزة تلقائياً`, "ok"); }}><I n="undo" size={13} /></button>
-                    <button className="btn btn-ghost !p-1.5" title="تنزيل" onClick={takeSnapshot}><I n="down" size={13} /></button>
-                    <button className="btn btn-danger !p-1.5" title="حذف" onClick={() => { setBackups(backups.filter((x) => x.id !== b.id)); app.toast("حُذف سجل النسخة", "err"); }}><I n="trash" size={13} /></button>
+                  <div className="act-row">
+                    <button className="act-ico" style={{ ["--tone" as any]: "var(--brand)" }} title="استعادة وبث الجيل لكل الأجهزة" aria-label="استعادة" onClick={() => { app.reinitCentral(); app.toast(`استُعيدت ${b.name} وارتفع الجيل — انتشرت الاستعادة لكل الأجهزة تلقائياً`, "ok"); }}><I n="undo" size={14} /></button>
+                    <button className="act-ico" style={{ ["--tone" as any]: "var(--accent)" }} title="تنزيل" aria-label="تنزيل" onClick={takeSnapshot}><I n="down" size={14} /></button>
+                    <button className="act-ico" style={{ ["--tone" as any]: "var(--bad)" }} title="حذف" aria-label="حذف" onClick={() => { setBackups(backups.filter((x) => x.id !== b.id)); app.toast("حُذف سجل النسخة", "err"); }}><I n="trash" size={14} /></button>
                   </div>
                 </div>
               </div>

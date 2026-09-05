@@ -15,20 +15,22 @@ const ACT_META: Record<ActKey, { icon: string; label: string; perm: string; cls:
   del: { icon: "trash", label: "حذف", perm: "حذف", cls: "border-line text-soft hover:text-[var(--bad)] hover:border-[color-mix(in_srgb,var(--bad)_45%,transparent)]", on: "" },
 };
 
-export function ActionBtn({ k, onClick, allowed = true, lockedTitle, title }: {
-  k: ActKey; onClick: () => void; allowed?: boolean; lockedTitle?: string; title?: string;
+export function ActionBtn({ k, onClick, allowed = true, lockedTitle, title, strong }: {
+  k: ActKey; onClick: () => void; allowed?: boolean; lockedTitle?: string; title?: string; strong?: boolean;
 }) {
   const m = ACT_META[k];
+  const tone = k === "view" ? "var(--brand)" : k === "edit" ? "var(--accent)" : k === "del" ? "var(--bad)"
+    : k === "post" ? "var(--good)" : k === "approve" ? "var(--warn)" : "var(--brand)";
   if (!allowed) return (
-    <button disabled title={lockedTitle || `صلاحية «${m.perm}» غير مخوّلة لدورك`}
-      className="flex items-center gap-1 px-2 py-1 rounded-lg border border-line/60 text-[0.62rem] font-bold text-mute/60 cursor-not-allowed bg-panel/40">
-      <I n="lock" size={11} /> {m.label}
+    <button disabled title={lockedTitle || `صلاحية «${m.perm}» غير مخوّلة لدورك`} aria-label={m.label}
+      className="act-ico act-ico-locked" style={{ ["--tone" as any]: "var(--mute)" }}>
+      <I n="lock" size={13} />
     </button>
   );
   return (
-    <button onClick={onClick} title={title || m.label}
-      className={`flex items-center gap-1 px-2 py-1 rounded-lg border bg-surface text-[0.62rem] font-bold transition-all hover:scale-[1.04] active:scale-95 ${m.cls}`}>
-      <I n={m.icon} size={12} /> {m.label}
+    <button onClick={onClick} title={title || m.label} aria-label={m.label}
+      className={`act-ico ${strong ? "act-ico-strong" : ""}`} style={{ ["--tone" as any]: tone }}>
+      <I n={m.icon} size={14} />
     </button>
   );
 }
@@ -252,7 +254,7 @@ export function Directory({ conf }: { conf: DirConf }) {
         {filtered.length === 0 ? <Empty msg="لا توجد سجلات مطابقة — أضف سجلاً جديداً أو استورد البيانات" /> : (
           <div className="overflow-x-auto">
             <table className="tbl min-w-[760px]">
-              <thead><tr>{conf.cols.map((c) => <th key={c.k} style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th style={{ width: "230px" }}>الإجراءات</th></tr></thead>
+              <thead><tr>{conf.cols.map((c) => <th key={c.k} style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th style={{ width: "150px" }}>الإجراءات</th></tr></thead>
               <tbody>
                 {filtered.map((r) => (
                   <tr key={r.id}>
@@ -260,7 +262,7 @@ export function Directory({ conf }: { conf: DirConf }) {
                       <td key={c.k} className={c.num ? "font-num" : ""}>{c.render ? c.render(r, app) : String(r[c.k] ?? "—")}</td>
                     ))}
                     <td>
-                      <div className="flex flex-wrap gap-1 justify-start max-w-[240px]">
+                      <div className="act-row">
                         <ActionBtn k="view" allowed={allowed("عرض")} onClick={() => setView(r)} />
                         <ActionBtn k="edit" allowed={allowed("تعديل")} onClick={() => openEdit(r)} />
                         <ActionBtn k="print" allowed={allowed("طباعة")} onClick={() => printCard(r)} title="طباعة بطاقة السجل" />
@@ -442,7 +444,7 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
         {filtered.length === 0 ? <Empty msg="لا توجد سندات — أنشئ سنداً جديداً برقم يُولّد تلقائياً" /> : (
           <div className="overflow-x-auto">
             <table className="tbl min-w-[760px]">
-              <thead><tr>{cols.map((c) => <th key={c.k}>{c.label}</th>)}<th style={{ width: "280px" }}>الإجراءات</th></tr></thead>
+              <thead><tr>{cols.map((c) => <th key={c.k}>{c.label}</th>)}<th style={{ width: "215px" }}>الإجراءات</th></tr></thead>
               <tbody>
                 {filtered.map((d) => {
                   const dead = d.status === "ملغي" || d.status === "ملغاة" || d.status === "مرفوض";
@@ -451,7 +453,7 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
                       {cols.map((c) => <td key={c.k} className={c.num ? "font-num" : ""}>{c.render ? c.render(d, app) : String(d[c.k] ?? "—")}</td>)}
                       <td>
                         {renderActions ? renderActions(d) : (
-                          <div className="flex flex-wrap gap-1 justify-start max-w-[280px]">
+                          <div className="act-row">
                             {onView && <ActionBtn k="view" allowed={allowed("عرض")} onClick={() => onView(d)} />}
                             {onPrint && <ActionBtn k="print" allowed={allowed("طباعة")} onClick={() => onPrint(d)} title="طباعة السند (A4)" />}
                             {!dead && <ActionBtn k="del" allowed={allowed("حذف")} onClick={() => voidDoc(d)} title="إلغاء السند وعكس أثره" />}

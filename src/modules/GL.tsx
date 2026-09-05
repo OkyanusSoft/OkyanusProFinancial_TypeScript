@@ -631,13 +631,13 @@ function JEScreen({ kind }: { kind: string }) {
                 </div>
                 <div className="flex gap-1.5 shrink-0 items-center">
                   {isReq ? (
-                    <>
-                      <button className="btn btn-ghost !p-1.5" title="طباعة" onClick={() => printJournal(app, j)}><I n="print" size={15} /></button>
+                    <div className="act-row">
+                      <button className="act-ico" style={{ ["--tone" as any]: "var(--brand)" }} title="طباعة" aria-label="طباعة" onClick={() => printJournal(app, j)}><I n="print" size={14} /></button>
                       {j.status === "بانتظار الموافقة" && <>
-                        <button className="btn btn-brand !py-1.5 !text-[0.72rem]" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /> اعتماد وترحيل</button>
-                        <button className="btn btn-danger !py-1.5 !text-[0.72rem]" onClick={() => app.voidJournal(j.id)}>رفض</button>
+                        <button className="act-ico act-ico-strong" style={{ ["--tone" as any]: "var(--good)" }} title="اعتماد وترحيل" aria-label="اعتماد وترحيل" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /></button>
+                        <button className="act-ico" style={{ ["--tone" as any]: "var(--bad)" }} title="رفض" aria-label="رفض" onClick={() => app.voidJournal(j.id)}><I n="x" size={14} /></button>
                       </>}
-                    </>
+                    </div>
                   ) : (
                     <DocActions app={app} module="gl" status={j.status}
                       onView={() => setView(j)}

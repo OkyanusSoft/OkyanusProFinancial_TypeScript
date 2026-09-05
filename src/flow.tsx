@@ -49,21 +49,36 @@ interface AppLike {
   toast: (msg: string, kind?: "ok" | "err" | "info") => void;
 }
 
-/* ═══════ زر إجراء منسّق — لبنة شريط الإجراءات ═══════ */
-function Chip({ icon, label, tone, on, lockedTitle, onClick, strong }: {
-  icon: string; label: string; tone: string; on: boolean; lockedTitle?: string; onClick: () => void; strong?: boolean;
+/* ═══════ زر إجراء منسّق — أيقونة مربعة صغيرة، صف واحد ═══════ */
+function Chip({ icon, label, tone, on, lockedTitle, onClick, strong, text }: {
+  icon: string; label: string; tone: string; on: boolean; lockedTitle?: string; onClick: () => void; strong?: boolean; text?: string;
 }) {
+  /* وضع «تأكيد الحذف» المسلّح يعرض نصاً قصيراً للتنبيه، وبقية الحالات أيقونة فقط */
+  if (text) {
+    return (
+      <button
+        onClick={() => { if (on) onClick(); }}
+        disabled={!on}
+        title={on ? label : lockedTitle}
+        aria-label={label}
+        className={`act-chip act-strong ${on ? "" : "act-locked"}`}
+        style={on ? { ["--tone" as any]: tone } : undefined}
+      >
+        <I n={icon} size={12} />
+        <span>{text}</span>
+      </button>
+    );
+  }
   return (
     <button
       onClick={() => { if (on) onClick(); }}
       disabled={!on}
       title={on ? label : lockedTitle}
       aria-label={label}
-      className={`act-chip ${on ? "" : "act-locked"} ${strong ? "act-strong" : ""}`}
+      className={`act-ico ${strong ? "act-ico-strong" : ""} ${on ? "" : "act-ico-locked"}`}
       style={on ? { ["--tone" as any]: tone } : undefined}
     >
-      <I n={on ? icon : "lock"} size={12} />
-      <span>{label}</span>
+      <I n={on ? icon : "lock"} size={14} />
     </button>
   );
 }
@@ -93,12 +108,12 @@ export function DocActions({ app, module, status, onView, onEdit, onDelete, onPo
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="act-row">
       {onView && <Chip icon="eye" label="استعراض" tone="var(--brand)" on={can("استعراض")} lockedTitle="صلاحية «استعراض» غير مخوّلة" onClick={onView} />}
 
       {c === "draft" && onEdit && <Chip icon="edit" label="تعديل" tone="var(--accent)" on={can("تعديل")} lockedTitle="صلاحية «تعديل» غير مخوّلة" onClick={onEdit} />}
       {c === "draft" && onDelete && (
-        <Chip icon={armDel ? "alert" : "trash"} label={armDel ? "تأكيد الحذف؟" : "حذف"} tone="var(--bad)" on={can("حذف")}
+        <Chip icon={armDel ? "alert" : "trash"} label={armDel ? "تأكيد الحذف؟" : "حذف"} text={armDel ? "تأكيد؟" : undefined} tone="var(--bad)" on={can("حذف")}
           lockedTitle="صلاحية «حذف» غير مخوّلة" onClick={handleDelete} strong={armDel} />
       )}
       {c === "draft" && onPost && <Chip icon="check" label="ترحيل" tone="var(--good)" on={can("ترحيل")} lockedTitle="صلاحية «ترحيل» غير مخوّلة" onClick={onPost} strong />}

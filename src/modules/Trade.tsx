@@ -224,7 +224,7 @@ function PurchaseRequests() {
                   <td className="font-num">{app.fmtN(r.est)}</td>
                   <td><Chip s={reqStatusChip(r)} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
                   <td>
-                    <div className="flex flex-wrap gap-1 justify-start max-w-[300px]">
+                    <div className="act-row">
                       <DocActions app={app} module="pur" status={r.status === "تم التحويل" ? "مرحّل" : r.status}
                         onView={() => setView(r)}
                         onEdit={r.status === "مسودة" ? () => openEdit(r) : undefined}
@@ -232,8 +232,9 @@ function PurchaseRequests() {
                         onPost={r.status === "مسودة" ? () => app.setRequestStatus(r.id, "معتمد") : undefined}
                         onPrint={() => printRequestDoc(app, r)} />
                       {r.status === "معتمد" && (
-                        <button className="act-chip act-strong" style={{ ["--tone" as any]: "var(--brand)" }} onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }}>
-                          <I n="check" size={12} /><span>تحويل لفاتورة</span>
+                        <button className="act-ico act-ico-strong" style={{ ["--tone" as any]: "var(--brand)" }} title="تحويل إلى فاتورة مشتريات" aria-label="تحويل لفاتورة"
+                          onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }}>
+                          <I n="swap" size={14} />
                         </button>
                       )}
                     </div>
@@ -315,15 +316,16 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
                 <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(q.total)}</td>
                 <td><Chip s={q.status} /></td>
                 <td>
-                  <div className="flex flex-wrap gap-1 justify-start max-w-[300px]">
+                  <div className="act-row">
                     <DocActions app={app} module={isSale ? "sal" : "pur"} status={q.status === "ساري" ? "مرحّل" : q.status === "مسودة" ? "مسودة" : q.status}
                       onView={() => printQuoteDoc(app, q, partners, isSale)}
                       onDelete={q.status === "مسودة" ? () => app.deleteQuote(q.id) : undefined}
                       onPost={q.status === "مسودة" ? () => app.setQuoteStatus(q.id, "ساري") : undefined}
                       onPrint={() => printQuoteDoc(app, q, partners, isSale)} />
                     {q.status === "ساري" && isSale && (
-                      <button className="act-chip act-strong" style={{ ["--tone" as any]: "var(--good)" }} onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }}>
-                        <I n="check" size={12} /><span>قبول وتحويل</span>
+                      <button className="act-ico act-ico-strong" style={{ ["--tone" as any]: "var(--good)" }} title="قبول وتحويل إلى فاتورة" aria-label="قبول وتحويل"
+                        onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }}>
+                        <I n="check" size={14} />
                       </button>
                     )}
                   </div>
@@ -496,7 +498,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
                         onPost={() => app.postInvoice(kind, inv.id)}
                         onUnpost={() => app.unpostInvoice(kind, inv.id)}
                         onPrint={() => printInvoiceDoc(app, inv, kind)} />
-                      {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.62rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={12} /> سداد</button>}
+                      {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="act-ico act-ico-strong" style={{ ["--tone" as any]: "var(--accent)" }} title="تسجيل سداد" aria-label="سداد" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={14} /></button>}
                     </div>
                   </td>
                 </tr>

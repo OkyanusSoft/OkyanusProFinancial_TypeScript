@@ -75,7 +75,7 @@ export default function Assets() {
                     <td className="font-num font-bold text-[var(--accent)]">{app.fmtN(dep(a))}</td>
                     <td className="font-num text-mute">{a.purchase}</td>
                     <td><Chip s={a.status} /></td>
-                    <td><button className="btn btn-danger !p-1.5" title="استبعاد الأصل" onClick={() => { app.setAssets(app.assets.map((x) => x.id === a.id ? { ...x, status: "مستبعد" } : x)); app.toast(`استُبعد الأصل «${a.name}» من الخدمة`, "info"); }}><I n="trash" size={14} /></button></td>
+                    <td><div className="act-row"><button className="act-ico" style={{ ["--tone" as any]: "var(--bad)" }} title="استبعاد الأصل" aria-label="استبعاد" onClick={() => { app.setAssets(app.assets.map((x) => x.id === a.id ? { ...x, status: "مستبعد" } : x)); app.toast(`استُبعد الأصل «${a.name}» من الخدمة`, "info"); }}><I n="trash" size={14} /></button></div></td>
                   </tr>
                 ))}
               </tbody>
