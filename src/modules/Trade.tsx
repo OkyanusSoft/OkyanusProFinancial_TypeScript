@@ -426,16 +426,13 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
                   <td><Chip s={inv.status} />{credit && inv.status === "مرحّلة" && rem < 1 && <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] ms-1">مسددة ✓</span>}</td>
                   <td>
                     <div className="flex flex-wrap items-center gap-1 justify-start max-w-[300px]">
-                      <DocActions app={app} module={mod} status={inv.status} on={{
-                        view: () => setView(inv),
-                        edit: () => setEdit(inv),
-                        del: () => app.deleteInvoice(kind, inv.id),
-                        print: () => printInvoiceDoc(app, inv, kind),
-                        approve: () => app.approveInvoice(kind, inv.id),
-                        unapprove: () => app.unapproveInvoice(kind, inv.id),
-                        post: () => app.postInvoice(kind, inv.id),
-                        void: () => app.voidInvoice(kind, inv.id),
-                      }} />
+                      <DocActions app={app} module={mod} status={inv.status}
+                        onView={() => setView(inv)}
+                        onEdit={() => setEdit(inv)}
+                        onDelete={() => app.deleteInvoice(kind, inv.id)}
+                        onPost={() => app.postInvoice(kind, inv.id)}
+                        onUnpost={() => app.unpostInvoice(kind, inv.id)}
+                        onPrint={() => printInvoiceDoc(app, inv, kind)} />
                       {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.62rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={12} /> سداد</button>}
                     </div>
                   </td>
@@ -515,11 +512,15 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
 }
 
 /* ═══════════ منشئ الفواتير مع مفتاح نقدي/آجل ═══════════ */
-function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean }) {
+function InvoiceBuilder({ kind, onClose, defaultCredit, edit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean; edit?: any }) {
   const app = useApp();
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
-  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, note: "", lines: [] as { item: string; qty: number; price: number; disc: number }[] });
-  const rate = (app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1;
+  const [s, setS] = useState(edit ? {
+    partner: edit.partner || "", date: edit.date || "2026-03-29", payType: (edit.payType || "نقدي") as "نقدي" | "آجل",
+    currency: edit.currency || "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0,
+    note: edit.note || "", lines: (edit.lines || []) as { item: string; qty: number; price: number; disc: number }[],
+  } : { partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, note: "", lines: [] as { item: string; qty: number; price: number; disc: number }[] });
+  const rate = edit ? (edit.rate || 1) : ((app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1);
   const it: any = app.db.items.find((i: any) => i.id === s.item);
   const lineTotal = (l: any) => l.qty * l.price * (1 - l.disc / 100);
   const sub = s.lines.reduce((a, l) => a + lineTotal(l), 0);
@@ -529,16 +530,23 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   const willExceed = kind === "sales" && s.payType === "آجل" && cust?.creditLimit && cust.balance + total * rate > cust.creditLimit;
   /* رقم الفاتورة يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
   const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
-  const [no, setNo] = useState<string | null>(null);
+  const [no, setNo] = useState<string | null>(edit?.no || null);
+  const invNo = no || app.nextNo(prefix);
 
   const addLine = () => {
     if (s.qty <= 0) { app.toast("الكمية يجب أن تكون أكبر من صفر", "err"); return; }
     setS({ ...s, lines: [...s.lines, { item: s.item, qty: s.qty, price: s.price || (kind === "purchases" ? it?.cost || 0 : it?.price || 0), disc: s.disc }], qty: 10, disc: 0 });
   };
+  const buildInv = (status: string) => ({ id: invNo, no: invNo, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: edit?.costCenter || "CC-01", status, vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
   const save = () => {
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
-    const n = no || app.nextNo(prefix);
-    const res = app.addInvoice(kind, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
+    const res = app.addInvoice(kind, buildInv("مرحّلة") as Invoice);
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) onClose();
+  };
+  const saveDraft = () => {
+    if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
+    const res = edit ? app.updateInvoice(kind, buildInv("مسودة") as Invoice) : app.saveDraftInvoice(kind, buildInv("مسودة") as Invoice);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -546,16 +554,16 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
   const printFinal = () => {
     if (s.lines.length === 0) { app.toast("أضف بنداً واحداً على الأقل قبل الطباعة", "err"); return; }
-    const n = no || app.nextNo(prefix);
-    setNo(n);
-    printInvoiceDoc(app, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined }, kind);
+    setNo(invNo);
+    printInvoiceDoc(app, buildInv("مرحّلة"), kind);
   };
 
   return (
-    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري"
+    <Modal open onClose={onClose} wide icon="receipt" title={edit ? `تعديل الفاتورة ${edit.no}` : (kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات")} subtitle="سداد صريح نقدي أو آجل — الحفظ كمسودة لا يؤثر على الأرصدة حتى الترحيل"
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-ghost !text-[var(--accent)] !border-[color-mix(in_srgb,var(--accent)_40%,transparent)]" onClick={saveDraft}><I n="save" size={15} /> حفظ كمسودة</button>
         <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> حفظ وترحيل الفاتورة</button>
       </>}>
       <FormSection n="أولاً" icon="file" title="رأس الفاتورة" hint="العميل أو المورد وطريقة السداد والعملة">

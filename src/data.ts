@@ -22,7 +22,7 @@ export interface Account { code: string; name: string; en: string; level: number
 export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مسودة" | "معتمد" | "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string; subType?: string; partyKind?: "supplier" | "customer" | "cashbox"; party?: string; extRef?: string; clearAccount?: string; approvedBy?: string; postedBy?: string }
 export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مسودة" | "معتمدة" | "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number; approvedBy?: string; postedBy?: string }
 export interface JournalLine { account: string; debit: number; credit: number; currency: string; rate: number; analytical?: string; costCenter?: string }
-export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة"; source?: string }
+export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة" | "مسودة"; source?: string }
 
 /* ── دليل الحسابات: 5 مستويات (نمط يمين سوفت التجاري) ──
    1-الأصول  2-الخصوم (تشمل حقوق الملكية)  3-المصروفات  4-الإيرادات */
@@ -340,7 +340,7 @@ export const REPORTS: { id: string; name: string; module: string }[] = [
 ];
 export const REPORT_ACTIONS = ["عرض", "Excel", "PDF", "طباعة"];
 /* الصلاحيات الرسمية الثمانية على مستوى الأزرار + إلغاء بأثر عكسي */
-export const BUTTON_ACTIONS = ["إضافة", "تعديل", "بحث", "حذف", "استعراض", "طباعة", "اعتماد", "ترحيل", "إلغاء"];
+export const BUTTON_ACTIONS = ["إضافة", "تعديل", "بحث", "حذف", "استعراض", "طباعة", "اعتماد", "ترحيل", "إلغاء ترحيل", "إلغاء"];
 
 export const SIDEBAR_BGS = [
   { id: "ocean", name: "أعماق المحيط", style: "linear-gradient(168deg,#05263d,#0a5c8f)" },

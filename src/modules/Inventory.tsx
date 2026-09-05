@@ -231,16 +231,13 @@ function MoveScreen({ kind }: { kind: string }) {
       <DocList docs={docs} title={meta.full} desc={meta.desc} icon={meta.icon} cols={cols} module="inv"
         onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} onPrint={(d) => printInvDoc(app, d, meta.full)}
         renderActions={(d) => (
-          <DocActions app={app} module="inv" status={d.status} on={{
-            view: () => setView(d),
-            edit: () => setEdit(d),
-            del: () => app.deleteInvDoc(d.id),
-            print: () => printInvDoc(app, d, meta.full),
-            approve: () => app.approveInvDoc(d.id),
-            unapprove: () => app.unapproveInvDoc(d.id),
-            post: () => app.postInvDoc(d.id),
-            void: () => app.voidInvDoc(d.id),
-          }} />
+          <DocActions app={app} module="inv" status={d.status}
+            onView={() => setView(d)}
+            onEdit={() => setEdit(d)}
+            onDelete={() => app.deleteInvDoc(d.id)}
+            onPost={() => app.postInvDoc(d.id)}
+            onUnpost={() => app.unpostInvDoc(d.id)}
+            onPrint={() => printInvDoc(app, d, meta.full)} />
         )} />
 
       {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
@@ -420,8 +417,8 @@ function DocBuilder({ kind, onClose, edit }: { kind: string; onClose: () => void
   return (
     <Modal open onClose={onClose} wide icon={meta.icon}
       title={edit ? `تعديل ${meta.full} — ${edit.ref}` : `إنشاء ${meta.full} — رقم يُولّد تلقائياً`}
-      subtitle={edit ? "تعديل المسودة — الترحيل متاح بعد الاعتماد" : "سند مخزني — يُرحّل الكميات فوراً ويولّد قيداً محاسبياً متوازناً في دفتر الأستاذ"}>
-      {edit && <div className="mb-4 flex items-center gap-2"><StatusSteps status={edit.status} /><span className="text-[0.68rem] font-bold text-mute">— عدّل ثم اعتمد ورحّل</span></div>}
+      subtitle={edit ? "تعديل المسودة — لا أثر على الأرصدة حتى الترحيل" : "سند مخزني — الحفظ كمسودة لا يؤثر على الأرصدة حتى الترحيل"}>
+      {edit && <div className="mb-4 flex items-center gap-2"><StatusSteps status={edit.status} /><span className="text-[0.68rem] font-bold text-mute">— عدّل ثم رحّل من القائمة</span></div>}
       <FormSection n="أولاً" icon="file" title="رأس المستند" hint="البيانات العامة للسند">
       <div className="grid md:grid-cols-4 gap-3 mb-3">
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>

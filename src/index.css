@@ -289,6 +289,26 @@ html[data-theme="maroon"] input[type="date"] { color-scheme: dark; }
 .btn-danger { background: color-mix(in srgb, var(--bad) 11%, transparent); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 28%, transparent); }
 .btn-danger:hover { background: color-mix(in srgb, var(--bad) 18%, transparent); }
 
+/* ── أزرار إجراءات المستند (رقائق ملوّنة منسّقة) ── */
+.act-chip {
+  --tone: var(--brand);
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.24rem 0.55rem; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent);
+  background: color-mix(in srgb, var(--tone) 9%, transparent);
+  color: var(--tone);
+  font-family: "Tajawal", sans-serif; font-weight: 700; font-size: 0.62rem; line-height: 1.4;
+  cursor: pointer; white-space: nowrap;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.act-chip svg { flex: none; }
+.act-chip:hover { background: color-mix(in srgb, var(--tone) 17%, transparent); border-color: color-mix(in srgb, var(--tone) 55%, transparent); transform: translateY(-1px); box-shadow: 0 3px 10px -4px color-mix(in srgb, var(--tone) 45%, transparent); }
+.act-chip:active { transform: scale(0.96); }
+.act-chip.act-strong { background: var(--tone); color: #fff; border-color: transparent; box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--tone) 60%, transparent); }
+.act-chip.act-strong:hover { filter: brightness(1.08); }
+.act-chip.act-locked { background: color-mix(in srgb, var(--mute) 8%, transparent); border-color: color-mix(in srgb, var(--mute) 25%, transparent); color: color-mix(in srgb, var(--mute) 75%, transparent); cursor: not-allowed; }
+.act-chip.act-locked:hover { transform: none; box-shadow: none; }
+
 /* ── الحقول ── */
 .input, .select {
   width: 100%; padding: 0.55rem 0.8rem; border-radius: 10px;

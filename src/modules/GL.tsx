@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Empty, Reveal, FormSection } from "../ui";
+import { DocActions, StatusChip } from "../flow";
 import { Directory, type DirConf } from "../crud";
 import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
@@ -137,7 +138,7 @@ function PeriodsScreen({ close }: { close: boolean }) {
           <thead><tr><th>الفترة</th><th>المعرف</th><th>الحالة</th><th>تاريخ الإقفال</th><th>القيود المرحّلة</th><th>{close ? "قرار الإقفال" : "حماية الكتابة"}</th></tr></thead>
           <tbody>
             {periods.map((p: any) => {
-              const cnt = (app.db.journals as any as Journal[]).filter((j) => j.date.startsWith(p.id) && j.status !== "ملغي").length;
+              const cnt = (app.db.journals as any as Journal[]).filter((j) => j.date.startsWith(p.id) && j.status === "مرحّل").length;
               return (
                 <tr key={p.id}>
                   <td className="font-bold">{p.label}</td>
@@ -278,7 +279,7 @@ function CoaScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const balances = useMemo(() => {
     const map: Record<string, { dr: number; cr: number }> = {};
-    (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").forEach((j) =>
+    (app.db.journals as any as Journal[]).filter((j) => j.status === "مرحّل").forEach((j) =>
       j.lines.forEach((l) => { map[l.account] = map[l.account] || { dr: 0, cr: 0 }; map[l.account].dr += l.debit * l.rate; map[l.account].cr += l.credit * l.rate; })
     );
     return map;
@@ -565,6 +566,8 @@ function JEScreen({ kind }: { kind: string }) {
   const [show, setShow] = useState(false);
   const kindMap: Record<string, string> = { open: "افتتاحي", req: "طلب", je: "يومية", pv: "صرف", rv: "قبض" };
   const list = (app.db.journals as any as Journal[]).filter((j) => j.kind === kindMap[kind]).reverse();
+  const [editJe, setEditJe] = useState<any>(null);
+  const isReq = kind === "req";
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -599,13 +602,24 @@ function JEScreen({ kind }: { kind: string }) {
                   <div className="text-[0.66rem] font-bold text-mute">قيمة القيد</div>
                   <div className="font-num font-bold text-lg text-[var(--brand)]">{app.fmtN(dr)} <span className="text-[0.66rem] text-mute">ر.ي</span></div>
                 </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <button className="btn btn-ghost !p-1.5" title="طباعة السند" onClick={() => printJournal(app, j)}><I n="print" size={15} /></button>
-                  {j.status === "بانتظار الموافقة" && <>
-                    <button className="btn btn-brand !py-1.5 !text-[0.72rem]" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /> اعتماد وترحيل</button>
-                    <button className="btn btn-danger !py-1.5 !text-[0.72rem]" onClick={() => app.voidJournal(j.id)}>رفض</button>
-                  </>}
-                  {j.status === "مرحّل" && j.kind !== "افتتاحي" && <button className="btn btn-danger !py-1.5" title="إلغاء القيد" onClick={() => app.voidJournal(j.id)}><I n="undo" size={14} /></button>}
+                <div className="flex gap-1.5 shrink-0 items-center">
+                  {isReq ? (
+                    <>
+                      <button className="btn btn-ghost !p-1.5" title="طباعة" onClick={() => printJournal(app, j)}><I n="print" size={15} /></button>
+                      {j.status === "بانتظار الموافقة" && <>
+                        <button className="btn btn-brand !py-1.5 !text-[0.72rem]" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /> اعتماد وترحيل</button>
+                        <button className="btn btn-danger !py-1.5 !text-[0.72rem]" onClick={() => app.voidJournal(j.id)}>رفض</button>
+                      </>}
+                    </>
+                  ) : (
+                    <DocActions app={app} module="gl" status={j.status}
+                      onView={() => printJournal(app, j)}
+                      onEdit={j.status === "مسودة" ? () => setEditJe(j) : undefined}
+                      onDelete={j.status === "مسودة" ? () => app.deleteJournal(j.id) : undefined}
+                      onPost={() => app.postJournal(j.id)}
+                      onUnpost={j.kind !== "افتتاحي" ? () => app.unpostJournal(j.id) : undefined}
+                      onPrint={() => printJournal(app, j)} />
+                  )}
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-line/70 grid gap-1.5">
@@ -626,6 +640,7 @@ function JEScreen({ kind }: { kind: string }) {
         {list.length === 0 && <div className="card"><Empty msg="لا توجد قيود من هذا النوع بعد" /></div>}
       </div>
       {show && (kind === "rv" || kind === "pv" ? <VoucherBuilder kind={kind} onClose={() => setShow(false)} /> : <JEBuilder kind={kind} onClose={() => setShow(false)} />)}
+      {editJe && <JEBuilder key={editJe.id} kind={kind} edit={editJe} onClose={() => setEditJe(null)} />}
     </div>
   );
 }
@@ -1027,7 +1042,7 @@ function GLReport({ kind }: { kind: string }) {
   const [gTo, setGTo] = useState("");
   const balances = useMemo(() => {
     const map: Record<string, { dr: number; cr: number }> = {};
-    (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").forEach((j) =>
+    (app.db.journals as any as Journal[]).filter((j) => j.status === "مرحّل").forEach((j) =>
       j.lines.forEach((l) => { map[l.account] = map[l.account] || { dr: 0, cr: 0 }; map[l.account].dr += l.debit * l.rate; map[l.account].cr += l.credit * l.rate; })
     );
     return map;
@@ -1036,7 +1051,7 @@ function GLReport({ kind }: { kind: string }) {
   const sumType = (t: string) => posting.filter((a) => a.type === t).reduce((s, a) => s + bal(a.code), 0);
   const totalDr = Object.values(balances).reduce((a, b) => a + b.dr, 0);
   const totalCr = Object.values(balances).reduce((a, b) => a + b.cr, 0);
-  const stmtLines = (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").flatMap((j) => j.lines.filter((l) => l.account === stmtAcc).map((l) => ({ ...l, no: j.no, date: j.date, desc: j.desc })));
+  const stmtLines = (app.db.journals as any as Journal[]).filter((j) => j.status === "مرحّل").flatMap((j) => j.lines.filter((l) => l.account === stmtAcc).map((l) => ({ ...l, no: j.no, date: j.date, desc: j.desc })));
 
   const titles: Record<string, [string, string, string]> = {
     stmt: ["تقرير كشف حساب", "كشف تفصيلي بحركات ورصيد أي حساب ترحيلي", "receipt"],
