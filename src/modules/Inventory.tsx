@@ -3,8 +3,8 @@ import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart, FormSection } from "../ui";
 import { Directory, DocList, type DirConf, type ColDef } from "../crud";
 import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
-import { DocActions, StatusSteps } from "../flow";
-import type { InvDoc } from "../data";
+import { DocActions, StatusSteps, ReadOnlyDoc, type DocViewData } from "../flow";
+import type { InvDoc, Journal } from "../data";
 
 export default function Inventory() {
   const app = useApp();
@@ -207,6 +207,42 @@ function MoveScreen({ kind }: { kind: string }) {
     d.partyKind === "customer" ? app.db.customers.find((c) => c.id === d.party) :
     d.partyKind === "cashbox" ? app.db.cashboxes.find((c) => c.id === d.party) : undefined;
 
+  /* تكييف سند المخزن إلى بيانات العرض للقراءة فقط — مع قيده المحاسبي المولّد */
+  const invDocView = (d: any): DocViewData => {
+    const p = partyOf(d);
+    const totalVal = d.lines.reduce((s: number, l: any) => s + Math.abs(l.qty * l.cost), 0);
+    const je = (app.db.journals as any as Journal[]).find((j) => j.desc.includes(d.ref) && j.status !== "ملغي");
+    return {
+      icon: meta.icon,
+      docTitle: meta.full,
+      no: d.ref,
+      date: app.fmtDate(d.date),
+      status: d.status,
+      user: d.user,
+      note: d.note,
+      meta: [
+        ["نوع السند", d.type],
+        ...(d.subType ? [["نوع الحركة", d.subType] as [string, any]] : []),
+        ["المخزن", whName(d.warehouse)],
+        ...(d.toWarehouse ? [["إلى مخزن", whName(d.toWarehouse)] as [string, any]] : []),
+        ...(p ? [["الطرف المقابل", `${d.partyKind === "supplier" ? "المورد" : d.partyKind === "customer" ? "العميل" : "الصندوق"}: ${p.name} (ح/ ${(p as any).account || "—"})`] as [string, any]] : []),
+        ...(d.clearAccount ? [["القيد المقابل", `${app.accounts.find((a) => a.code === d.clearAccount)?.name || d.clearAccount} (ح/ ${d.clearAccount})`] as [string, any]] : []),
+        ...(d.extRef ? [["مرجع خارجي", d.extRef] as [string, any]] : []),
+        ["عدد البنود", d.lines.length],
+      ] as [string, any][],
+      lineCols: ["الصنف", "الكمية", "التكلفة", "الإجمالي"],
+      lineRows: d.lines.map((l: any) => [
+        <b key="n">{itemName(l.item)}</b>,
+        <span key="q" className={`font-num font-bold ${l.qty < 0 ? "text-[var(--bad)]" : "text-[var(--good)]"}`}>{l.qty > 0 ? "+" : ""}{app.fmtN(l.qty)}</span>,
+        <span key="c" className="font-num">{app.fmtN(l.cost)}</span>,
+        <b key="t" className="font-num">{app.fmtN(Math.abs(l.qty * l.cost))}</b>,
+      ]) as any,
+      totals: [["إجمالي الكميات", app.fmtN(d.lines.reduce((s: number, l: any) => s + Math.abs(l.qty), 0))]],
+      grand: ["القيمة الإجمالية بالتكلفة", app.fmtN(totalVal) + " ر.ي"],
+      journalLines: je?.lines.map((l) => ({ account: l.account, name: app.accounts.find((a) => a.code === l.account)?.name, debit: l.debit, credit: l.credit })),
+    };
+  };
+
   const cols: ColDef[] = [
     { k: "ref", label: "رقم السند", render: (d) => <span className="font-num font-bold" dir="ltr">{d.ref}{d.extRef && <span className="block text-[0.6rem] text-mute">مرجع: {d.extRef}</span>}</span> },
     { k: "date", label: "التاريخ", num: true, render: (d, a) => a.fmtDate(d.date) },
@@ -243,49 +279,9 @@ function MoveScreen({ kind }: { kind: string }) {
       {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
       {edit && <DocBuilder key={edit.id} kind={kind} edit={edit} onClose={() => setEdit(null)} />}
 
-      <Modal open={!!view} onClose={() => setView(null)} wide icon={meta.icon} title={`تفاصيل السند ${view?.ref || ""}`} subtitle={`${meta.full} — عرض كامل البنود مع الطباعة والتراجع`}>
-        {view && (
-          <>
-            <div className="flex flex-wrap gap-2 mb-4">
-              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num" dir="ltr">{view.ref}</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)]">{view.type}</span>
-              {view.subType && <span className="chip bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)]">{view.subType}</span>}
-              {(() => { const p = view.partyKind === "supplier" ? app.db.suppliers.find((s) => s.id === view.party) : view.partyKind === "customer" ? app.db.customers.find((c) => c.id === view.party) : view.partyKind === "cashbox" ? app.db.cashboxes.find((c) => c.id === view.party) : undefined; return p ? <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)]">{view.partyKind === "supplier" ? "المورد" : view.partyKind === "customer" ? "العميل" : "الصندوق"}: {p.name} (ح/ {(p as any).account || "—"})</span> : null; })()}
-              {view.clearAccount && (() => { const ca = app.accounts.find((a) => a.code === view.clearAccount); return <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)]">القيد المقابل: {ca?.name || view.clearAccount} (ح/ {view.clearAccount})</span>; })()}
-              {view.extRef && <span className="chip bg-[color-mix(in_srgb,var(--mute)_12%,transparent)] text-[var(--soft)] font-num" dir="ltr">مرجع: {view.extRef}</span>}
-              <Chip s={view.status} />
-              <span className="text-[0.74rem] font-bold text-mute flex items-center gap-1"><I n="cal" size={13} /> {app.fmtDate(view.date)} • {view.user}</span>
-            </div>
-            <table className="tbl mb-3">
-              <thead><tr><th>الصنف</th><th>الكمية</th><th>التكلفة</th><th>الإجمالي</th></tr></thead>
-              <tbody>
-                {view.lines.map((l: any, i: number) => (
-                  <tr key={i}>
-                    <td className="font-bold">{itemName(l.item)}</td>
-                    <td className={`font-num font-bold ${l.qty < 0 ? "text-[var(--bad)]" : "text-[var(--good)]"}`}>{l.qty > 0 ? "+" : ""}{l.qty}</td>
-                    <td className="font-num">{app.fmtN(l.cost)}</td>
-                    <td className="font-num font-bold">{app.fmtN(l.qty * l.cost)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {view.note && (
-              <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] bg-[color-mix(in_srgb,var(--brand)_5%,var(--panel))] p-3.5">
-                <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--brand)] mb-1"><I n="file" size={13} /> الــبيــان</div>
-                <p className="text-[0.84rem] font-bold text-soft leading-6">{view.note}</p>
-              </div>
-            )}
-            <div className="flex flex-wrap justify-end gap-2 mt-4">
-              {view.status !== "ملغي" && app.can("inv", "حذف") && (
-                <button className="btn btn-danger" onClick={() => { app.voidInvDoc(view.id); setView(null); }}><I n="undo" size={15} /> التراجع عن السند وعكس الكميات</button>
-              )}
-              {app.can("inv", "طباعة") && (
-                <button className="btn btn-brand" onClick={() => printInvDoc(app, view, meta.full)}><I n="print" size={15} /> طباعة السند</button>
-              )}
-            </div>
-          </>
-        )}
-      </Modal>
+      {/* عرض السند للقراءة فقط — بلا أي تعديل */}
+      <ReadOnlyDoc open={!!view} onClose={() => setView(null)} d={view ? invDocView(view) : null} fmtN={app.fmtN}
+        onPrint={view && app.can("inv", "طباعة") ? () => printInvDoc(app, view, meta.full) : undefined} />
     </>
   );
 }

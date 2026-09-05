@@ -212,10 +212,10 @@ function SpecEntityScreen({ act, ent }: { act: ActivityDef; ent: SpecEntity }) {
                     ))}
                     {ent.statusField && <td><Chip s={String(r[ent.statusField])} /></td>}
                     <td>
-                      <div className="flex gap-1">
-                        <button className="btn btn-ghost !p-1.5" title="تعديل" onClick={() => { setForm({ ...r }); setIsNew(false); }}><I n="edit" size={14} /></button>
-                        {amount(r) > 0 && <button className="btn btn-ghost !p-1.5 !text-[var(--good)]" title="ترحيل القيمة للحسابات العامة" onClick={() => app.postSpecToGL(key, r, amount(r), ent.label)}><I n="book" size={14} /></button>}
-                        <button className="btn btn-danger !p-1.5" title="حذف" onClick={() => setDel(r)}><I n="trash" size={14} /></button>
+                      <div className="act-row">
+                        <button className="act-ico" style={{ ["--tone" as any]: "var(--accent)" }} title="تعديل" aria-label="تعديل" onClick={() => { setForm({ ...r }); setIsNew(false); }}><I n="edit" size={14} /></button>
+                        {amount(r) > 0 && <button className="act-ico" style={{ ["--tone" as any]: "var(--good)" }} title="ترحيل القيمة للحسابات العامة" aria-label="ترحيل" onClick={() => app.postSpecToGL(key, r, amount(r), ent.label)}><I n="book" size={14} /></button>}
+                        <button className="act-ico" style={{ ["--tone" as any]: "var(--bad)" }} title="حذف" aria-label="حذف" onClick={() => setDel(r)}><I n="trash" size={14} /></button>
                       </div>
                     </td>
                   </tr>

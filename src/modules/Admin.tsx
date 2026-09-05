@@ -1212,14 +1212,32 @@ function CompanyBranchesSection() {
   );
   return (
     <div className="space-y-5">
-      {/* بيانات الشركة */}
+      {/* سجل الشركات — قائمة شركات شاشة تسجيل الدخول */}
+      <Directory conf={{
+        coll: "companies", title: "سجل الشركات", icon: "bld", prefix: "CO", importKey: "companies",
+        desc: "الشركات المتاحة في حقل «الشركة» بشاشة تسجيل الدخول — إضافة/تعديل/حذف تنعكس فوراً على شاشة الدخول",
+        fields: [
+          { k: "code", label: "الكود", req: true, uniq: true },
+          { k: "name", label: "اسم الشركة (عربي)", req: true, uniq: true },
+          { k: "en", label: "الاسم اللاتيني" },
+          { k: "active", label: "الحالة", type: "select", req: true, opts: [{ v: "true", l: "نشطة — تظهر في شاشة الدخول" }, { v: "false", l: "موقوفة — مخفية" }] },
+        ],
+        cols: [
+          { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+          { k: "name", label: "الشركة", render: (r) => <b>{r.name}</b> },
+          { k: "en", label: "اللاتيني", render: (r) => <span className="font-num text-[0.74rem] text-mute" dir="ltr">{r.en || "—"}</span> },
+          { k: "active", label: "الحالة", render: (r) => (String(r.active) === "true" ? <Chip s="ساري" /> : <Chip s="منتهي" />) },
+        ],
+      }} />
+
+      {/* بيانات الشركة الافتراضية (الطباعة) */}
       <div className="card p-5 relative overflow-hidden">
         <span className="absolute top-0 inset-x-0 h-[3px]" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand))" }} />
         <div className="flex items-center gap-3 mb-4">
           <span className="w-10 h-10 rounded-xl grid place-items-center text-[var(--brandink)]" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="bld" size={19} /></span>
           <div>
-            <h3 className="font-display font-bold text-base leading-tight">بيانات الشركة</h3>
-            <p className="text-[0.7rem] font-medium text-mute mt-0.5">تُطبع في ترويسة كل المستندات والتقارير الرسمية</p>
+            <h3 className="font-display font-bold text-base leading-tight">بيانات الشركة الافتراضية</h3>
+            <p className="text-[0.7rem] font-medium text-mute mt-0.5">هوية الطباعة — تُطبع في ترويسة كل المستندات والتقارير الرسمية</p>
           </div>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1715,10 +1733,10 @@ function BackupSection() {
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-[0.64rem] font-bold text-mute font-num">{b.date} • {b.size} • Gen #{b.gen}</span>
-                  <div className="flex gap-1">
-                    <button className="btn btn-ghost !p-1.5" title="استعادة وبث الجيل لكل الأجهزة" onClick={() => { app.reinitCentral(); app.toast(`استُعيدت ${b.name} وارتفع الجيل — انتشرت الاستعادة لكل الأجهزة تلقائياً`, "ok"); }}><I n="undo" size={13} /></button>
-                    <button className="btn btn-ghost !p-1.5" title="تنزيل" onClick={takeSnapshot}><I n="down" size={13} /></button>
-                    <button className="btn btn-danger !p-1.5" title="حذف" onClick={() => { setBackups(backups.filter((x) => x.id !== b.id)); app.toast("حُذف سجل النسخة", "err"); }}><I n="trash" size={13} /></button>
+                  <div className="act-row">
+                    <button className="act-ico" style={{ ["--tone" as any]: "var(--brand)" }} title="استعادة وبث الجيل لكل الأجهزة" aria-label="استعادة" onClick={() => { app.reinitCentral(); app.toast(`استُعيدت ${b.name} وارتفع الجيل — انتشرت الاستعادة لكل الأجهزة تلقائياً`, "ok"); }}><I n="undo" size={14} /></button>
+                    <button className="act-ico" style={{ ["--tone" as any]: "var(--accent)" }} title="تنزيل" aria-label="تنزيل" onClick={takeSnapshot}><I n="down" size={14} /></button>
+                    <button className="act-ico" style={{ ["--tone" as any]: "var(--bad)" }} title="حذف" aria-label="حذف" onClick={() => { setBackups(backups.filter((x) => x.id !== b.id)); app.toast("حُذف سجل النسخة", "err"); }}><I n="trash" size={14} /></button>
                   </div>
                 </div>
               </div>
@@ -1807,25 +1825,37 @@ function PrefsScreen() {
               );
             })}
           </div>
-          <h4 className="font-display font-bold text-sm mt-5 mb-2.5">خلفية الشريط الجانبي</h4>
+          <h4 className="font-display font-bold text-sm mt-5 mb-2.5 flex items-center gap-2">خلفية الشريط الجانبي
+            <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] !text-[0.58rem] !py-0">{SIDEBAR_BGS.length} نمطاً</span></h4>
           <div className="grid grid-cols-3 gap-2.5">
-            {SIDEBAR_BGS.map((b) => (
-              <button key={b.id} onClick={() => app.setPrefs({ sidebarBg: b.id })}
-                className={`h-14 rounded-lg border-2 transition-all relative overflow-hidden ${pr.sidebarBg === b.id ? "border-[var(--brand)] scale-[1.03]" : "border-transparent hover:scale-[1.02]"}`}
-                style={{ background: b.style }} title={b.name} aria-label={b.name}>
-                {pr.sidebarBg === b.id && <span className="absolute inset-0 grid place-items-center bg-black/25 text-white"><I n="check" size={18} /></span>}
-              </button>
-            ))}
+            {SIDEBAR_BGS.map((b) => {
+              const on = pr.sidebarBg === b.id;
+              return (
+                <button key={b.id} onClick={() => { app.setPrefs({ sidebarBg: b.id }); app.toast(`طُبّق نمط «${b.name}» على الشريط الجانبي`, "ok"); }}
+                  className={`group h-[4.2rem] rounded-xl border-2 transition-all duration-200 relative overflow-hidden text-start ${on ? "border-[var(--brand)] -translate-y-0.5" : "border-[color-mix(in_srgb,var(--line)_70%,transparent)] hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)]"}`}
+                  style={{ background: b.style, boxShadow: on ? "0 8px 20px -8px color-mix(in srgb, var(--brand) 55%, transparent)" : undefined }}
+                  aria-label={b.name} aria-pressed={on}>
+                  <span className="absolute inset-x-0 bottom-0 px-2 py-1 text-[0.6rem] font-bold text-white/95" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.55), transparent)" }}>{b.name}</span>
+                  {on && <span className="absolute top-1.5 end-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--good)] text-white shadow-lg anim-pop"><I n="check" size={11} /></span>}
+                </button>
+              );
+            })}
           </div>
-          <h4 className="font-display font-bold text-sm mt-5 mb-2.5">خلفية شاشة تسجيل الدخول</h4>
+          <h4 className="font-display font-bold text-sm mt-5 mb-2.5 flex items-center gap-2">خلفية شاشة تسجيل الدخول
+            <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] !text-[0.58rem] !py-0">{LOGIN_BGS.length} مشاهد</span></h4>
           <div className="grid grid-cols-3 gap-2.5">
-            {LOGIN_BGS.map((b) => (
-              <button key={b.id} onClick={() => app.setPrefs({ loginBg: b.id })}
-                className={`h-14 rounded-lg border-2 transition-all relative overflow-hidden ${pr.loginBg === b.id ? "border-[var(--brand)] scale-[1.03]" : "border-transparent hover:scale-[1.02]"}`}
-                style={{ background: b.style }} title={b.name} aria-label={b.name}>
-                {pr.loginBg === b.id && <span className="absolute inset-0 grid place-items-center bg-black/25 text-white"><I n="check" size={18} /></span>}
-              </button>
-            ))}
+            {LOGIN_BGS.map((b) => {
+              const on = pr.loginBg === b.id;
+              return (
+                <button key={b.id} onClick={() => { app.setPrefs({ loginBg: b.id }); app.toast(`طُبّق مشهد «${b.name}» — ستظهر شاشة الدخول به`, "ok"); }}
+                  className={`group h-[4.2rem] rounded-xl border-2 transition-all duration-200 relative overflow-hidden text-start ${on ? "border-[var(--accent)] -translate-y-0.5" : "border-[color-mix(in_srgb,var(--line)_70%,transparent)] hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--accent)_50%,transparent)]"}`}
+                  style={{ background: b.style, boxShadow: on ? "0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent)" : undefined }}
+                  aria-label={b.name} aria-pressed={on}>
+                  <span className="absolute inset-x-0 bottom-0 px-2 py-1 text-[0.6rem] font-bold text-white/95" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.55), transparent)" }}>{b.name}</span>
+                  {on && <span className="absolute top-1.5 end-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--good)] text-white shadow-lg anim-pop"><I n="check" size={11} /></span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 

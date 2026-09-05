@@ -4,13 +4,15 @@
 
 ### نظام محاسبي · مالي · إداري · إنتاجي متكامل — يتكيف مع **جميع الأنشطة التجارية** من شاشة واحدة
 
-[![الإصدار](https://img.shields.io/badge/v3.0-IFS-0284c7?style=for-the-badge)](#)
-[![الترخيص](https://img.shields.io/badge/ترخيص-أوكيانوس_سوفت-b45309?style=for-the-badge)](https://okyanussoft.online/)
+[![الإصدار](https://img.shields.io/badge/v6.1.0-IFS-0284c7?style=for-the-badge)](#)
+[![الترخيص](https://img.shields.io/badge/ترخيص-أوكيانوس_سوفت-b45309?style=for-the-badge)](https://okyanus-soft.com/)
 [![قاعدة البيانات](https://img.shields.io/badge/MySQL-8.0-0e6e52?style=for-the-badge)](#)
 [![Node](https://img.shields.io/badge/Node.js-18+-16a34a?style=for-the-badge)](#)
 [![المزامنة](https://img.shields.io/badge/دمج_مركزي-لحظي-dc2626?style=for-the-badge)](#)
 
-**من شركة أوكيانوس سوفت — Okyanus Soft** | 🌐 [okyanussoft.online](https://okyanussoft.online/) | ☎ **781 183 050**
+**من شركة أوكيانوس سوفت — Okyanus Soft** | 🌐 [okyanus-soft.com](https://okyanus-soft.com/) | ☎ **781 183 050**
+
+> ✍️ **تحليل وتصميم وتطوير وإعداد: المهندس وائل عبدالله الشرفي**
 
 ---
 
@@ -133,10 +135,11 @@ activity_fields   (تعريف الحقول — تُبنى منه الواجهة 
 
 | الطبقة | التقنية |
 |---|---|
-| الواجهة | React 19 + Vite + Tailwind CSS v4 — عربية RTL بخطي **Changa** و**Tajawal** و5 أنماط مظهر |
+| الواجهة | React 19 + Vite + Tailwind CSS v4 — عربية RTL بخطوط **Changa** و**Tajawal** و**Space Grotesk** (مضمّنة محلياً للعمل دون إنترنت) و10 أنماط مظهر |
 | الخادم | Express 4 + **WebSocket (ws)** + JWT + Helmet + Rate Limiting |
-| قاعدة البيانات | **MySQL 8** — حزمة اتصالات بحجم 40 + **Migrations مرقّمة** (5 ملفات) |
+| قاعدة البيانات | **MySQL 8** — حزمة اتصالات بحجم 40 + **Migrations مرقّمة آمنة للتكرار** (7 ملفات) |
 | المزامنة | دمج مركزي (الأحدث يفوز) + Tombstones + Generations + BroadcastChannel |
+| الطباعة | محرك A4 للسندات والتقارير مع الترويسة والختم والاعتمادات وإعدادات تقارير قابلة للتخصيص |
 
 ## 📂 بنية المشروع
 
@@ -183,14 +186,17 @@ npm run migrate && npm start
 | 3 | التجارة: مشتريات/مبيعات/آجل/حدود ائتمانية | ✅ مكتمل |
 | 4 | المزامنة المركزية اللحظية + مراقبة النشاط | ✅ مكتمل |
 | 5 | المحرك التكيفي: 21 نظاماً + نقاط البيع + HR + أصول | ✅ مكتمل |
-| 6 | صلاحيات رباعية + نشر (DEPLOY) + تسليم وتدريب | 🔄 جاري التسليم |
+| 6 | صلاحيات رباعية + سير حالة المستندات + نشر (DEPLOY) | ✅ مكتمل |
+| 7 | الوثائق الشاملة (README/DEPLOY/دليل المستخدم) + v6.1.0 | ✅ مكتمل |
 
 ---
 
 ## 📄 الترخيص والدعم
 
 النظام مرخّص من **شركة أوكيانوس سوفت — Okyanus Soft**
-🌐 <https://okyanussoft.online/> · ☎ **781 183 050** · السجل التجاري: 2019004571 — صنعاء
+🌐 <https://okyanus-soft.com/> · 🛟 مركز المساعدة: <https://help.okyanussoft.online> · ☎ **781 183 050** · اليمن — صنعاء
+
+✍️ **تحليل وتصميم وتطوير وإعداد: المهندس وائل عبدالله الشرفي**
 
 *جميع الحقوق محفوظة لدى شركة أوكيانوس سوفت © 2026*
 
