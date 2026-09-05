@@ -67,7 +67,7 @@ export type CollKey = "units" | "groups" | "warehouses" | "items" | "suppliers" 
   "countries" | "governorates" | "qualifications" | "specializations" | "relations" |
   "leaveTypes" | "penaltyTypes" | "missionTypes" | "overtimeTypes" |
   "attendanceLogs" | "fingerLogs" | "lateLogs" | "advances" | "empPermits" | "empWarnings" | "empLeaves" | "payrolls" |
-  "permitTypes" | "warningLevels";
+  "permitTypes" | "warningLevels" | "employees";
 
 export interface Settings {
   vat: number; discMax: number; round: number; autoNum: boolean; blockOverCredit: boolean;
@@ -208,6 +208,7 @@ const initDb: Record<CollKey, AnyR[]> = {
   attendanceLogs: HR_ATTENDANCE_LOGS, fingerLogs: HR_FINGER_LOGS, lateLogs: HR_LATE_LOGS,
   advances: HR_ADVANCES, empPermits: HR_EMP_PERMITS, empWarnings: HR_EMP_WARNINGS, empLeaves: HR_EMP_LEAVES, payrolls: HR_PAYROLLS,
   permitTypes: HR_PERMIT_TYPES, warningLevels: HR_WARNING_LEVELS,
+  employees: HR_EMPLOYEES,
 };
 
 const DEF_PERMS: Record<string, Record<string, string[]>> = {
@@ -377,7 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     leaveTypes: "الموارد", penaltyTypes: "الموارد", missionTypes: "الموارد", overtimeTypes: "الموارد",
     attendanceLogs: "الموارد", fingerLogs: "الموارد", lateLogs: "الموارد",
     advances: "الموارد", empPermits: "الموارد", empWarnings: "الموارد", empLeaves: "الموارد", payrolls: "الموارد",
-    permitTypes: "الموارد", warningLevels: "الموارد",
+    permitTypes: "الموارد", warningLevels: "الموارد", employees: "الموارد",
   };
   const COLL_AR: Record<string, string> = {
     units: "الوحدات", groups: "المجموعات", warehouses: "المخازن", items: "الأصناف",
@@ -390,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     leaveTypes: "أنواع الإجازات", penaltyTypes: "أنواع الجزاءات", missionTypes: "أنواع المهام", overtimeTypes: "أنواع الإضافي",
     attendanceLogs: "حركات الدوام", fingerLogs: "حركات البصمة", lateLogs: "التأخيرات",
     advances: "السلف", empPermits: "الأذونات", empWarnings: "إنذارات الموظفين", empLeaves: "إجازات الموظفين", payrolls: "كشوف الرواتب",
-    permitTypes: "أنواع الإذونات", warningLevels: "مستويات الإنذارات",
+    permitTypes: "أنواع الإذونات", warningLevels: "مستويات الإنذارات", employees: "الموظفين",
   };
 
   const toast = (msg: string, kind: Toast["kind"] = "info") => {
@@ -1258,7 +1259,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const runPayroll = () => {
     const month = "2026-03";
-    const rows = hr.employees.filter((e) => e.status !== "منتهي").map((e) => ({
+    const rows = db.employees.filter((e: AnyR) => e.status !== "منتهي").map((e: AnyR) => ({
       id: `PAY-${e.id}-${month}`, code: `PAY-${e.id}`, emp: e.id, name: e.name, month,
       basic: e.salary, bonus: hr.rewards.filter((r) => r.emp === e.id && r.status === "مصروفة").reduce((a, r) => a + r.amount, 0),
       total: e.salary + hr.rewards.filter((r) => r.emp === e.id && r.status === "مصروفة").reduce((a, r) => a + r.amount, 0),
@@ -1506,7 +1507,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       activity, devices, tombstones, gen, deviceId, mergeSync, sync: engine, reinitCentral,
       activities: ACTIVITIES, activeSystems, primaryActivity, toggleSystem, setPrimaryActivity,
       ownerUnlocked, unlockOwner, lockOwner, specData, saveSpec, removeSpec, postSpecToGL, posSale,
-      hr, setHr, runPayroll, assets, setAssets, depreciationOf, postDepreciation,
+      hr: { ...hr, employees: db.employees }, setHr, runPayroll, assets, setAssets, depreciationOf, postDepreciation,
       sidebarBgs: SIDEBAR_BGS, SYSTEM,
     }}>
       {children}
