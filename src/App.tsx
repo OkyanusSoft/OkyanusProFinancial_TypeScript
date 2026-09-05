@@ -88,7 +88,23 @@ const BASE_TREE: NavNode[] = [
       G("التقارير", "scale", [["rep.stmt", "تقرير كشف حساب"], ["rep.trial", "تقرير ميزان المراجعة"], ["rep.bs", "تقرير ميزان العمومية"], ["rep.pl", "تقرير الأرباح والخسائر"], ["rep.gljournal", "تقرير حركة القيود"]]),
     ],
   },
-  { id: "hr", label: "نظام الموارد البشرية", icon: "users" },
+  { id: "hr", label: "نظام الموارد البشرية", icon: "users", groups: [
+    { label: "البيانات الأساسية", icon: "layers", leaves: [
+      { id: "base.org", label: "الهيكل الإداري" },
+      { id: "base.emp", label: "بيانات الموظفين والتوظيف" },
+      { id: "base.att", label: "بيانات الدوام" },
+    ]},
+    { label: "الحركات", icon: "pulse", leaves: [
+      { id: "mv.att", label: "حركة الدوام" },
+      { id: "mv.emp", label: "حركات الموظفين" },
+      { id: "mv.pay", label: "احتساب الرواتب" },
+    ]},
+    { label: "التقارير", icon: "chart", leaves: [
+      { id: "rep.emp", label: "تقرير بيانات الموظفين" },
+      { id: "rep.pay", label: "تقرير رواتب الموظفين" },
+      { id: "rep.att", label: "تقرير حركة الدوام" },
+    ]},
+  ]},
   { id: "assets", label: "نظام الأصول الثابتة", icon: "bld" },
 ];
 

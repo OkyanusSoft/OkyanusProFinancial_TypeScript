@@ -63,6 +63,9 @@ export const ACCOUNTS: Account[] = [
   { code: "2121", name: "ضريبة المبيعات", en: "Sales Tax", level: 4, parent: "212", type: "خصوم", posting: false },
   { code: "21211", name: "ضريبة مخرجات مستحقة", en: "Output VAT", level: 5, parent: "2121", type: "خصوم", posting: true },
   { code: "21212", name: "ضريبة مدخلات قابلة للخصم", en: "Input VAT", level: 5, parent: "2121", type: "خصوم", posting: true },
+  { code: "213", name: "مستحقات الموظفين", en: "Employee Payables", level: 3, parent: "21", type: "خصوم", posting: false },
+  { code: "2131", name: "مستحقات رواتب وأجور", en: "Salaries Payable", level: 4, parent: "213", type: "خصوم", posting: false },
+  { code: "21311", name: "مستحقات رواتب مستحقة", en: "Accrued Salaries", level: 5, parent: "2131", type: "خصوم", posting: true },
   { code: "22", name: "حقوق الملكية", en: "Equity", level: 2, parent: "2", type: "خصوم", posting: false },
   { code: "221", name: "رأس المال", en: "Capital", level: 3, parent: "22", type: "خصوم", posting: false },
   { code: "2211", name: "رأس المال المصرح", en: "Authorized Capital", level: 4, parent: "221", type: "خصوم", posting: false },
@@ -382,7 +385,17 @@ export const MODULE_SCREENS: Record<string, { label: string; screens: { id: stri
   sal: { label: "المبيعات والعملاء", screens: [{ id: "base", label: "إدارة العملاء والتصنيفات" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المبيعات" }, { id: "ret", label: "مرتجعات المبيعات" }] },
   pos: { label: "نقاط البيع", screens: [{ id: "retail", label: "نمط متاجر التجزئة (باركود وسلة)" }, { id: "rest", label: "نمط المطاعم (الطاولات)" }, { id: "shifts", label: "ورديات الكاشير" }] },
   gl: { label: "الحسابات العامة", screens: [{ id: "base", label: "الأدلة والفترات والعملات (10 شاشات)" }, { id: "docs", label: "القيود والسندات المالية (5 أنواع)" }, { id: "rep", label: "التقارير المالية (4 تقارير)" }] },
-  hr: { label: "الموارد البشرية", screens: [{ id: "org", label: "الهيكل الإداري والتنظيمي" }, { id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
+  hr: { label: "الموارد البشرية", screens: [
+    { id: "base.org", label: "الهيكل الإداري (دول، محافظات، مؤهلات، تخصصات، قرابة)" },
+    { id: "base.emp", label: "بيانات الموظفين والتوظيف" },
+    { id: "base.att", label: "بيانات الدوام (إجازات، إنذارات، إذونات، جزاءات، مهام، إضافي)" },
+    { id: "mv.att", label: "حركة الدوام (حضور، بصمة، تأخيرات)" },
+    { id: "mv.emp", label: "حركات الموظفين (سلف، أذونات، إنذارات، إجازات)" },
+    { id: "mv.pay", label: "احتساب الرواتب بالقيد المحاسبي" },
+    { id: "rep.emp", label: "تقرير بيانات الموظفين" },
+    { id: "rep.pay", label: "تقرير رواتب الموظفين" },
+    { id: "rep.att", label: "تقرير حركة الدوام" },
+  ] },
   ast: { label: "الأصول الثابتة", screens: [{ id: "reg", label: "سجل الأصول" }, { id: "dep", label: "الإهلاك بالقسط الثابت" }, { id: "rep", label: "تقارير الأصول" }] },
   adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "appr", label: "الاعتمادات وسير حالة المستندات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "co", label: "الشركات والفروع" }, { id: "prefs", label: "التفضيلات" }] },
   help: { label: "المساعدة", screens: [{ id: "guide", label: "دليل المستخدم ووثائق المطورين" }] },
@@ -713,6 +726,130 @@ export const HR_ATTENDANCE: AnyR[] = [];
 export const HR_REWARDS: AnyR[] = [];
 export const HR_WARNINGS: AnyR[] = [];
 export const HR_LEAVES: AnyR[] = [];
+
+/* ═══════════ بيانات الموارد البشرية الموسعة (v6.1) ═══════════ */
+
+/* ── الهيكل الإداري: الدول والمحافظات والمؤهلات والتخصصات وصلة القرابة ── */
+export const HR_COUNTRIES: AnyR[] = [
+  { id: "CT-01", code: "YE", name: "اليمن", en: "Yemen", phone: "+967" },
+  { id: "CT-02", code: "SA", name: "السعودية", en: "Saudi Arabia", phone: "+966" },
+  { id: "CT-03", code: "AE", name: "الإمارات", en: "UAE", phone: "+971" },
+  { id: "CT-04", code: "EG", name: "مصر", en: "Egypt", phone: "+20" },
+  { id: "CT-05", code: "JO", name: "الأردن", en: "Jordan", phone: "+962" },
+];
+export const HR_GOVERNORATES: AnyR[] = [
+  { id: "GV-01", code: "GV-01", name: "أمانة العاصمة", country: "YE" },
+  { id: "GV-02", code: "GV-02", name: "صنعاء", country: "YE" },
+  { id: "GV-03", code: "GV-03", name: "عمران", country: "YE" },
+  { id: "GV-04", code: "GV-04", name: "عدن", country: "YE" },
+  { id: "GV-05", code: "GV-05", name: "ذمار", country: "YE" },
+  { id: "GV-06", code: "GV-06", name: "تعز", country: "YE" },
+  { id: "GV-07", code: "GV-07", name: "الحديدة", country: "YE" },
+  { id: "GV-08", code: "GV-08", name: "إب", country: "YE" },
+  { id: "GV-09", code: "GV-09", name: "حضرموت", country: "YE" },
+];
+export const HR_QUALIFICATIONS: AnyR[] = [
+  { id: "QL-01", code: "QL-01", name: "ثانوية عامة" },
+  { id: "QL-02", code: "QL-02", name: "دبلوم متوسط" },
+  { id: "QL-03", code: "QL-03", name: "دبلوم عالي" },
+  { id: "QL-04", code: "QL-04", name: "بكالوريوس" },
+  { id: "QL-05", code: "QL-05", name: "ماجستير" },
+  { id: "QL-06", code: "QL-06", name: "دكتوراه" },
+];
+export const HR_SPECIALIZATIONS: AnyR[] = [
+  { id: "SP-101", code: "SP-101", name: "محاسبة" },
+  { id: "SP-102", code: "SP-102", name: "إدارة أعمال" },
+  { id: "SP-103", code: "SP-103", name: "موارد بشرية" },
+  { id: "SP-104", code: "SP-104", name: "تقنية معلومات" },
+  { id: "SP-105", code: "SP-105", name: "تسويق ومبيعات" },
+  { id: "SP-106", code: "SP-106", name: "صيدلة" },
+];
+export const HR_RELATIONS: AnyR[] = [
+  { id: "RL-01", code: "RL-01", name: "الأب" }, { id: "RL-02", code: "RL-02", name: "الأم" },
+  { id: "RL-03", code: "RL-03", name: "الأخ" }, { id: "RL-04", code: "RL-04", name: "الأخت" },
+  { id: "RL-05", code: "RL-05", name: "الابن" }, { id: "RL-06", code: "RL-06", name: "الابنة" },
+  { id: "RL-07", code: "RL-07", name: "الزوج" }, { id: "RL-08", code: "RL-08", name: "الزوجة" },
+];
+
+/* ── بيانات الدوام: أنواع الإجازات والجزاءات والمهام والإضافي ── */
+export const HR_LEAVE_TYPES: AnyR[] = [
+  { id: "LT-01", code: "LT-01", name: "إجازة سنوية", paid: true, maxDays: 30 },
+  { id: "LT-02", code: "LT-02", name: "إجازة مرضية", paid: true, maxDays: 14 },
+  { id: "LT-03", code: "LT-03", name: "إجازة طارئة", paid: true, maxDays: 3 },
+  { id: "LT-04", code: "LT-04", name: "إجازة بدون راتب", paid: false, maxDays: 90 },
+  { id: "LT-05", code: "LT-05", name: "إجازة أمومة", paid: true, maxDays: 70 },
+];
+export const HR_PENALTY_TYPES: AnyR[] = [
+  { id: "PN-01", code: "PN-01", name: "لفت نظر", deduct: 0 },
+  { id: "PN-02", code: "PN-02", name: "إنذار كتابي", deduct: 0 },
+  { id: "PN-03", code: "PN-03", name: "خصم نصف يوم", deduct: 0.5 },
+  { id: "PN-04", code: "PN-04", name: "خصم يوم", deduct: 1 },
+  { id: "PN-05", code: "PN-05", name: "خصم يومين", deduct: 2 },
+];
+export const HR_MISSION_TYPES: AnyR[] = [
+  { id: "MS-01", code: "MS-01", name: "مهمة رسمية داخلية", allowance: 5000 },
+  { id: "MS-02", code: "MS-02", name: "مهمة خارجية", allowance: 15000 },
+  { id: "MS-03", code: "MS-03", name: "عمل ميداني", allowance: 8000 },
+  { id: "MS-04", code: "MS-04", name: "تدريب", allowance: 0 },
+];
+export const HR_OVERTIME_TYPES: AnyR[] = [
+  { id: "OT-01", code: "OT-01", name: "ساعة إضافية عادية", rate: 1.5 },
+  { id: "OT-02", code: "OT-02", name: "ساعة مضاعفة", rate: 2.0 },
+  { id: "OT-03", code: "OT-03", name: "عمل يوم راحة", rate: 2.0 },
+  { id: "OT-04", code: "OT-04", name: "مناوبة ليلية", rate: 1.75 },
+];
+export const HR_PERMIT_TYPES: AnyR[] = [
+  { id: "PT-01", code: "PT-01", name: "إذن ساعتين", hours: 2 },
+  { id: "PT-02", code: "PT-02", name: "إذن نصف يوم", hours: 4 },
+  { id: "PT-03", code: "PT-03", name: "إذن يوم كامل", hours: 8 },
+];
+export const HR_WARNING_LEVELS: AnyR[] = [
+  { id: "WL-01", code: "WL-01", name: "تنبيه شفهي", severity: 1 },
+  { id: "WL-02", code: "WL-02", name: "لفت نظر", severity: 2 },
+  { id: "WL-03", code: "WL-03", name: "إنذار كتابي", severity: 3 },
+  { id: "WL-04", code: "WL-04", name: "إنذار نهائي", severity: 4 },
+];
+
+/* ── حركات الدوام: الحضور والبصمة والتأخيرات (بيانات الشهر الجاري) ── */
+export const HR_ATTENDANCE_LOGS: AnyR[] = [
+  { id: "AT-001", code: "AT-001", emp: "EMP-01", date: "2026-09-01", checkIn: "08:00", checkOut: "16:05", hours: 8, status: "حاضر" },
+  { id: "AT-002", code: "AT-002", emp: "EMP-02", date: "2026-09-01", checkIn: "08:25", checkOut: "16:00", hours: 7.5, status: "متأخر" },
+  { id: "AT-003", code: "AT-003", emp: "EMP-03", date: "2026-09-01", checkIn: "07:55", checkOut: "16:10", hours: 8.2, status: "حاضر" },
+  { id: "AT-004", code: "AT-004", emp: "EMP-05", date: "2026-09-01", checkIn: "08:00", checkOut: "16:00", hours: 8, status: "حاضر" },
+  { id: "AT-005", code: "AT-005", emp: "EMP-01", date: "2026-09-02", checkIn: "08:02", checkOut: "16:00", hours: 8, status: "حاضر" },
+  { id: "AT-006", code: "AT-006", emp: "EMP-02", date: "2026-09-02", checkIn: "—", checkOut: "—", hours: 0, status: "غائب" },
+];
+export const HR_FINGER_LOGS: AnyR[] = [
+  { id: "FP-001", code: "FP-001", emp: "EMP-01", date: "2026-09-01", time: "08:00", type: "دخول", device: "بصمة المدخل الرئيسي" },
+  { id: "FP-002", code: "FP-002", emp: "EMP-01", date: "2026-09-01", time: "16:05", type: "خروج", device: "بصمة المدخل الرئيسي" },
+  { id: "FP-003", code: "FP-003", emp: "EMP-02", date: "2026-09-01", time: "08:25", type: "دخول", device: "بصمة المخزن" },
+  { id: "FP-004", code: "FP-004", emp: "EMP-03", date: "2026-09-01", time: "07:55", type: "دخول", device: "بصمة المدخل الرئيسي" },
+];
+export const HR_LATE_LOGS: AnyR[] = [
+  { id: "LL-001", code: "LL-001", emp: "EMP-02", date: "2026-09-01", lateMin: 25, deduct: 0.25, note: "زحام مروري" },
+  { id: "LL-002", code: "LL-002", emp: "EMP-04", date: "2026-08-20", lateMin: 40, deduct: 0.5, note: "بدون عذر" },
+];
+
+/* ── حركات الموظفين: السلف والأذونات والإنذارات والإجازات ── */
+export const HR_ADVANCES: AnyR[] = [
+  { id: "AD-001", code: "AD-001", emp: "EMP-02", amount: 60000, date: "2026-08-10", method: "استقطاع شهري", months: 3, paid: 20000, remaining: 40000, status: "قائمة" },
+  { id: "AD-002", code: "AD-002", emp: "EMP-05", amount: 30000, date: "2026-07-05", method: "دفعة واحدة", months: 1, paid: 30000, remaining: 0, status: "مسدَّدة" },
+];
+export const HR_EMP_PERMITS: AnyR[] = [
+  { id: "EP-001", code: "EP-001", emp: "EMP-01", type: "إذن ساعتين", date: "2026-09-03", hours: 2, reason: "مراجعة بنك", status: "معتمد" },
+  { id: "EP-002", code: "EP-002", emp: "EMP-03", type: "إذن نصف يوم", date: "2026-09-05", hours: 4, reason: "ظرف عائلي", status: "بانتظار الاعتماد" },
+];
+export const HR_EMP_WARNINGS: AnyR[] = [
+  { id: "EW-001", code: "EW-001", emp: "EMP-04", level: "إنذار كتابي", date: "2026-08-12", reason: "تكرار التأخر عن الدوام", by: "مدير الموارد" },
+  { id: "EW-002", code: "EW-002", emp: "EMP-02", level: "لفت نظر", date: "2026-09-01", reason: "عدم الالتزام بزي العمل", by: "أمين المخزن" },
+];
+export const HR_EMP_LEAVES: AnyR[] = [
+  { id: "EL-001", code: "EL-001", emp: "EMP-04", type: "إجازة سنوية", from: "2026-09-10", to: "2026-09-17", days: 7, status: "معتمدة" },
+  { id: "EL-002", code: "EL-002", emp: "EMP-05", type: "إجازة مرضية", from: "2026-09-02", to: "2026-09-03", days: 2, status: "بانتظار الاعتماد" },
+];
+
+/* ── كشوف الرواتب (تُرحَّل بقيد محاسبي متوازن) ── */
+export const HR_PAYROLLS: AnyR[] = [];
 
 /* ── بيانات الأصول الثابتة ── */
 export const ASSETS: AnyR[] = [
