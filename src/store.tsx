@@ -6,6 +6,10 @@ import {
   SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, DEVICES, ACTIVITY_SEED,
   MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS,
   ACTIVITIES, HR_EMPLOYEES, HR_ATTENDANCE, HR_REWARDS, HR_WARNINGS, HR_LEAVES, ASSETS, OWNER_PIN,
+  HR_COUNTRIES, HR_GOVERNORATES, HR_QUALIFICATIONS, HR_SPECIALIZATIONS, HR_RELATIONS,
+  HR_LEAVE_TYPES, HR_PENALTY_TYPES, HR_MISSION_TYPES, HR_OVERTIME_TYPES,
+  HR_ATTENDANCE_LOGS, HR_FINGER_LOGS, HR_LATE_LOGS, HR_ADVANCES, HR_EMP_PERMITS,
+  HR_EMP_WARNINGS, HR_EMP_LEAVES, HR_PAYROLLS, HR_PERMIT_TYPES, HR_WARNING_LEVELS,
   type AnyR, type InvDoc, type Invoice, type Journal, type Account,
   type Activity, type Device, type Tombstone, type ActivityDef,
 } from "./data";
@@ -59,7 +63,11 @@ export interface Notif { id: number; title: string; body: string; time: string; 
 export type CollKey = "units" | "groups" | "warehouses" | "items" | "suppliers" | "customers" | "cashboxes" |
   "costCenters" | "branches" | "departments" | "sections" | "companies" | "users" | "currencies" | "periods" | "analyticals" |
   "requests" | "quotes" | "sales" | "purchases" | "returns" | "invDocs" | "journals" |
-  "banks" | "payTerms" | "partnerCats" | "roles";
+  "banks" | "payTerms" | "partnerCats" | "roles" |
+  "countries" | "governorates" | "qualifications" | "specializations" | "relations" |
+  "leaveTypes" | "penaltyTypes" | "missionTypes" | "overtimeTypes" |
+  "attendanceLogs" | "fingerLogs" | "lateLogs" | "advances" | "empPermits" | "empWarnings" | "empLeaves" | "payrolls" |
+  "permitTypes" | "warningLevels";
 
 export interface Settings {
   vat: number; discMax: number; round: number; autoNum: boolean; blockOverCredit: boolean;
@@ -194,6 +202,12 @@ const initDb: Record<CollKey, AnyR[]> = {
   analyticals: ANALYTICALS, requests: REQUESTS, quotes: QUOTES,
   sales: SALES as any, purchases: PURCHASES as any, returns: RETURNS as any,
   invDocs: INV_DOCS as any, journals: JOURNALS as any,
+  countries: HR_COUNTRIES, governorates: HR_GOVERNORATES, qualifications: HR_QUALIFICATIONS,
+  specializations: HR_SPECIALIZATIONS, relations: HR_RELATIONS,
+  leaveTypes: HR_LEAVE_TYPES, penaltyTypes: HR_PENALTY_TYPES, missionTypes: HR_MISSION_TYPES, overtimeTypes: HR_OVERTIME_TYPES,
+  attendanceLogs: HR_ATTENDANCE_LOGS, fingerLogs: HR_FINGER_LOGS, lateLogs: HR_LATE_LOGS,
+  advances: HR_ADVANCES, empPermits: HR_EMP_PERMITS, empWarnings: HR_EMP_WARNINGS, empLeaves: HR_EMP_LEAVES, payrolls: HR_PAYROLLS,
+  permitTypes: HR_PERMIT_TYPES, warningLevels: HR_WARNING_LEVELS,
 };
 
 const DEF_PERMS: Record<string, Record<string, string[]>> = {
@@ -359,6 +373,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     banks: "المالية", payTerms: "المالية", partnerCats: "المبيعات", roles: "النظام",
     analyticals: "المالية", requests: "المشتريات", quotes: "المبيعات",
     sales: "المبيعات", purchases: "المشتريات", returns: "المبيعات", invDocs: "المخازن", journals: "المالية",
+    countries: "الموارد", governorates: "الموارد", qualifications: "الموارد", specializations: "الموارد", relations: "الموارد",
+    leaveTypes: "الموارد", penaltyTypes: "الموارد", missionTypes: "الموارد", overtimeTypes: "الموارد",
+    attendanceLogs: "الموارد", fingerLogs: "الموارد", lateLogs: "الموارد",
+    advances: "الموارد", empPermits: "الموارد", empWarnings: "الموارد", empLeaves: "الموارد", payrolls: "الموارد",
+    permitTypes: "الموارد", warningLevels: "الموارد",
   };
   const COLL_AR: Record<string, string> = {
     units: "الوحدات", groups: "المجموعات", warehouses: "المخازن", items: "الأصناف",
@@ -367,6 +386,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     banks: "البنوك", payTerms: "شروط الدفع", partnerCats: "التصنيفات", roles: "الأدوار",
     analyticals: "الحسابات التحليلية", requests: "طلبات الشراء", quotes: "عروض الأسعار",
     sales: "فواتير المبيعات", purchases: "فواتير المشتريات", returns: "مرتجعات المبيعات", invDocs: "السندات المخزنية", journals: "القيود اليومية",
+    countries: "الدول", governorates: "المحافظات", qualifications: "المؤهلات", specializations: "التخصصات", relations: "صلة القرابة",
+    leaveTypes: "أنواع الإجازات", penaltyTypes: "أنواع الجزاءات", missionTypes: "أنواع المهام", overtimeTypes: "أنواع الإضافي",
+    attendanceLogs: "حركات الدوام", fingerLogs: "حركات البصمة", lateLogs: "التأخيرات",
+    advances: "السلف", empPermits: "الأذونات", empWarnings: "إنذارات الموظفين", empLeaves: "إجازات الموظفين", payrolls: "كشوف الرواتب",
+    permitTypes: "أنواع الإذونات", warningLevels: "مستويات الإنذارات",
   };
 
   const toast = (msg: string, kind: Toast["kind"] = "info") => {
