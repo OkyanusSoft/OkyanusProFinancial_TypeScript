@@ -25,24 +25,36 @@ export const pool = mysql.createPool({
   decimalNumbers: true,
 });
 
-/** تقسيم ملف SQL إلى جمل — يدعم كتل DELIMITER (للمحفزات والإجراءات) ويتجاهل التعليقات */
-function splitStatements(sql) {
+/**
+ * تقسيم ملف SQL إلى جمل — يدعم كتل DELIMITER (للمحفزات والإجراءات المخزّنة)
+ * القاعدة الذهبية: المُحدِّد (delimiter) يظل ثابتاً حتى تظهر تعليمة DELIMITER جديدة.
+ * هذا يمنع تقطيع جسم الإجراء عند أول «;» داخلي — وهو سبب خطأ "near '' at line N".
+ */
+export function splitStatements(sql) {
   const out = [];
   let delim = ";";
   let buf = [];
   const flush = () => {
-    const stmt = buf.filter((l) => !/^\s*--/.test(l) && !/^DELIMITER/i.test(l.trim())).join("\n").trim();
+    const stmt = buf
+      .filter((l) => !/^\s*--/.test(l)) // إزالة أسطر التعليقات الكاملة
+      .join("\n")
+      .trim();
     if (stmt) out.push(stmt);
     buf = [];
   };
   for (const line of sql.split("\n")) {
-    if (/^DELIMITER/i.test(line.trim())) { flush(); delim = line.trim().split(/\s+/)[1] || ";"; continue; }
+    const dm = line.trim().match(/^DELIMITER\s+(\S+)\s*$/i);
+    if (dm) {
+      flush(); // إفراغ أي جملة معلّقة قبل تبديل المُحدِّد
+      delim = dm[1];
+      continue;
+    }
     buf.push(line);
-    if (line.trimEnd().endsWith(delim)) {
-      if (delim !== ";") buf[buf.length - 1] = buf[buf.length - 1].trimEnd().slice(0, -delim.length);
-      else buf[buf.length - 1] = buf[buf.length - 1].trimEnd().slice(0, -1);
+    const te = line.trimEnd();
+    if (te.endsWith(delim)) {
+      buf[buf.length - 1] = te.slice(0, te.length - delim.length);
       flush();
-      delim = ";";
+      // لا نعيد المُحدِّد إلى «;» هنا — يبقى سارياً حتى تعليمة DELIMITER التالية
     }
   }
   flush();
@@ -77,13 +89,22 @@ export async function migrate() {
       const statements = splitStatements(sql);
       await conn.beginTransaction();
       try {
-        for (const stmt of statements) await conn.query(stmt);
+        for (let i = 0; i < statements.length; i++) {
+          try {
+            await conn.query(statements[i]);
+          } catch (stmtErr) {
+            const snippet = statements[i].split("\n").slice(0, 6).join("\n");
+            console.error(`\n✘ الجملة رقم ${i + 1} من ${statements.length} في ${file} فشلت:`);
+            console.error(`───────── بداية الجملة ─────────\n${snippet}\n───────── نهاية المقتطف ─────────`);
+            throw stmtErr;
+          }
+        }
         await conn.query("INSERT INTO schema_migrations (version, file_name) VALUES (?, ?)", [version, file]);
         await conn.commit();
         console.log(`✔ نُفّذت الهجرة: ${file} (${statements.length} جملة)`);
       } catch (err) {
         await conn.rollback();
-        console.error(`✘ فشلت الهجرة ${file} وتم التراجع الكامل:`, err.message);
+        console.error(`\n✘ فشلت الهجرة ${file} وتم التراجع الكامل:`, err.message);
         throw err;
       }
     }
