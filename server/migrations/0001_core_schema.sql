@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   is_posting TINYINT(1) DEFAULT 0, is_analytical TINYINT(1) DEFAULT 0,
   FOREIGN KEY (parent_code) REFERENCES accounts(code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE INDEX idx_accounts_parent ON accounts(parent_code);
+-- فهارس عبر الإجراء الشرطي (قابلة للتكرار بأمان — لا تفشل عند الإعادة)
+CALL sp_add_index_if_missing('accounts', 'idx_accounts_parent', 'parent_code');
 
 CREATE TABLE IF NOT EXISTS currencies (
   code CHAR(3) PRIMARY KEY, name_ar VARCHAR(60), rate_to_base DECIMAL(14,4) NOT NULL DEFAULT 1,
@@ -70,7 +71,7 @@ CREATE TABLE IF NOT EXISTS journals (
   created_by VARCHAR(120), created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at BIGINT,
   FOREIGN KEY (fy_period) REFERENCES periods(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE INDEX idx_journals_period ON journals(fy_period);
+CALL sp_add_index_if_missing('journals', 'idx_journals_period', 'fy_period');
 
 CREATE TABLE IF NOT EXISTS journal_lines (
   id BIGINT AUTO_INCREMENT PRIMARY KEY, journal_id BIGINT NOT NULL, account_code VARCHAR(12) NOT NULL,
@@ -132,7 +133,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   status ENUM('posted','void') DEFAULT 'posted', notes VARCHAR(250), created_by VARCHAR(120), updated_at BIGINT,
   FOREIGN KEY (partner_id) REFERENCES partners(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE INDEX idx_invoices_partner ON invoices(partner_id, kind);
+CALL sp_add_index_if_missing('invoices', 'idx_invoices_partner', 'partner_id, kind');
 
 CREATE TABLE IF NOT EXISTS invoice_lines (
   id BIGINT AUTO_INCREMENT PRIMARY KEY, invoice_id CHAR(14), item_id CHAR(12),
