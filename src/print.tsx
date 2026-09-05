@@ -2,6 +2,55 @@ import { createRoot } from "react-dom/client";
 import type { ReactNode } from "react";
 import { SYSTEM } from "./data";
 
+/* ═══════════ إعدادات التقارير والترويسات (Report Letterhead Config) ═══════════
+   تُدار من: الإعدادات العامة ← إعدادات التقارير، وتُسري على كل المستندات المطبوعة */
+export interface ReportCfg {
+  nameAr: string; nameEn: string; company: string; tagline: string;
+  phone: string; website: string; address: string; crNo: string; taxNo: string;
+  showLogo: boolean; showTagline: boolean; showContact: boolean; showCrTax: boolean;
+  footerText: string; showPrintedBy: boolean; showGenTime: boolean; showBarcode: boolean; showStamp: boolean; showSign: boolean;
+  headerStyle: "gradient" | "solid" | "minimal";
+  headerColor: string; accentColor: string; decimals: number;
+  signLabels: string[]; margin: number; paperSize: "A4" | "Letter";
+}
+
+export const DEFAULT_REPORT_CFG: ReportCfg = {
+  nameAr: SYSTEM.name,
+  nameEn: SYSTEM.en,
+  company: SYSTEM.company,
+  tagline: "نظام محاسبي مالي إداري إنتاجي متكامل",
+  phone: SYSTEM.phone,
+  website: SYSTEM.site,
+  address: "اليمن — صنعاء",
+  crNo: SYSTEM.cr,
+  taxNo: "300123456700003",
+  showLogo: true, showTagline: true, showContact: true, showCrTax: true,
+  footerText: "جميع الحقوق محفوظة لدى شركة أوكيانوس سوفت — Okyanus Soft",
+  showPrintedBy: true, showGenTime: true, showBarcode: true, showStamp: true, showSign: true,
+  headerStyle: "gradient",
+  headerColor: "#0a4a73",
+  accentColor: "#d99a2b",
+  decimals: 2,
+  signLabels: ["المُعد", "المراجع المالي", "المعتمد / المدير المالي"],
+  margin: 9,
+  paperSize: "A4",
+};
+
+let activeCfg: ReportCfg = { ...DEFAULT_REPORT_CFG };
+/** تفعيل إعدادات تقارير (تُدمج مع الافتراضي) — تُستدعى قبل كل طباعة */
+export function setReportCfg(c?: Partial<ReportCfg>) { activeCfg = { ...DEFAULT_REPORT_CFG, ...(c || {}) }; }
+export function getReportCfg(): ReportCfg { return activeCfg; }
+
+const headBoxStyle = (c: ReportCfg): React.CSSProperties =>
+  c.headerStyle === "solid" ? { background: c.headerColor }
+  : c.headerStyle === "minimal" ? { background: "transparent", color: c.headerColor, border: `1.5px solid ${c.headerColor}` }
+  : { background: `linear-gradient(120deg, ${c.headerColor}, ${c.accentColor})` };
+
+const ruleStyle = (c: ReportCfg): React.CSSProperties =>
+  c.headerStyle === "solid" ? { background: c.headerColor, height: 3 }
+  : c.headerStyle === "minimal" ? { background: c.headerColor, height: 1.5 }
+  : { background: `linear-gradient(90deg, ${c.headerColor}, ${c.accentColor} 45%, ${c.headerColor})` };
+
 /* ════════════════════════════════════════════════════════════
    محرك الطباعة الاحترافي — مستندات A4 بترويسة وختم واعتمادات
    ════════════════════════════════════════════════════════════ */
@@ -44,7 +93,7 @@ body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .print-doc { box-shadow:none !important; border-radius:0 !important; }
   .no-print { display:none !important; }
 }
-@page { size: A4; margin: 9mm; }
+@page { size: ${getReportCfg().paperSize}; margin: ${getReportCfg().margin}mm; }
 </style>
 </head>
 <body>
@@ -110,27 +159,30 @@ export function PStamp({ status }: { status: string }) {
   );
 }
 
-/* ── ترويسة المستند ── */
+/* ── ترويسة المستند — تقرأ إعدادات التقارير والترويسات ── */
 export function PHead({ docTitle, no, date, status, subtitle }: { docTitle: string; no: string; date: string; status: string; subtitle?: string }) {
+  const c = getReportCfg();
   return (
     <div>
       <div className="p-head">
         <div className="p-head-side">
-          <PMark />
+          {c.showLogo && <PMark />}
           <div>
-            <div className="p-sys">{SYSTEM.name}</div>
-            <div className="p-co">{SYSTEM.company} — {subtitle || "المركز الرئيسي"}</div>
-            <div className="p-co2">{SYSTEM.en} • {SYSTEM.site.replace("https://", "")}</div>
+            <div className="p-sys">{c.nameAr}</div>
+            <div className="p-co">{c.company}{subtitle ? ` — ${subtitle}` : ""}</div>
+            {c.showTagline && c.tagline && <div className="p-co2">{c.tagline}</div>}
+            {c.showContact && <div className="p-co2"><span dir="ltr">{c.phone}</span> • {c.website.replace("https://", "")}</div>}
+            {c.showCrTax && (c.crNo || c.taxNo) && <div className="p-co2">س.ت: {c.crNo}{c.taxNo ? ` • الرقم الضريبي: ${c.taxNo}` : ""}</div>}
           </div>
         </div>
         <div className="p-head-no">
-          <div className="p-doctype">{docTitle}</div>
+          <div className="p-doctype" style={headBoxStyle(c)}>{docTitle}</div>
           <div className="p-num" dir="ltr">{no}</div>
           <div className="p-date" dir="ltr">{date}</div>
         </div>
       </div>
-      <div className="p-rule" />
-      <div className="p-stampwrap"><PStamp status={status} /></div>
+      <div className="p-rule" style={ruleStyle(c)} />
+      {c.showStamp && <div className="p-stampwrap"><PStamp status={status} /></div>}
     </div>
   );
 }
@@ -191,19 +243,25 @@ export function PSign({ labels = ["المُعد / أمين المخزن", "ال�
   );
 }
 
-/* ── تذييل الصفحة ── */
+/* ── تذييل الصفحة — يقرأ إعدادات التقارير ── */
 export function PFoot({ user }: { user: string }) {
+  const c = getReportCfg();
   const now = new Date();
   return (
     <div className="p-foot">
-      <div>طُبع بواسطة: <b>{user}</b> — {now.toLocaleString("ar-EG")} </div>
-      <div className="p-foot-mid">{SYSTEM.name} — {SYSTEM.company} <span dir="ltr">{SYSTEM.phone}</span></div>
-      <div dir="ltr">{SYSTEM.site}</div>
-      <div className="p-bar" aria-hidden="true">
-        {`OKS-${now.getTime().toString().slice(-8)}`.split("").map((c, i) => (
-          <span key={i} style={{ width: (c.charCodeAt(0) % 3) + 1, height: 16 - (i % 3) * 3 }} />
-        ))}
+      <div>
+        {c.showPrintedBy && <>طُبع بواسطة: <b>{user}</b></>}
+        {c.showGenTime && <> — {now.toLocaleString("ar-EG")}</>}
       </div>
+      <div className="p-foot-mid">{c.footerText} <span dir="ltr">{c.phone}</span></div>
+      <div dir="ltr">{c.website}</div>
+      {c.showBarcode && (
+        <div className="p-bar" aria-hidden="true">
+          {`OKS-${now.getTime().toString().slice(-8)}`.split("").map((ch, i) => (
+            <span key={i} style={{ width: (ch.charCodeAt(0) % 3) + 1, height: 16 - (i % 3) * 3 }} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -215,11 +273,12 @@ export function DocSheet({ docTitle, no, date, status, subtitle, meta, children,
   note?: string; user: string; signLabels?: string[];
   stampText?: string; stampSub?: string; amountBox?: { num: string; words: string };
 }) {
+  const c = getReportCfg();
   return (
     <div className="print-doc">
       <PHead docTitle={docTitle} no={no} date={date} status={status} subtitle={subtitle} />
-      <div className="p-rule" />
-      {stampText && (
+      <div className="p-rule" style={ruleStyle(c)} />
+      {c.showStamp && stampText && (
         <div className="p-stampwrap">
           <div className="p-stamp" style={{ color: docTitle.includes("قبض") ? "#15803d" : "#b45309" }}>
             {stampText}<small>{stampSub}</small>
@@ -236,7 +295,7 @@ export function DocSheet({ docTitle, no, date, status, subtitle, meta, children,
       {children}
       {totals && <PTotals items={totals.items} grand={totals.grand} />}
       <PNote text={note} />
-      <PSign labels={signLabels} />
+      {c.showSign && <PSign labels={signLabels && signLabels.length ? signLabels : c.signLabels} />}
       <PFoot user={user} />
     </div>
   );
@@ -247,24 +306,26 @@ export function ReportSheet({ title, subtitle, filters, summary, children, user 
   title: string; subtitle?: string; filters?: [string, ReactNode][]; summary?: [string, ReactNode][];
   children: ReactNode; user: string;
 }) {
+  const c = getReportCfg();
   return (
     <div className="print-doc">
       <div className="p-head">
         <div className="p-head-side">
-          <PMark />
+          {c.showLogo && <PMark />}
           <div>
-            <div className="p-sys">{SYSTEM.name}</div>
-            <div className="p-co">{SYSTEM.company}</div>
-            <div className="p-co2">{SYSTEM.en}</div>
+            <div className="p-sys">{c.nameAr}</div>
+            <div className="p-co">{c.company}</div>
+            {c.showTagline && c.tagline && <div className="p-co2">{c.tagline}</div>}
+            {c.showContact && <div className="p-co2"><span dir="ltr">{c.phone}</span> • {c.website.replace("https://", "")}</div>}
           </div>
         </div>
         <div className="p-head-no">
-          <div className="p-doctype">{title}</div>
+          <div className="p-doctype" style={headBoxStyle(c)}>{title}</div>
           <div className="p-num" dir="ltr">RPT-{new Date().toISOString().slice(0, 10)}</div>
           <div className="p-date" dir="ltr">{new Date().toLocaleDateString("en-GB")}</div>
         </div>
       </div>
-      <div className="p-rule" />
+      <div className="p-rule" style={ruleStyle(c)} />
       {subtitle && <div className="p-repsub">{subtitle}</div>}
       {filters && filters.length > 0 && <PMeta rows={filters} />}
       {children}
@@ -310,7 +371,8 @@ export interface PrintCol { h: string; v: (r: any) => ReactNode; w?: string }
 export function printDirectory(user: string, opts: {
   title: string; subtitle?: string; columns: PrintCol[]; rows: any[];
   filters?: [string, ReactNode][]; summary?: [string, ReactNode][];
-}) {
+}, cfg?: Partial<ReportCfg>) {
+  if (cfg) setReportCfg(cfg);
   openPrint(
     <ReportSheet title={opts.title} subtitle={opts.subtitle || `سجل كامل — ${opts.rows.length} سجل`} filters={opts.filters} summary={opts.summary} user={user}>
       <PTable
@@ -330,7 +392,8 @@ export function printTradeDoc(user: string, d: {
   totals?: { items: [string, string][]; grand: [string, string] };
   grandValue?: number;
   note?: string; signLabels?: string[]; stampText?: string; fmtN: (n: number) => string;
-}) {
+}, cfg?: Partial<ReportCfg>) {
+  if (cfg) setReportCfg(cfg);
   openPrint(
     <DocSheet docTitle={d.docTitle} no={d.no} date={d.date} status={d.status} meta={d.meta}
       stampText={d.stampText || d.docTitle} stampSub={d.status === "مسودة" ? "معاينة" : "معتمد"}

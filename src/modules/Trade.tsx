@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart, FormSection } from "../ui";
 import { Directory, ActionBtn, type DirConf } from "../crud";
-import { printTradeDoc, printDirectory, tafqit } from "../print";
+import { printTradeDoc, printDirectory, tafqit, setReportCfg } from "../print";
 import type { Invoice } from "../data";
 
 /* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
 function printInvoiceDoc(app: ReturnType<typeof useApp>, inv: any, kind: "sales" | "purchases" | "returns") {
+  setReportCfg(app.settings.report);
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
   const partner = partners.find((p: any) => p.id === inv.partner);
   const sub = inv.lines.reduce((a: number, l: any) => a + l.qty * l.price * (1 - (l.disc || 0) / 100), 0);
@@ -140,6 +141,7 @@ const catsConf = (app: ReturnType<typeof useApp>): DirConf => ({
 
 /* ═══════════ طلبات الشراء ═══════════ */
 function printRequestDoc(app: ReturnType<typeof useApp>, r: any) {
+  setReportCfg(app.settings.report);
   const it = app.db.items.find((i: any) => i.id === r.item);
   printTradeDoc(app.session?.user || "—", {
     docTitle: "طلب شراء", no: r.no, date: app.fmtDate(r.date), status: r.status, fmtN: app.fmtN,
@@ -151,6 +153,7 @@ function printRequestDoc(app: ReturnType<typeof useApp>, r: any) {
 }
 
 function printQuoteDoc(app: ReturnType<typeof useApp>, q: any, partners: any[], isSale: boolean) {
+  setReportCfg(app.settings.report);
   const partner = partners.find((p: any) => p.id === q.partner);
   printTradeDoc(app.session?.user || "—", {
     docTitle: isSale ? "عرض سعر بيع" : "عرض سعر شراء", no: q.no, date: app.fmtDate(q.date), status: q.status, fmtN: app.fmtN,
@@ -651,7 +654,7 @@ function PurchaseReports() {
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={() => app.exportCsv("تقرير_المشتريات_حسب_المورد", [["المورد", "الإجمالي"], ...bySup.map((s) => [s.label, s.value])])}><I n="xlsx" size={15} /> Excel</button>
           {app.can("pur", "طباعة")
-            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: "تقرير المشتريات التحليلي", subtitle: "المشتريات حسب المورد والفترة — الربع الأول 2026", columns: [{ h: "المورد", v: (r: any) => r.label }, { h: "الإجمالي (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: bySup, summary: [["إجمالي المشتريات", app.fmtN(bySup.reduce((a, s) => a + s.value, 0)) + " ر.ي"], ["عدد الموردين", String(bySup.length)]] })}><I n="print" size={15} /> طباعة / PDF</button>
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: "تقرير المشتريات التحليلي", subtitle: "المشتريات حسب المورد والفترة — الربع الأول 2026", columns: [{ h: "المورد", v: (r: any) => r.label }, { h: "الإجمالي (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: bySup, summary: [["إجمالي المشتريات", app.fmtN(bySup.reduce((a, s) => a + s.value, 0)) + " ر.ي"], ["عدد الموردين", String(bySup.length)]] }, app.settings.report)}><I n="print" size={15} /> طباعة / PDF</button>
             : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة</button>}
         </div>
       </div>
@@ -707,7 +710,7 @@ function SalesReports() {
           ))}
           <button className="btn btn-ghost" onClick={() => app.exportCsv(`تقرير_المبيعات_${period}`, [["الفترة", "القيمة"], ...(period === "daily" ? byDay : byMonth).map((d) => [d.label, d.value])])}><I n="xlsx" size={15} /> Excel</button>
           {app.can("sal", "طباعة")
-            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `تقرير المبيعات ${period === "daily" ? "اليومي" : period === "monthly" ? "الشهري" : "السنوي"}`, subtitle: "الربع الأول 2026 — نقدي وآجل", columns: [{ h: "الفترة", v: (r: any) => r.label }, { h: "القيمة (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: period === "daily" ? byDay : byMonth, summary: [["إجمالي المبيعات", app.fmtN(cashV + creditV) + " ر.ي"], ["نقدي", app.fmtN(cashV) + " ر.ي"], ["آجل", app.fmtN(creditV) + " ر.ي"], ["نسبة التحصيل النقدي", Math.round((cashV / (cashV + creditV || 1)) * 100) + "%"]] })}><I n="print" size={15} /> طباعة / PDF</button>
+            ? <button className="btn btn-soft" onClick={() => printDirectory(app.session?.user || "—", { title: `تقرير المبيعات ${period === "daily" ? "اليومي" : period === "monthly" ? "الشهري" : "السنوي"}`, subtitle: "الربع الأول 2026 — نقدي وآجل", columns: [{ h: "الفترة", v: (r: any) => r.label }, { h: "القيمة (ر.ي)", v: (r: any) => app.fmtN(r.value) }], rows: period === "daily" ? byDay : byMonth, summary: [["إجمالي المبيعات", app.fmtN(cashV + creditV) + " ر.ي"], ["نقدي", app.fmtN(cashV) + " ر.ي"], ["آجل", app.fmtN(creditV) + " ر.ي"], ["نسبة التحصيل النقدي", Math.round((cashV / (cashV + creditV || 1)) * 100) + "%"]] }, app.settings.report)}><I n="print" size={15} /> طباعة / PDF</button>
             : <button className="btn btn-ghost opacity-50 cursor-not-allowed" disabled title="صلاحية «طباعة» غير مخوّلة"><I n="lock" size={15} /> طباعة</button>}
         </div>
       </div>

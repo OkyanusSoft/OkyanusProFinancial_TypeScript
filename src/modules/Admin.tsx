@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../store";
 import { I, Chip, Modal, Empty } from "../ui";
 import { Directory, type DirConf } from "../crud";
-import { printDirectory } from "../print";
+import { printDirectory, DEFAULT_REPORT_CFG, type ReportCfg } from "../print";
 import { SIDEBAR_BGS, SYSTEM, ACTIVITY_CATS, MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS, QUICK_CATALOG } from "../data";
 import type { Activity } from "../data";
 import { LOGIN_BGS } from "./Login";
@@ -578,7 +578,7 @@ function MonitorScreen() {
           <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !py-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /> بث مباشر — تحديث كل 4.5 ث</span>
           <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] font-num !py-1.5" dir="ltr">جيل المزامنة #{app.gen}</span>
           {app.can("adm", "طباعة") && (
-            <button className="btn btn-soft !py-1.5" onClick={() => printDirectory(app.session?.user || "—", { title: "سجل نشاط المستخدمين", subtitle: "بث العمليات اللحظي على أجهزة الشبكة", columns: [{ h: "الوقت", v: (r: Activity) => new Date(r.ts).toLocaleString("ar-EG") }, { h: "المستخدم", v: (r: Activity) => r.user }, { h: "الدور", v: (r: Activity) => r.role }, { h: "الجهاز", v: (r: Activity) => r.device }, { h: "الفئة", v: (r: Activity) => r.category }, { h: "العملية", v: (r: Activity) => r.action }], rows: app.activity.slice(0, 200), summary: [["إجمالي العمليات", String(app.activity.length)], ["أجهزة متصلة", String(app.devices.filter((d) => d.online).length + 1)]] })}><I n="print" size={14} /> طباعة السجل</button>
+            <button className="btn btn-soft !py-1.5" onClick={() => printDirectory(app.session?.user || "—", { title: "سجل نشاط المستخدمين", subtitle: "بث العمليات اللحظي على أجهزة الشبكة", columns: [{ h: "الوقت", v: (r: Activity) => new Date(r.ts).toLocaleString("ar-EG") }, { h: "المستخدم", v: (r: Activity) => r.user }, { h: "الدور", v: (r: Activity) => r.role }, { h: "الجهاز", v: (r: Activity) => r.device }, { h: "الفئة", v: (r: Activity) => r.category }, { h: "العملية", v: (r: Activity) => r.action }], rows: app.activity.slice(0, 200), summary: [["إجمالي العمليات", String(app.activity.length)], ["أجهزة متصلة", String(app.devices.filter((d) => d.online).length + 1)]] }, app.settings.report)}><I n="print" size={14} /> طباعة السجل</button>
           )}
         </div>
       </div>
@@ -1001,7 +1001,7 @@ function SettingsScreen() {
         </div>
       </div>
       <div className="flex items-center gap-1 overflow-x-auto border-b border-line mb-5 px-1">
-        {[["fin", "الإعدادات المالية", "coins"], ["num", "الترقيم والفواتير", "receipt"], ["db", "قاعدة البيانات", "db"], ["bak", "النسخ الاحتياطي", "server"]].map(([id, l, ic]) => (
+        {[["fin", "الإعدادات المالية", "coins"], ["num", "الترقيم والفواتير", "receipt"], ["rep", "إعدادات التقارير", "chart"], ["db", "قاعدة البيانات", "db"], ["bak", "النسخ الاحتياطي", "server"]].map(([id, l, ic]) => (
           <button key={id} onClick={() => setTab(id)} className={`tabline flex items-center gap-1.5 px-3.5 py-2.5 text-[0.82rem] font-bold whitespace-nowrap transition-colors ${tab === id ? "on text-[var(--brand)]" : "text-mute hover:text-ink"}`}>
             <I n={ic} size={15} /> {l}
           </button>
@@ -1047,8 +1047,188 @@ function SettingsScreen() {
         </div>
       )}
 
+      {tab === "rep" && <ReportSettingsSection />}
       {tab === "db" && <DatabaseSection />}
       {tab === "bak" && <BackupSection />}
+    </div>
+  );
+}
+
+/* ═══════════ إعدادات التقارير والترويسات ═══════════ */
+function ReportSettingsSection() {
+  const app = useApp();
+  const [r, setR] = useState<ReportCfg>({ ...app.settings.report });
+  const [saved, setSaved] = useState(false);
+  const set = (p: Partial<ReportCfg>) => { setR((o) => ({ ...o, ...p })); setSaved(false); };
+
+  const save = () => {
+    app.setSettings({ ...app.settings, report: r });
+    setSaved(true);
+    app.toast("حُفظت إعدادات التقارير — ستظهر على كل المستندات والتقارير المطبوعة", "ok");
+  };
+  const reset = () => { setR({ ...DEFAULT_REPORT_CFG }); setSaved(false); app.toast("استُعيدت إعدادات التقارير الافتراضية", "info"); };
+
+  const headBox: React.CSSProperties =
+    r.headerStyle === "solid" ? { background: r.headerColor }
+    : r.headerStyle === "minimal" ? { background: "transparent", color: r.headerColor, border: `1.5px solid ${r.headerColor}` }
+    : { background: `linear-gradient(120deg, ${r.headerColor}, ${r.accentColor})` };
+  const rule: React.CSSProperties =
+    r.headerStyle === "solid" ? { background: r.headerColor }
+    : r.headerStyle === "minimal" ? { background: r.headerColor }
+    : { background: `linear-gradient(90deg, ${r.headerColor}, ${r.accentColor} 45%, ${r.headerColor})` };
+
+  const Tgl = ({ v, on, l, h }: { v: boolean; on: () => void; l: string; h?: string }) => (
+    <button onClick={on} className="w-full flex items-center gap-3 p-3 rounded-xl bg-panel border border-line hover:border-[color-mix(in_srgb,var(--brand)_40%,transparent)] transition-colors text-start">
+      <PSwitch on={v} onClick={on} />
+      <span><b className="text-[0.8rem] block">{l}</b>{h && <span className="text-[0.66rem] text-mute font-medium">{h}</span>}</span>
+    </button>
+  );
+
+  return (
+    <div className="anim-fadein">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p className="text-[0.8rem] font-bold text-soft flex items-center gap-2"><I n="chart" size={17} className="text-[var(--brand)]" /> ترويسة وتذييل وتنسيقات موحّدة لكل المستندات والتقارير المطبوعة — مع معاينة حيّة</p>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={reset}><I n="refresh" size={15} /> الافتراضي</button>
+          <button className="btn btn-brand" onClick={save}><I n={saved ? "check" : "save"} size={15} /> {saved ? "تم الحفظ" : "حفظ الإعدادات"}</button>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[1fr_370px] gap-5">
+        {/* ── الإعدادات ── */}
+        <div className="space-y-5">
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="bld" size={19} className="text-[var(--brand)]" /> الهوية والترويسة</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">اسم النظام / الجهة (عربي)</span><input className="input mt-1" value={r.nameAr} onChange={(e) => set({ nameAr: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">اسم الشركة</span><input className="input mt-1" value={r.company} onChange={(e) => set({ company: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الاسم اللاتيني</span><input className="input mt-1 font-num" dir="ltr" value={r.nameEn} onChange={(e) => set({ nameEn: e.target.value })} /></label>
+              <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">السطر التعريفي (Tagline)</span><input className="input mt-1" value={r.tagline} onChange={(e) => set({ tagline: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الهاتف</span><input className="input mt-1 font-num" dir="ltr" value={r.phone} onChange={(e) => set({ phone: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الموقع الإلكتروني</span><input className="input mt-1 font-num" dir="ltr" value={r.website} onChange={(e) => set({ website: e.target.value })} /></label>
+              <label className="block col-span-2"><span className="text-[0.74rem] font-bold text-soft">العنوان</span><input className="input mt-1" value={r.address} onChange={(e) => set({ address: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">السجل التجاري</span><input className="input mt-1" value={r.crNo} onChange={(e) => set({ crNo: e.target.value })} /></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الرقم الضريبي</span><input className="input mt-1 font-num" dir="ltr" value={r.taxNo} onChange={(e) => set({ taxNo: e.target.value })} /></label>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
+              <Tgl v={r.showLogo} on={() => set({ showLogo: !r.showLogo })} l="إظهار الشعار" />
+              <Tgl v={r.showTagline} on={() => set({ showTagline: !r.showTagline })} l="السطر التعريفي" />
+              <Tgl v={r.showContact} on={() => set({ showContact: !r.showContact })} l="الهاتف والموقع" />
+              <Tgl v={r.showCrTax} on={() => set({ showCrTax: !r.showCrTax })} l="السجل التجاري والضريبي" />
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="palette" size={19} className="text-[var(--accent)]" /> التنسيق والألوان</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">حجم الورق</span>
+                <select className="select mt-1" value={r.paperSize} onChange={(e) => set({ paperSize: e.target.value as ReportCfg["paperSize"] })}><option value="A4">A4</option><option value="Letter">Letter</option></select></label>
+              <label className="block"><span className="text-[0.74rem] font-bold text-soft">الكسور العشرية للأرقام</span>
+                <select className="select mt-1" value={r.decimals} onChange={(e) => set({ decimals: +e.target.value })}><option value={0}>بدون كسور</option><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></label>
+            </div>
+            <div className="mt-3">
+              <div className="flex justify-between text-[0.78rem] font-bold mb-1.5"><span>هامش الصفحة</span><span className="font-num text-[var(--brand)]">{r.margin}mm</span></div>
+              <input type="range" min={5} max={20} step={1} value={r.margin} onChange={(e) => set({ margin: +e.target.value })} className="w-full" />
+            </div>
+            <div className="mt-3">
+              <div className="text-[0.78rem] font-bold mb-1.5">نمط شريط الترويسة</div>
+              <div className="flex rounded-xl border border-line overflow-hidden">
+                {([["gradient", "متدرج"], ["solid", "مصمت"], ["minimal", "بسيط"]] as const).map(([v, l]) => (
+                  <button key={v} onClick={() => set({ headerStyle: v })} className={`flex-1 py-2 text-[0.8rem] font-bold transition-colors ${r.headerStyle === v ? "text-[var(--brandink)]" : "bg-surface text-mute hover:text-ink"}`} style={r.headerStyle === v ? { background: "linear-gradient(135deg, var(--brand), var(--brand2))" } : undefined}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-panel border border-line"><input type="color" value={r.headerColor} onChange={(e) => set({ headerColor: e.target.value })} className="w-9 h-9 rounded-lg border-0 cursor-pointer" /><span className="text-[0.76rem] font-bold">اللون الأساسي<br /><span className="font-num text-mute" dir="ltr">{r.headerColor}</span></span></label>
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-panel border border-line"><input type="color" value={r.accentColor} onChange={(e) => set({ accentColor: e.target.value })} className="w-9 h-9 rounded-lg border-0 cursor-pointer" /><span className="text-[0.76rem] font-bold">اللون المميز<br /><span className="font-num text-mute" dir="ltr">{r.accentColor}</span></span></label>
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h3 className="font-display font-bold text-base mb-4 flex items-center gap-2"><I n="edit" size={19} className="text-[var(--warn)]" /> التذييل والختم والاعتمادات</h3>
+            <label className="block"><span className="text-[0.74rem] font-bold text-soft">نص التذييل</span><input className="input mt-1" value={r.footerText} onChange={(e) => set({ footerText: e.target.value })} /></label>
+            <div className="grid grid-cols-2 gap-2.5 mt-3">
+              <Tgl v={r.showPrintedBy} on={() => set({ showPrintedBy: !r.showPrintedBy })} l="طُبع بواسطة" />
+              <Tgl v={r.showGenTime} on={() => set({ showGenTime: !r.showGenTime })} l="وقت الطباعة" />
+              <Tgl v={r.showBarcode} on={() => set({ showBarcode: !r.showBarcode })} l="الباركود" />
+              <Tgl v={r.showStamp} on={() => set({ showStamp: !r.showStamp })} l="ختم الحالة" />
+              <Tgl v={r.showSign} on={() => set({ showSign: !r.showSign })} l="خانات الاعتماد" h="ثلاثة توقيعات أسفل المستند" />
+            </div>
+            {r.showSign && (
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                {r.signLabels.map((s, i) => (
+                  <label key={i} className="block"><span className="text-[0.7rem] font-bold text-soft">توقيع {i + 1}</span>
+                    <input className="input mt-1 !text-[0.76rem]" value={s} onChange={(e) => set({ signLabels: r.signLabels.map((x, j) => (j === i ? e.target.value : x)) })} /></label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── المعاينة الحيّة ── */}
+        <div className="lg:sticky lg:top-20 self-start">
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-bold text-sm flex items-center gap-2"><I n="eye" size={17} className="text-[var(--brand)]" /> معاينة حيّة</h3>
+              <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] !text-[0.6rem]"><span className="w-1.5 h-1.5 rounded-full bg-[var(--good)] blink" /> تتحدث فورياً</span>
+            </div>
+            <div className="rounded-xl border border-line bg-white p-4 text-[#122a41] shadow-inner" style={{ fontFamily: '"Tajawal", sans-serif' }}>
+              {/* الترويسة */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  {r.showLogo && (
+                    <span className="grid h-10 w-10 place-items-center rounded-xl shrink-0" style={{ background: r.headerColor }}>
+                      <svg width="22" height="22" viewBox="0 0 48 48"><path d="M8 28c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#67d5ff" strokeWidth="4" fill="none" strokeLinecap="round" /><path d="M8 18c4.5-4.5 9-4.5 13.5 0s9 4.5 13.5 0" stroke="#a5e6ff" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.85" /></svg>
+                    </span>
+                  )}
+                  <div>
+                    <div className="font-display font-bold text-[0.95rem] leading-tight">{r.nameAr}</div>
+                    <div className="text-[0.66rem] font-bold text-[#33566f] mt-0.5">{r.company}</div>
+                    {r.showTagline && r.tagline && <div className="text-[0.58rem] text-[#7d97b0] font-bold mt-0.5">{r.tagline}</div>}
+                    {r.showContact && <div className="text-[0.58rem] text-[#7d97b0] font-bold mt-0.5"><span dir="ltr">{r.phone}</span> • {r.website.replace("https://", "")}</div>}
+                    {r.showCrTax && <div className="text-[0.55rem] text-[#7d97b0] font-bold mt-0.5">س.ت: {r.crNo}{r.taxNo ? ` • ض: ${r.taxNo}` : ""}</div>}
+                  </div>
+                </div>
+                <div className="text-left shrink-0" dir="ltr">
+                  <div className="inline-block rounded-md px-2.5 py-1 text-white text-[0.7rem] font-bold" style={headBox}>فاتورة مبيعات</div>
+                  <div className="font-num text-[0.7rem] font-bold mt-1">SIN-2026-0261</div>
+                  <div className="font-num text-[0.58rem] text-[#7d97b0]">2026-03-29</div>
+                </div>
+              </div>
+              <div className="h-1 rounded-full mt-3" style={rule} />
+              {/* جسم مصغر */}
+              <div className="mt-3 space-y-1.5">
+                <div className="h-6 rounded-md bg-[#0a4a73] opacity-90 flex items-center px-2 gap-2">{["الصنف", "الكمية", "السعر", "الإجمالي"].map((h) => <span key={h} className="text-white text-[0.55rem] font-bold flex-1">{h}</span>)}</div>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-5 rounded-md bg-[#f2f8fc] border border-[#d4e3ef] flex items-center px-2 gap-2">
+                    <span className="text-[0.55rem] font-bold flex-1 text-[#33566f]">باراسيتامول 500mg</span>
+                    <span className="font-num text-[0.55rem] text-[#33566f]">120</span>
+                    <span className="font-num text-[0.55rem] text-[#33566f]">1,150</span>
+                    <span className="font-num text-[0.55rem] font-bold text-[#122a41]">138,000</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 ms-auto w-40 space-y-1">
+                <div className="flex justify-between text-[0.6rem] font-bold text-[#33566f]"><span>الإجمالي الفرعي</span><span className="font-num">131,429</span></div>
+                <div className="flex justify-between rounded-md px-2 py-1 text-white text-[0.62rem] font-bold" style={headBox}><span>الإجمالي المستحق</span><span className="font-num">138,000</span></div>
+              </div>
+              {r.showSign && (
+                <div className="grid grid-cols-3 gap-3 mt-5">
+                  {r.signLabels.map((s, i) => (
+                    <div key={i} className="text-center text-[0.55rem] font-bold text-[#33566f]"><div className="border-t border-[#33566f] mb-1" />{s}</div>
+                  ))}
+                </div>
+              )}
+              {/* التذييل */}
+              <div className="mt-4 pt-2 border-t border-[#d4e3ef] flex items-center justify-between gap-2">
+                <span className="text-[0.52rem] text-[#7d97b0] font-bold flex-1 truncate">{r.footerText}</span>
+                {r.showBarcode && <span className="flex items-end gap-[2px] shrink-0" dir="ltr">{"OKS2026".split("").map((ch, i) => <span key={i} className="inline-block bg-[#122a41]" style={{ width: (ch.charCodeAt(0) % 3) + 1, height: 10 - (i % 3) * 2 }} />)}</span>}
+              </div>
+            </div>
+            <p className="text-[0.66rem] font-bold text-mute mt-3 flex items-start gap-1.5"><I n="info" size={12} className="shrink-0 mt-0.5" /> المعاينة تقرّب الشكل النهائي — الأرقام والألوان وأنماط الشريط تُطبَّق كما هي على الطباعة الفعلية A4.</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

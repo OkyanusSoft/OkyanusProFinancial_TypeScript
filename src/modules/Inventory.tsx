@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart, FormSection } from "../ui";
 import { Directory, DocList, type DirConf, type ColDef } from "../crud";
-import { openPrint, DocSheet, PTable, ReportSheet, tafqit } from "../print";
+import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
 import type { InvDoc } from "../data";
 
 export default function Inventory() {
@@ -153,6 +153,7 @@ const DOC_META: Record<string, { label: string; full: string; icon: string; pref
 
 /* ── طباعة سند مخزني ── */
 function printInvDoc(app: ReturnType<typeof useApp>, d: AnyR, docTitle: string) {
+  setReportCfg(app.settings.report);
   const whName = (id: string) => app.db.warehouses.find((w) => w.id === id)?.name || id;
   const whAcc = (id: string) => { const c = (app.db.warehouses.find((w) => w.id === id) as any)?.account; return c ? `${c} — ${app.accounts.find((a) => a.code === c)?.name || ""}` : "غير مرتبط"; };
   const itemName = (id: string) => app.db.items.find((i) => i.id === id)?.name || id;

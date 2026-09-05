@@ -12,6 +12,8 @@ import {
 export type { AnyR, Activity, Device, Tombstone } from "./data";
 import { engine } from "./sync";
 export { engine };
+import { DEFAULT_REPORT_CFG, type ReportCfg } from "./print";
+export type { ReportCfg };
 
 /* ═══════ توليد أرقام دليل الحسابات حسب آخر رقم في المستوى ═══════
    القاعدة: الرقم الجديد = كود الحساب الأب + (آخر رقم للأشقاء + 1)
@@ -69,6 +71,7 @@ export interface Settings {
   front: { syncSec: number; sessionMin: number; offline: boolean; density: "مريحة" | "مضغوطة"; sound: boolean; autoSave: boolean };
   backup: { fullDaily: boolean; diffHours: number; gzip: boolean; encrypt: boolean; retainDays: number; path: string; autoLocal: boolean };
   quick: { visible: boolean; items: QuickItem[] };
+  report: ReportCfg;
 }
 export interface QuickItem { id: string; module: string; path: string; label: string; icon: string }
 
@@ -235,6 +238,7 @@ const DEFAULT_SETTINGS: Settings = {
       { id: "pos:", module: "pos", path: "", label: "نقاط البيع", icon: "coins" },
     ],
   },
+  report: { ...DEFAULT_REPORT_CFG },
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {

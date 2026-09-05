@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Empty, Reveal, FormSection } from "../ui";
 import { Directory, type DirConf } from "../crud";
-import { openPrint, DocSheet, PTable, ReportSheet, tafqit } from "../print";
+import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
 
 export default function GL() {
@@ -347,6 +347,7 @@ function CoaScreen() {
 function FragmentRow({ children }: { children: React.ReactNode }) { return <>{children}</>; }
 
 function printCoa(app: ReturnType<typeof useApp>) {
+  setReportCfg(app.settings.report);
   const user = app.session?.user || "—";
   const today = new Date().toLocaleDateString("en-GB");
   const typeTone = (t: string) => (t === "أصول" ? "var(--brand)" : t === "إيرادات" ? "var(--good)" : t === "مصروفات" ? "var(--warn)" : t === "خصوم" ? "var(--bad)" : "var(--accent)");
@@ -631,6 +632,7 @@ function JEScreen({ kind }: { kind: string }) {
 
 /* ── بناء مستند طباعة قيد/سند مالي ── */
 function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
+  setReportCfg(app.settings.report);
   const lines = j.lines.filter((l) => l.debit || l.credit);
   const dr = lines.reduce((a, l) => a + l.debit * l.rate, 0);
   const cr = lines.reduce((a, l) => a + l.credit * l.rate, 0);
@@ -853,6 +855,7 @@ function printVoucher(app: ReturnType<typeof useApp>, v: {
   no: string; date: string; box?: string; boxAcc: string; boxAccName: string; party: string; amount: number;
   currency: string; rate: number; payMethod: string; payRef: string; cc: string; desc: string; lines: VLine[]; isRV: boolean; status: string;
 }) {
+  setReportCfg(app.settings.report);
   openPrint(
     <DocSheet
       docTitle={v.isRV ? "سند قبض" : "سند صرف"} no={v.no} date={v.date} status={v.status}
@@ -1250,6 +1253,7 @@ function printGLReport(app: ReturnType<typeof useApp>, kind: string, d: {
   bal: (c: string) => number; sumType: (t: string) => number; stmtLines: any[]; stmtAcc: string;
   totalDr: number; totalCr: number; posting: Account[];
 }) {
+  setReportCfg(app.settings.report);
   const { bal, sumType, stmtLines, stmtAcc, totalDr, totalCr, posting } = d;
   const user = app.session?.user || "—";
   const today = new Date().toLocaleDateString("en-GB");
