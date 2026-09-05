@@ -716,16 +716,16 @@ function VoucherBuilder({ kind, onClose, edit }: { kind: "rv" | "pv"; onClose: (
   const linesSum = lines.reduce((a, l) => a + (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), 0);
   const headerVal = (+amount || 0) * rate;
   const matched = Math.abs(linesSum - headerVal) < 0.01 && headerVal > 0;
-  /* رقم السند يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  /* رقم السند يُحجز كسولاً عند أول إجراء — لا يُستدعى أثناء الرسم إطلاقاً لمنع حلقة التعليق */
   const vPrefix = isRV ? app.settings.prefixes.RC : app.settings.prefixes.PV;
   const [no, setNo] = useState<string | null>(edit?.no || null);
-  const vNo = no || app.nextNo(vPrefix);
+  const reserveNo = () => { if (no) return no; const n = app.nextNo(vPrefix); setNo(n); return n; };
   /* حمولة حقول السند — تُحفظ مع القيد لتُعاد تعبئتها عند التعديل */
   const voucherPayload = { box, payMethod, payRef, party, amount, currency, cc, desc, lines };
 
   const setL = (i: number, p: Partial<VLine>) => setLines((old) => old.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
-  const buildJe = (status: string): Journal => ({
+  const buildJe = (status: string): Journal => { const vNo = reserveNo(); return ({
     id: vNo, no: vNo, date, user: app.session?.user || "—", status,
     desc: `${isRV ? "سند قبض" : "سند صرف"} — ${isRV ? "استلمنا من" : "صُرف إلى"} ${party} — ${desc}`,
     kind: isRV ? "قبض" : "صرف", source: isRV ? "سند قبض" : "سند صرف",
@@ -738,7 +738,7 @@ function VoucherBuilder({ kind, onClose, edit }: { kind: "rv" | "pv"; onClose: (
         : [{ account: boxAcc, debit: 0, credit: headerVal, currency, rate, costCenter: cc }]),
     ],
     _voucher: voucherPayload,
-  } as unknown as Journal);
+  } as unknown as Journal); };
 
   const validate = () => {
     if (!desc.trim()) { app.toast("حقل «البيان» إلزامي", "err"); return false; }
@@ -751,7 +751,6 @@ function VoucherBuilder({ kind, onClose, edit }: { kind: "rv" | "pv"; onClose: (
   /* حفظ كمسودة: بلا أثر على الأرصدة حتى الترحيل */
   const saveDraft = () => {
     if (!validate()) return;
-    setNo(vNo);
     const res = app.saveDraftJournal(buildJe("مسودة"));
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
@@ -759,18 +758,18 @@ function VoucherBuilder({ kind, onClose, edit }: { kind: "rv" | "pv"; onClose: (
   /* حفظ وترحيل: يُرحَّل قيداً متوازناً فوراً */
   const save = () => {
     if (!validate()) return;
-    setNo(vNo);
-    const res = app.addJournal(buildJe("مرحّل"));
+    const je = buildJe("مرحّل");
+    const res = app.addJournal(je);
     app.toast(res.msg, res.ok ? "ok" : "err");
-    if (res.ok) { printVoucher(app, { no: vNo, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
+    if (res.ok) { printVoucher(app, { no: je.no, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
   };
 
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
   const printFinal = () => {
     if (!(+amount > 0)) { app.toast("أدخل المبلغ أولاً قبل الطباعة", "err"); return; }
     if (!matched) { app.toast("طابق إجمالي البنود مع مبلغ السند أولاً", "err"); return; }
-    setNo(vNo);
-    printVoucher(app, { no: vNo, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" });
+    const je = buildJe("مرحّل");
+    printVoucher(app, { no: je.no, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" });
   };
 
   return (
@@ -961,20 +960,20 @@ function JEBuilder({ kind, onClose, edit }: { kind: string; onClose: () => void;
   const cr = rows.reduce((a, r) => a + (+r.credit || 0) * r.rate, 0);
   const balanced = Math.abs(dr - cr) < 0.01 && dr > 0;
   const setRow = (i: number, patch: Partial<typeof rows[0]>) => setRows((old) => old.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  /* رقم القيد يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  /* رقم القيد يُحجز كسولاً عند أول إجراء — لا يُستدعى أثناء الرسم إطلاقاً لمنع حلقة التعليق */
   const jePrefix = kind === "rv" ? app.settings.prefixes.RC : kind === "pv" ? app.settings.prefixes.PV : kind === "open" ? "FYE" : app.settings.prefixes.JE;
   const [no, setNo] = useState<string | null>(edit?.no || null);
   const jeStatus = isReq ? "بانتظار الموافقة" : "مرحّل";
   const buildLines = (): JournalLine[] => rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
-  const jeNo = no || app.nextNo(jePrefix);
+  const reserveNo = () => { if (no) return no; const n = app.nextNo(jePrefix); setNo(n); return n; };
   const jeKind = isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية";
+  const buildJe = (status: string): Journal => { const jeNo = reserveNo(); return { id: jeNo, no: jeNo, date, desc, kind: jeKind, lines: buildLines(), user: app.session?.user || "—", status, source: JE_META[kind].title } as unknown as Journal; };
 
   /* حفظ كمسودة: بلا أثر على الأرصدة حتى الترحيل */
   const saveDraft = () => {
     if (!desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
     if (!balanced) { app.toast(`القيد غير متوازن: مدين ${app.fmtN(dr)} مقابل دائن ${app.fmtN(cr)}`, "err"); return; }
-    setNo(jeNo);
-    const res = app.saveDraftJournal({ id: jeNo, no: jeNo, date, desc, kind: jeKind, lines: buildLines(), user: app.session?.user || "—", status: "مسودة", source: JE_META[kind].title } as Journal);
+    const res = app.saveDraftJournal(buildJe("مسودة"));
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -982,8 +981,7 @@ function JEBuilder({ kind, onClose, edit }: { kind: string; onClose: () => void;
   const save = () => {
     if (!desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
     if (!balanced) { app.toast(`القيد غير متوازن: مدين ${app.fmtN(dr)} مقابل دائن ${app.fmtN(cr)}`, "err"); return; }
-    setNo(jeNo);
-    const res = app.addJournal({ id: jeNo, no: jeNo, date, desc, kind: jeKind, lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as Journal);
+    const res = app.addJournal(buildJe(jeStatus));
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -991,8 +989,7 @@ function JEBuilder({ kind, onClose, edit }: { kind: string; onClose: () => void;
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته) وليس نسخة مسودة */
   const printFinal = () => {
     if (!balanced) { app.toast("وازن القيد أولاً قبل الطباعة", "err"); return; }
-    setNo(jeNo);
-    printJournal(app, { id: jeNo, no: jeNo, date, desc, kind: "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as unknown as Journal);
+    printJournal(app, buildJe(jeStatus));
   };
 
   return (

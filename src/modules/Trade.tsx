@@ -549,16 +549,16 @@ function InvoiceBuilder({ kind, onClose, defaultCredit, edit }: { kind: "sales" 
   const vatV = sub * (app.settings.vat / 100);
   const cust: any = app.db.customers.find((c: any) => c.id === s.partner);
   const willExceed = kind === "sales" && s.payType === "آجل" && cust?.creditLimit && cust.balance + total * rate > cust.creditLimit;
-  /* رقم الفاتورة يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
+  /* رقم الفاتورة يُحجز كسولاً عند أول إجراء (حفظ/طباعة) — لا يُستدعى أثناء الرسم إطلاقاً لمنع حلقة التعليق */
   const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
   const [no, setNo] = useState<string | null>(edit?.no || null);
-  const invNo = no || app.nextNo(prefix);
+  const reserveNo = () => { if (no) return no; const n = app.nextNo(prefix); setNo(n); return n; };
 
   const addLine = () => {
     if (s.qty <= 0) { app.toast("الكمية يجب أن تكون أكبر من صفر", "err"); return; }
     setS({ ...s, lines: [...s.lines, { item: s.item, qty: s.qty, price: s.price || (kind === "purchases" ? it?.cost || 0 : it?.price || 0), disc: s.disc }], qty: 10, disc: 0 });
   };
-  const buildInv = (status: string) => ({ id: invNo, no: invNo, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: edit?.costCenter || "CC-01", status, vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
+  const buildInv = (status: string) => { const invNo = reserveNo(); return { id: invNo, no: invNo, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: edit?.costCenter || "CC-01", status, vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined }; };
   const save = () => {
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
     const res = app.addInvoice(kind, buildInv("مرحّلة") as Invoice);
@@ -575,8 +575,7 @@ function InvoiceBuilder({ kind, onClose, defaultCredit, edit }: { kind: "sales" 
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
   const printFinal = () => {
     if (s.lines.length === 0) { app.toast("أضف بنداً واحداً على الأقل قبل الطباعة", "err"); return; }
-    setNo(invNo);
-    printInvoiceDoc(app, buildInv("مرحّلة"), kind);
+    printInvoiceDoc(app, buildInv("مرحّلة"), kind); /* buildInv يحجز الرقم تلقائياً */
   };
 
   return (
