@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Empty, Reveal, FormSection } from "../ui";
-import { DocActions, StatusChip } from "../flow";
+import { DocActions, StatusChip, ReadOnlyDoc, type DocViewData } from "../flow";
 import { Directory, type DirConf } from "../crud";
 import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
@@ -567,7 +567,34 @@ function JEScreen({ kind }: { kind: string }) {
   const kindMap: Record<string, string> = { open: "افتتاحي", req: "طلب", je: "يومية", pv: "صرف", rv: "قبض" };
   const list = (app.db.journals as any as Journal[]).filter((j) => j.kind === kindMap[kind]).reverse();
   const [editJe, setEditJe] = useState<any>(null);
+  const [view, setView] = useState<any>(null);
   const isReq = kind === "req";
+  /* تكييف القيد إلى بيانات العرض للقراءة فقط */
+  const jeViewData = (j: any): DocViewData => {
+    const dr = j.lines.reduce((a: number, l: any) => a + l.debit, 0);
+    return {
+      icon: meta.icon,
+      docTitle: meta.title.replace(/s$/, ""),
+      no: j.no,
+      date: app.fmtDate(j.date),
+      status: j.status,
+      user: j.user,
+      note: j.desc,
+      meta: [
+        ["نوع القيد", j.kind],
+        ["المصدر", j.source || "—"],
+        ["عدد الأسطر", j.lines.filter((l: any) => l.debit || l.credit).length],
+      ],
+      lineCols: ["الحساب", "الاسم", "مدين", "دائن"],
+      lineRows: j.lines.filter((l: any) => l.debit || l.credit).map((l: any) => [
+        <span key="c" className="font-num font-bold" dir="ltr">{l.account}</span>,
+        <span key="n" className="font-bold">{app.accounts.find((a) => a.code === l.account)?.name || "—"}</span>,
+        <span key="d" className="font-num font-bold text-[var(--bad)]">{l.debit ? app.fmtN(l.debit * l.rate) : "—"}</span>,
+        <span key="cr" className="font-num font-bold text-[var(--good)]">{l.credit ? app.fmtN(l.credit * l.rate) : "—"}</span>,
+      ]) as any,
+      grand: ["إجمالي القيد المتوازن", app.fmtN(dr) + " ر.ي"],
+    };
+  };
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -613,7 +640,7 @@ function JEScreen({ kind }: { kind: string }) {
                     </>
                   ) : (
                     <DocActions app={app} module="gl" status={j.status}
-                      onView={() => printJournal(app, j)}
+                      onView={() => setView(j)}
                       onEdit={j.status === "مسودة" ? () => setEditJe(j) : undefined}
                       onDelete={j.status === "مسودة" ? () => app.deleteJournal(j.id) : undefined}
                       onPost={() => app.postJournal(j.id)}
@@ -643,6 +670,9 @@ function JEScreen({ kind }: { kind: string }) {
       {editJe && (kind === "rv" || kind === "pv"
         ? <VoucherBuilder key={editJe.id} kind={kind} edit={editJe} onClose={() => setEditJe(null)} />
         : <JEBuilder key={editJe.id} kind={kind} edit={editJe} onClose={() => setEditJe(null)} />)}
+      {/* عرض القيد للقراءة فقط — بلا أي تعديل */}
+      <ReadOnlyDoc open={!!view} onClose={() => setView(null)} d={view ? jeViewData(view) : null} fmtN={app.fmtN}
+        onPrint={view && app.can("gl", "طباعة") ? () => printJournal(app, view) : undefined} />
     </div>
   );
 }

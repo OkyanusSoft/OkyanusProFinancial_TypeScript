@@ -3,8 +3,8 @@ import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart, FormSection } from "../ui";
 import { Directory, ActionBtn, type DirConf } from "../crud";
 import { printTradeDoc, printDirectory, tafqit, setReportCfg } from "../print";
-import { DocActions, StatusSteps } from "../flow";
-import type { Invoice } from "../data";
+import { DocActions, StatusSteps, ReadOnlyDoc, type DocViewData } from "../flow";
+import type { Invoice, Journal } from "../data";
 
 /* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
 function printInvoiceDoc(app: ReturnType<typeof useApp>, inv: any, kind: "sales" | "purchases" | "returns") {
@@ -175,6 +175,28 @@ function PurchaseRequests() {
   const rows = app.db.requests;
   const openEdit = (r: any) => { setF({ desc: r.desc, qty: r.qty, est: r.est, item: r.item }); setEditReq(r); };
   const reqStatusChip = (r: any) => r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مسودة" ? "مسودة" : "بانتظار الموافقة";
+  /* تكييف طلب الشراء إلى بيانات العرض للقراءة فقط */
+  const reqViewData = (r: any): DocViewData => {
+    const it = app.db.items.find((i: any) => i.id === r.item);
+    return {
+      icon: "clip",
+      docTitle: "طلب شراء",
+      no: r.no,
+      date: app.fmtDate(r.date),
+      status: r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status,
+      user: r.requester,
+      note: r.desc,
+      meta: [
+        ["مقدم الطلب", r.requester],
+        ["الصنف المطلوب", it?.name || "—"],
+        ["الكمية", app.fmtN(r.qty)],
+        ["القيمة التقديرية", app.fmtN(r.est) + " ر.ي"],
+      ],
+      lineCols: ["الصنف", "الكمية", "القيمة التقديرية"],
+      lineRows: [[<b key="n">{it?.name || "—"}</b>, <span key="q" className="font-num">{app.fmtN(r.qty)}</span>, <b key="t" className="font-num">{app.fmtN(r.est)}</b>]] as any,
+      grand: ["القيمة التقديرية للطلب", app.fmtN(r.est) + " ر.ي"],
+    };
+  };
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -222,28 +244,9 @@ function PurchaseRequests() {
           </table>
         </div>
       </div>
-      <Modal open={!!view} onClose={() => setView(null)} title={`الطلب ${view?.no || ""}`} icon="clip" wide subtitle="تفاصيل طلب الشراء — الاعتماد والتحويل والطباعة"
-        footer={view ? <>
-          {view.status === "مسودة" && app.can("pur", "اعتماد") && <button className="btn btn-soft" onClick={() => { app.setRequestStatus(view.id, "معتمد"); setView(null); }}><I n="shield" size={15} /> اعتماد</button>}
-          {view.status === "معتمد" && app.can("pur", "ترحيل") && <button className="btn btn-brand" onClick={() => { app.setRequestStatus(view.id, "تم التحويل"); app.toast(`حُوّل الطلب ${view.no} إلى فاتورة`, "ok"); setView(null); }}><I n="check" size={15} /> تحويل لفاتورة</button>}
-          {app.can("pur", "طباعة") && <button className="btn btn-brand" onClick={() => printRequestDoc(app, view)}><I n="print" size={15} /> طباعة</button>}
-        </> : undefined}>
-        {view && (() => { const it = app.db.items.find((i: any) => i.id === view.item); return (
-          <>
-            <div className="flex flex-wrap gap-2 mb-4">
-              <Chip s={view.status === "معتمد" ? "مقبول" : view.status === "تم التحويل" ? "مرحّل" : view.status === "مرفوض" ? "مرفوض" : "بانتظار الموافقة"} />
-              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{view.requester}</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{app.fmtDate(view.date)}</span>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4 rounded-xl border border-line bg-panel/50 p-4">
-              <div><div className="text-[0.64rem] font-bold text-mute">الصنف المطلوب</div><div className="text-[0.9rem] font-bold mt-0.5">{it?.name || "—"}</div></div>
-              <div><div className="text-[0.64rem] font-bold text-mute">البيان</div><div className="text-[0.9rem] font-bold mt-0.5">{view.desc}</div></div>
-              <div><div className="text-[0.64rem] font-bold text-mute">الكمية</div><div className="text-[0.9rem] font-bold font-num mt-0.5">{app.fmtN(view.qty)}</div></div>
-              <div><div className="text-[0.64rem] font-bold text-mute">القيمة التقديرية</div><div className="text-[0.9rem] font-bold font-num text-[var(--brand)] mt-0.5">{app.fmtN(view.est)} ر.ي</div></div>
-            </div>
-          </>
-        ); })()}
-      </Modal>
+      {/* عرض طلب الشراء للقراءة فقط — بلا أي تعديل */}
+      <ReadOnlyDoc open={!!view} onClose={() => setView(null)} d={view ? reqViewData(view) : null} fmtN={app.fmtN}
+        onPrint={view && app.can("pur", "طباعة") ? () => printRequestDoc(app, view) : undefined} />
 
       <Modal open={show || !!editReq} onClose={() => { setShow(false); setEditReq(null); }} title={editReq ? `تعديل الطلب ${editReq.no}` : "طلب شراء جديد"} icon="clip" subtitle="يُحفظ كمسودة ثم يمر بدورة اعتماد وتحويل"
         footer={<>
@@ -388,6 +391,45 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
   const partnerName = (code: string) => partners.find((p: any) => p.id === code)?.name || code;
   const itemName = (code: string) => app.db.items.find((i: any) => i.id === code)?.name || code;
 
+  /* تكييف الفاتورة إلى بيانات العرض للقراءة فقط — مع قيدها المحاسبي المولّد */
+  const invViewData = (v: any): DocViewData => {
+    const sub = v.lines.reduce((a: number, l: any) => a + l.qty * l.price * (1 - (l.disc || 0) / 100), 0);
+    const total = app.invoiceTotal(v);
+    const je = (app.db.journals as any as Journal[]).find((j) => j.desc.includes(v.no) && j.status !== "ملغي");
+    return {
+      icon: "receipt",
+      docTitle: kind === "sales" ? "فاتورة مبيعات" : kind === "purchases" ? "فاتورة مشتريات" : "فاتورة مرتجع مبيعات",
+      no: v.no,
+      date: app.fmtDate(v.date),
+      status: v.status,
+      user: undefined,
+      note: v.note,
+      meta: [
+        [kind === "purchases" ? "المورد" : "العميل", partnerName(v.partner)],
+        ["طريقة السداد", v.payType],
+        ["العملة", v.currency + (v.rate !== 1 ? ` (سعر ${v.rate})` : "")],
+        ["مركز التكلفة", v.costCenter || "—"],
+        ...(v.paid ? [["المدفوع", app.fmtN(v.paid) + " ر.ي"] as [string, any]] : []),
+        ...(v.paid ? [["المتبقي", app.fmtN(total - (v.paid || 0)) + " ر.ي"] as [string, any]] : []),
+        ["عدد البنود", v.lines.length],
+      ] as [string, any][],
+      lineCols: ["الصنف", "الكمية", "السعر", "خصم %", "الإجمالي"],
+      lineRows: v.lines.map((l: any) => [
+        <b key="n">{itemName(l.item)}</b>,
+        <span key="q" className="font-num">{app.fmtN(l.qty)}</span>,
+        <span key="p" className="font-num">{app.fmtN(l.price)}</span>,
+        <span key="d" className="font-num">{l.disc || 0}%</span>,
+        <b key="t" className="font-num">{app.fmtN(l.qty * l.price * (1 - (l.disc || 0) / 100))}</b>,
+      ]) as any,
+      totals: [
+        ["الإجمالي الفرعي", app.fmtN(sub) + " ر.ي"],
+        [`ضريبة القيمة المضافة ${v.vat}%`, app.fmtN(total - sub) + " ر.ي"],
+      ],
+      grand: ["الإجمالي المستحق", app.fmtN(total) + " ر.ي"],
+      journalLines: je?.lines.map((l) => ({ account: l.account, name: app.accounts.find((a) => a.code === l.account)?.name, debit: l.debit, credit: l.credit })),
+    };
+  };
+
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -467,37 +509,9 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
       {show && <InvoiceBuilder kind={kind} onClose={() => setShow(false)} defaultCredit={credit} />}
       {edit && <InvoiceBuilder key={edit.id} kind={kind} edit={edit} onClose={() => setEdit(null)} defaultCredit={credit} />}
 
-      <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`} subtitle="عرض الفاتورة — البنود والضريبة مع الطباعة A4 والإلغاء"
-        footer={view ? <>
-          {view.status !== "ملغاة" && app.can(mod, "حذف") && <button className="btn btn-danger" onClick={() => { app.voidInvoice(kind, view.id); setView(null); }}><I n="undo" size={15} /> إلغاء الفاتورة</button>}
-          {app.can(mod, "طباعة") && <button className="btn btn-brand" onClick={() => printInvoiceDoc(app, view, kind)}><I n="print" size={15} /> طباعة الفاتورة</button>}
-        </> : undefined}>
-        {view && (
-          <>
-            <div className="flex flex-wrap gap-2 mb-4">
-              <Chip s={view.status} /><Chip s={view.payType} />
-              <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)]">{partnerName(view.partner)}</span>
-              <span className="chip bg-[color-mix(in_srgb,var(--mute)_13%,transparent)] text-[var(--soft)] font-num" dir="ltr">{view.date} • مركز: {view.costCenter}</span>
-            </div>
-            {view.note && (
-              <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand)_22%,transparent)] bg-[color-mix(in_srgb,var(--brand)_5%,var(--panel))] p-3.5 mb-3">
-                <div className="flex items-center gap-1.5 text-[0.7rem] font-bold text-[var(--brand)] mb-1"><I n="file" size={13} /> الــبيــان</div>
-                <p className="text-[0.84rem] font-bold text-soft leading-6">{view.note}</p>
-              </div>
-            )}
-            <table className="tbl mb-3">
-              <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>خصم</th><th>الإجمالي</th></tr></thead>
-              <tbody>{view.lines.map((l: any, i: number) => (
-                <tr key={i}><td className="font-bold">{itemName(l.item)}</td><td className="font-num">{l.qty}</td><td className="font-num">{app.fmtN(l.price)}</td><td className="font-num">{l.disc}%</td><td className="font-num font-bold">{app.fmtN(l.qty * l.price * (1 - l.disc / 100))}</td></tr>
-              ))}</tbody>
-            </table>
-            <div className="flex flex-wrap justify-between items-center gap-3 rounded-xl p-4 bg-[color-mix(in_srgb,var(--brand)_6%,var(--panel))] border border-line">
-              <span className="text-[0.78rem] font-bold text-soft">ضريبة {view.vat}% مضمّنة • التكامل المحاسبي ولّد قيداً تلقائياً في دفتر الأستاذ</span>
-              <span className="font-num font-bold text-xl text-[var(--brand)]">{app.fmtN(app.invoiceTotal(view))} ر.ي</span>
-            </div>
-          </>
-        )}
-      </Modal>
+      {/* عرض الفاتورة للقراءة فقط — بلا أي تعديل */}
+      <ReadOnlyDoc open={!!view} onClose={() => setView(null)} d={view ? invViewData(view) : null} fmtN={app.fmtN}
+        onPrint={view && app.can(mod, "طباعة") ? () => printInvoiceDoc(app, view, kind) : undefined} />
 
       <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`تسجيل سداد — ${payFor?.no || ""}`} icon="coins"
         subtitle="تسجيل دفعة سداد — يولّد سند صرف/قبض ويحدّث الذمم فوراً"
