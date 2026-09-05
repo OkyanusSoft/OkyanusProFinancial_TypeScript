@@ -3,6 +3,7 @@ import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Reveal, Empty, BarChart, Donut, LineChart, FormSection } from "../ui";
 import { Directory, ActionBtn, type DirConf } from "../crud";
 import { printTradeDoc, printDirectory, tafqit, setReportCfg } from "../print";
+import { DocActions, StatusSteps } from "../flow";
 import type { Invoice } from "../data";
 
 /* ═══════ طابعة الفواتير وعروض الأسعار والطلبات (A4 احترافية) ═══════ */
@@ -169,8 +170,11 @@ function PurchaseRequests() {
   const app = useApp();
   const [show, setShow] = useState(false);
   const [view, setView] = useState<any>(null);
+  const [editReq, setEditReq] = useState<any>(null);
   const [f, setF] = useState({ desc: "", qty: 10, est: 0, item: app.db.items[0]?.id || "" });
   const rows = app.db.requests;
+  const openEdit = (r: any) => { setF({ desc: r.desc, qty: r.qty, est: r.est, item: r.item }); setEditReq(r); };
+  const reqStatusChip = (r: any) => r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مسودة" ? "مسودة" : "بانتظار الموافقة";
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -181,7 +185,7 @@ function PurchaseRequests() {
             <p className="text-mute text-[0.82rem] font-medium mt-0.5">دورة عمل كاملة: مسودة ← اعتماد ← تحويل إلى فاتورة مشتريات</p>
           </div>
         </div>
-        <button className="btn btn-brand" onClick={() => setShow(true)}><I n="plus" size={16} /> طلب شراء جديد</button>
+        <button className="btn btn-brand" onClick={() => { setF({ desc: "", qty: 10, est: 0, item: app.db.items[0]?.id || "" }); setShow(true); }}><I n="plus" size={16} /> طلب شراء جديد</button>
       </div>
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -196,14 +200,20 @@ function PurchaseRequests() {
                   <td className="font-bold">{r.desc}</td>
                   <td className="font-num">{app.fmtN(r.qty)}</td>
                   <td className="font-num">{app.fmtN(r.est)}</td>
-                  <td><Chip s={r.status === "معتمد" ? "مقبول" : r.status === "تم التحويل" ? "مرحّل" : r.status === "مرفوض" ? "مرفوض" : "بانتظار الموافقة"} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
+                  <td><Chip s={reqStatusChip(r)} /> <span className="text-[0.72rem] font-bold">{r.status}</span></td>
                   <td>
-                    <div className="flex flex-wrap gap-1 justify-start max-w-[260px]">
-                      <ActionBtn k="view" allowed={app.can("pur", "عرض")} onClick={() => setView(r)} />
-                      <ActionBtn k="print" allowed={app.can("pur", "طباعة")} onClick={() => printRequestDoc(app, r)} title="طباعة الطلب (A4)" />
-                      {r.status === "مسودة" && <ActionBtn k="approve" allowed={app.can("pur", "اعتماد")} onClick={() => app.setRequestStatus(r.id, "معتمد")} title="اعتماد الطلب" />}
-                      {r.status === "معتمد" && <ActionBtn k="post" allowed={app.can("pur", "ترحيل")} onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }} title="تحويل إلى فاتورة" />}
-                      {r.status === "مسودة" && <ActionBtn k="del" allowed={app.can("pur", "حذف")} onClick={() => app.setRequestStatus(r.id, "مرفوض")} title="رفض الطلب" />}
+                    <div className="flex flex-wrap gap-1 justify-start max-w-[300px]">
+                      <DocActions app={app} module="pur" status={r.status === "تم التحويل" ? "مرحّل" : r.status}
+                        onView={() => setView(r)}
+                        onEdit={r.status === "مسودة" ? () => openEdit(r) : undefined}
+                        onDelete={r.status === "مسودة" ? () => app.deleteRequest(r.id) : undefined}
+                        onPost={r.status === "مسودة" ? () => app.setRequestStatus(r.id, "معتمد") : undefined}
+                        onPrint={() => printRequestDoc(app, r)} />
+                      {r.status === "معتمد" && (
+                        <button className="act-chip act-strong" style={{ ["--tone" as any]: "var(--brand)" }} onClick={() => { app.setRequestStatus(r.id, "تم التحويل"); app.toast(`حُوّل الطلب ${r.no} إلى فاتورة مشتريات`, "ok"); }}>
+                          <I n="check" size={12} /><span>تحويل لفاتورة</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -235,14 +245,19 @@ function PurchaseRequests() {
         ); })()}
       </Modal>
 
-      <Modal open={show} onClose={() => setShow(false)} title="طلب شراء جديد" icon="clip" subtitle="يُحفظ كمسودة ثم يمر بدورة اعتماد وتحويل"
+      <Modal open={show || !!editReq} onClose={() => { setShow(false); setEditReq(null); }} title={editReq ? `تعديل الطلب ${editReq.no}` : "طلب شراء جديد"} icon="clip" subtitle="يُحفظ كمسودة ثم يمر بدورة اعتماد وتحويل"
         footer={<>
-          <button className="btn btn-ghost" onClick={() => setShow(false)}>إلغاء</button>
+          <button className="btn btn-ghost" onClick={() => { setShow(false); setEditReq(null); }}>إلغاء</button>
           <button className="btn btn-brand" onClick={() => {
             if (!f.desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
-            const no = app.nextNo(app.settings.prefixes.PR);
-            app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, status: "مسودة" });
-            app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
+            if (editReq) {
+              app.save("requests", { ...editReq, desc: f.desc, qty: f.qty, est: f.est, item: f.item, status: "مسودة" });
+              app.toast(`حُدّث الطلب ${editReq.no} وأُعيد إلى «مسودة»`, "ok"); setEditReq(null);
+            } else {
+              const no = app.nextNo(app.settings.prefixes.PR);
+              app.save("requests", { id: no, code: no, no, date: "2026-03-29", requester: app.session?.user || "—", desc: f.desc, qty: f.qty, est: f.est, item: f.item, status: "مسودة" });
+              app.toast(`أُنشئ طلب الشراء ${no} بحالة «مسودة»`, "ok"); setShow(false);
+            }
           }}><I n="check" size={15} /> حفظ الطلب (مسودة)</button>
         </>}>
         <div className="space-y-3">
@@ -297,10 +312,17 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
                 <td className="font-num font-bold text-[var(--brand)]">{app.fmtN(q.total)}</td>
                 <td><Chip s={q.status} /></td>
                 <td>
-                  <div className="flex flex-wrap gap-1 justify-start max-w-[240px]">
-                    <ActionBtn k="print" allowed={app.can(isSale ? "sal" : "pur", "طباعة")} onClick={() => printQuoteDoc(app, q, partners, isSale)} title="طباعة العرض (A4)" />
-                    {q.status === "ساري" && isSale && <ActionBtn k="approve" allowed={app.can("sal", "اعتماد")} onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }} title="قبول وتحويل" />}
-                    {q.status === "ساري" && <ActionBtn k="del" allowed={app.can(isSale ? "sal" : "pur", "حذف")} onClick={() => app.setQuoteStatus(q.id, "مرفوض")} title="رفض العرض" />}
+                  <div className="flex flex-wrap gap-1 justify-start max-w-[300px]">
+                    <DocActions app={app} module={isSale ? "sal" : "pur"} status={q.status === "ساري" ? "مرحّل" : q.status === "مسودة" ? "مسودة" : q.status}
+                      onView={() => printQuoteDoc(app, q, partners, isSale)}
+                      onDelete={q.status === "مسودة" ? () => app.deleteQuote(q.id) : undefined}
+                      onPost={q.status === "مسودة" ? () => app.setQuoteStatus(q.id, "ساري") : undefined}
+                      onPrint={() => printQuoteDoc(app, q, partners, isSale)} />
+                    {q.status === "ساري" && isSale && (
+                      <button className="act-chip act-strong" style={{ ["--tone" as any]: "var(--good)" }} onClick={() => { app.setQuoteStatus(q.id, "مقبول"); app.toast(`قُبل العرض ${q.no} — افتح شاشة فاتورة مبيعات لإصدارها`, "ok"); }}>
+                        <I n="check" size={12} /><span>قبول وتحويل</span>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -314,9 +336,9 @@ function QuotesScreen({ kind }: { kind: "بيع" | "شراء" }) {
           <button className="btn btn-brand" onClick={() => {
             if (!f.partner) { app.toast("اختر الطرف أولاً", "err"); return; }
             const no = app.nextNo(isSale ? app.settings.prefixes.QT : "PQ");
-            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "ساري" });
-            app.toast(`أُنشئ العرض ${no} — ساري حتى ${f.valid}`, "ok"); setShow(false);
-          }}><I n="check" size={15} /> إصدار العرض</button>
+            app.save("quotes", { id: no, code: no, no, kind, date: "2026-03-29", partner: f.partner, valid: f.valid, total: f.total, status: "مسودة" });
+            app.toast(`أُنشئ العرض ${no} كمسودة — اضغط «ترحيل» لنشره حتى ${f.valid}`, "ok"); setShow(false);
+          }}><I n="check" size={15} /> حفظ العرض (مسودة)</button>
         </>}>
         <div className="space-y-3">
           <label className="block"><span className="text-[0.74rem] font-bold text-soft">{isSale ? "العميل" : "المورد"}</span>
@@ -338,6 +360,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
   const app = useApp();
   const [show, setShow] = useState(false);
   const [view, setView] = useState<any>(null);
+  const [edit, setEdit] = useState<any>(null);
   const [payFor, setPayFor] = useState<any>(null);
   const [payAmt, setPayAmt] = useState(0);
   const [q, setQ] = useState("");
@@ -423,11 +446,15 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
                   </td>}
                   <td><Chip s={inv.status} />{credit && inv.status === "مرحّلة" && rem < 1 && <span className="chip bg-[color-mix(in_srgb,var(--good)_12%,transparent)] text-[var(--good)] ms-1">مسددة ✓</span>}</td>
                   <td>
-                    <div className="flex flex-wrap gap-1 justify-start max-w-[260px]">
-                      <ActionBtn k="view" allowed={app.can(mod, "عرض")} onClick={() => setView(inv)} />
-                      <ActionBtn k="print" allowed={app.can(mod, "طباعة")} onClick={() => printInvoiceDoc(app, inv, kind)} title="طباعة الفاتورة (A4)" />
+                    <div className="flex flex-wrap items-center gap-1 justify-start max-w-[300px]">
+                      <DocActions app={app} module={mod} status={inv.status}
+                        onView={() => setView(inv)}
+                        onEdit={() => setEdit(inv)}
+                        onDelete={() => app.deleteInvoice(kind, inv.id)}
+                        onPost={() => app.postInvoice(kind, inv.id)}
+                        onUnpost={() => app.unpostInvoice(kind, inv.id)}
+                        onPrint={() => printInvoiceDoc(app, inv, kind)} />
                       {credit && inv.status === "مرحّلة" && rem >= 1 && <button className="btn btn-brand !py-1 !px-2 !text-[0.62rem]" onClick={() => { setPayFor(inv); setPayAmt(Math.round(rem)); }}><I n="coins" size={12} /> سداد</button>}
-                      {inv.status !== "ملغاة" && !credit && <ActionBtn k="del" allowed={app.can(mod, "حذف")} onClick={() => app.voidInvoice(kind, inv.id)} title="إلغاء الفاتورة وعكس أثرها" />}
                     </div>
                   </td>
                 </tr>
@@ -438,6 +465,7 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
       </div></div>
 
       {show && <InvoiceBuilder kind={kind} onClose={() => setShow(false)} defaultCredit={credit} />}
+      {edit && <InvoiceBuilder key={edit.id} kind={kind} edit={edit} onClose={() => setEdit(null)} defaultCredit={credit} />}
 
       <Modal open={!!view} onClose={() => setView(null)} wide icon="receipt" title={`الفاتورة ${view?.no || ""}`} subtitle="عرض الفاتورة — البنود والضريبة مع الطباعة A4 والإلغاء"
         footer={view ? <>
@@ -505,11 +533,15 @@ function InvoiceScreen({ kind, credit }: { kind: "sales" | "purchases" | "return
 }
 
 /* ═══════════ منشئ الفواتير مع مفتاح نقدي/آجل ═══════════ */
-function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean }) {
+function InvoiceBuilder({ kind, onClose, defaultCredit, edit }: { kind: "sales" | "purchases" | "returns"; onClose: () => void; defaultCredit?: boolean; edit?: any }) {
   const app = useApp();
   const partners = kind === "purchases" ? app.db.suppliers : app.db.customers;
-  const [s, setS] = useState({ partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, note: "", lines: [] as { item: string; qty: number; price: number; disc: number }[] });
-  const rate = (app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1;
+  const [s, setS] = useState(edit ? {
+    partner: edit.partner || "", date: edit.date || "2026-03-29", payType: (edit.payType || "نقدي") as "نقدي" | "آجل",
+    currency: edit.currency || "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0,
+    note: edit.note || "", lines: (edit.lines || []) as { item: string; qty: number; price: number; disc: number }[],
+  } : { partner: partners[0]?.id || "", date: "2026-03-29", payType: (defaultCredit ? "آجل" : "نقدي") as "نقدي" | "آجل", currency: "YER", item: app.db.items[0]?.id || "", qty: 10, price: 0, disc: 0, note: "", lines: [] as { item: string; qty: number; price: number; disc: number }[] });
+  const rate = edit ? (edit.rate || 1) : ((app.db.currencies.find((c: any) => c.id === s.currency) as any)?.rate || 1);
   const it: any = app.db.items.find((i: any) => i.id === s.item);
   const lineTotal = (l: any) => l.qty * l.price * (1 - l.disc / 100);
   const sub = s.lines.reduce((a, l) => a + lineTotal(l), 0);
@@ -519,16 +551,23 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   const willExceed = kind === "sales" && s.payType === "آجل" && cust?.creditLimit && cust.balance + total * rate > cust.creditLimit;
   /* رقم الفاتورة يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
   const prefix = kind === "sales" ? app.settings.prefixes.SIN : kind === "purchases" ? app.settings.prefixes.PIN : app.settings.prefixes.SRT;
-  const [no, setNo] = useState<string | null>(null);
+  const [no, setNo] = useState<string | null>(edit?.no || null);
+  const invNo = no || app.nextNo(prefix);
 
   const addLine = () => {
     if (s.qty <= 0) { app.toast("الكمية يجب أن تكون أكبر من صفر", "err"); return; }
     setS({ ...s, lines: [...s.lines, { item: s.item, qty: s.qty, price: s.price || (kind === "purchases" ? it?.cost || 0 : it?.price || 0), disc: s.disc }], qty: 10, disc: 0 });
   };
+  const buildInv = (status: string) => ({ id: invNo, no: invNo, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: edit?.costCenter || "CC-01", status, vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
   const save = () => {
     if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
-    const n = no || app.nextNo(prefix);
-    const res = app.addInvoice(kind, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined });
+    const res = app.addInvoice(kind, buildInv("مرحّلة") as Invoice);
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) onClose();
+  };
+  const saveDraft = () => {
+    if (s.lines.length === 0) { app.toast("أضف سطراً واحداً على الأقل", "err"); return; }
+    const res = edit ? app.updateInvoice(kind, buildInv("مسودة") as Invoice) : app.saveDraftInvoice(kind, buildInv("مسودة") as Invoice);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -536,16 +575,16 @@ function InvoiceBuilder({ kind, onClose, defaultCredit }: { kind: "sales" | "pur
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
   const printFinal = () => {
     if (s.lines.length === 0) { app.toast("أضف بنداً واحداً على الأقل قبل الطباعة", "err"); return; }
-    const n = no || app.nextNo(prefix);
-    setNo(n);
-    printInvoiceDoc(app, { id: n, no: n, date: s.date, partner: s.partner, payType: s.payType, currency: s.currency, rate, costCenter: "CC-01", status: "مرحّلة", vat: app.settings.vat, lines: s.lines, paid: s.payType === "نقدي" ? total * rate : 0, note: s.note.trim() || undefined }, kind);
+    setNo(invNo);
+    printInvoiceDoc(app, buildInv("مرحّلة"), kind);
   };
 
   return (
-    <Modal open onClose={onClose} wide icon="receipt" title={kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات"} subtitle="سداد صريح نقدي أو آجل — مع فحص الحد الائتماني وترحيل محاسبي ومخزني فوري"
+    <Modal open onClose={onClose} wide icon="receipt" title={edit ? `تعديل الفاتورة ${edit.no}` : (kind === "sales" ? "فاتورة مبيعات جديدة" : kind === "purchases" ? "فاتورة مشتريات جديدة" : "فاتورة مرتجع مبيعات")} subtitle="سداد صريح نقدي أو آجل — الحفظ كمسودة لا يؤثر على الأرصدة حتى الترحيل"
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-ghost !text-[var(--accent)] !border-[color-mix(in_srgb,var(--accent)_40%,transparent)]" onClick={saveDraft}><I n="save" size={15} /> حفظ كمسودة</button>
         <button className="btn btn-brand" onClick={save} disabled={!!willExceed}><I n="check" size={16} /> حفظ وترحيل الفاتورة</button>
       </>}>
       <FormSection n="أولاً" icon="file" title="رأس الفاتورة" hint="العميل أو المورد وطريقة السداد والعملة">

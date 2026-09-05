@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
 import {
   ACCOUNTS, ANALYTICALS, UNITS, GROUPS, WAREHOUSES, ITEMS, SUPPLIERS, CUSTOMERS, CASHBOXES,
-  COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
+  COST_CENTERS, BRANCHES, DEPARTMENTS, SECTIONS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
   SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, DEVICES, ACTIVITY_SEED,
   MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS,
@@ -12,6 +12,7 @@ import {
 export type { AnyR, Activity, Device, Tombstone } from "./data";
 import { engine } from "./sync";
 export { engine };
+import { normStatus } from "./flow";
 import { DEFAULT_REPORT_CFG, type ReportCfg } from "./print";
 export type { ReportCfg };
 
@@ -56,7 +57,7 @@ export type Toast = { id: number; msg: string; kind: "ok" | "err" | "info" };
 export interface Notif { id: number; title: string; body: string; time: string; kind: "info" | "warn" | "bad" }
 
 export type CollKey = "units" | "groups" | "warehouses" | "items" | "suppliers" | "customers" | "cashboxes" |
-  "costCenters" | "branches" | "departments" | "users" | "currencies" | "periods" | "analyticals" |
+  "costCenters" | "branches" | "departments" | "sections" | "users" | "currencies" | "periods" | "analyticals" |
   "requests" | "quotes" | "sales" | "purchases" | "returns" | "invDocs" | "journals" |
   "banks" | "payTerms" | "partnerCats" | "roles";
 
@@ -72,6 +73,7 @@ export interface Settings {
   backup: { fullDaily: boolean; diffHours: number; gzip: boolean; encrypt: boolean; retainDays: number; path: string; autoLocal: boolean };
   quick: { visible: boolean; items: QuickItem[] };
   report: ReportCfg;
+  company: { name: string; en: string; phone: string; cr: string; tax: string; address: string; manager: string };
 }
 export interface QuickItem { id: string; module: string; path: string; label: string; icon: string }
 
@@ -98,18 +100,34 @@ interface AppCtx {
   purge: (idx: number) => void;
   emptyTrash: () => void;
   importRows: (coll: CollKey, rows: AnyR[], keyField: string, prefix: string) => { added: number; skipped: number };
-  /* الحركات المالية والمخزنية */
+  /* الحركات المالية والمخزنية + سير حالة المستند (مسودة ← مرحّل، إلغاء ترحيل للمدير) */
   addInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  saveDraftInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  postInvDoc: (id: string) => { ok: boolean; msg: string };
+  unpostInvDoc: (id: string) => { ok: boolean; msg: string };
+  updateInvDoc: (d: InvDoc) => { ok: boolean; msg: string };
+  deleteInvDoc: (id: string) => { ok: boolean; msg: string };
   voidInvDoc: (id: string) => void;
   addInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
+  saveDraftInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
+  postInvoice: (kind: "sales" | "purchases" | "returns", id: string) => { ok: boolean; msg: string };
+  unpostInvoice: (kind: "sales" | "purchases" | "returns", id: string) => { ok: boolean; msg: string };
+  updateInvoice: (kind: "sales" | "purchases" | "returns", inv: Invoice) => { ok: boolean; msg: string };
+  deleteInvoice: (kind: "sales" | "purchases" | "returns", id: string) => { ok: boolean; msg: string };
   voidInvoice: (kind: "sales" | "purchases" | "returns", id: string) => void;
   payInvoice: (kind: "sales" | "purchases", id: string, amount: number) => { ok: boolean; msg: string };
   addJournal: (j: Journal) => { ok: boolean; msg: string };
+  saveDraftJournal: (j: Journal) => { ok: boolean; msg: string };
+  postJournal: (id: string) => { ok: boolean; msg: string };
+  unpostJournal: (id: string) => { ok: boolean; msg: string };
+  deleteJournal: (id: string) => { ok: boolean; msg: string };
   voidJournal: (id: string) => void;
   approveJournal: (id: string) => void;
   lockPeriod: (id: string) => void;
   setQuoteStatus: (id: string, status: string) => void;
   setRequestStatus: (id: string, status: string) => void;
+  deleteRequest: (id: string) => void;
+  deleteQuote: (id: string) => void;
   /* أدوات عرض */
   fmtN: (n: number) => string;
   fmtMoney: (n: number) => string;
@@ -171,7 +189,7 @@ export const useApp = () => useContext(Ctx)!;
 const initDb: Record<CollKey, AnyR[]> = {
   units: UNITS, groups: GROUPS, warehouses: WAREHOUSES, items: ITEMS, suppliers: SUPPLIERS,
   customers: CUSTOMERS, cashboxes: CASHBOXES, costCenters: COST_CENTERS, branches: BRANCHES,
-  departments: DEPARTMENTS, users: USERS, currencies: CURRENCIES, periods: PERIODS,
+  departments: DEPARTMENTS, sections: SECTIONS, users: USERS, currencies: CURRENCIES, periods: PERIODS,
   banks: BANKS, payTerms: PAYTERMS, partnerCats: PARTNER_CATS, roles: ROLES_DIR,
   analyticals: ANALYTICALS, requests: REQUESTS, quotes: QUOTES,
   sales: SALES as any, purchases: PURCHASES as any, returns: RETURNS as any,
@@ -203,16 +221,19 @@ const mkPerm = (mods: Record<string, boolean>, btns: Record<string, string[]>, r
 const ALL_MODS = Object.fromEntries(Object.keys(MODULE_SCREENS).map((m) => [m, true]));
 const ALL_BTNS = Object.fromEntries(Object.keys(MODULE_SCREENS).map((m) => [m, [...BUTTON_ACTIONS]]));
 const ALL_REPS = Object.keys(MODULE_SCREENS);
+/* «إلغاء ترحيل» صلاحية حساسة: تُمنح افتراضياً لمدير النظام فقط، وللآخرين عبر مصفوفة الصلاحيات */
+const stripUnpost = (arr: string[]) => arr.filter((a) => a !== "إلغاء ترحيل");
+const BTNS_NO_UNPOST = Object.fromEntries(Object.keys(MODULE_SCREENS).map((m) => [m, stripUnpost(BUTTON_ACTIONS)]));
 const DEF_MATRIX: Record<string, PermRole> = {
   "مدير النظام": mkPerm(ALL_MODS, ALL_BTNS, ALL_REPS),
-  "محاسب رئيسي": mkPerm({ ...ALL_MODS, adm: true }, { ...ALL_BTNS, adm: ["تصدير"] }, ALL_REPS),
+  "محاسب رئيسي": mkPerm({ ...ALL_MODS, adm: true }, { ...BTNS_NO_UNPOST, adm: ["استعراض", "بحث", "طباعة"] }, ALL_REPS),
   "أمين مخزن": mkPerm({ dash: true, inv: true, pos: true, pur: true, sal: true },
-    { inv: ["إضافة", "تعديل", "ترحيل", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد"], pos: ["ترحيل", "طباعة"] },
+    { inv: stripUnpost(["إضافة", "تعديل", "بحث", "حذف", "استعراض", "طباعة", "ترحيل", "إلغاء"]), pos: ["ترحيل", "طباعة", "استعراض"] },
     ["inv", "pos"]),
   "مسؤولة مشتريات": mkPerm({ dash: true, inv: true, pur: true, gl: true },
-    { pur: [...BUTTON_ACTIONS], inv: ["إضافة", "ترحيل"], gl: ["إضافة"] }, ["pur"]),
+    { pur: stripUnpost(BUTTON_ACTIONS), inv: ["إضافة", "ترحيل", "استعراض"], gl: ["إضافة", "استعراض"] }, ["pur"]),
   "مسؤول مبيعات": mkPerm({ dash: true, sal: true, pos: true, inv: true },
-    { sal: [...BUTTON_ACTIONS], pos: ["ترحيل", "طباعة"] }, ["sal"]),
+    { sal: stripUnpost(BUTTON_ACTIONS), pos: ["ترحيل", "طباعة", "استعراض"] }, ["sal"]),
   "مدقق خارجي": mkPerm(ALL_MODS, {}, ALL_REPS),
 };
 
@@ -239,6 +260,7 @@ const DEFAULT_SETTINGS: Settings = {
     ],
   },
   report: { ...DEFAULT_REPORT_CFG },
+  company: { name: SYSTEM.company, en: SYSTEM.companyEn, phone: SYSTEM.phone, cr: "2019004571", tax: "300123456700003", address: "اليمن — صنعاء، شارع حدة", manager: "م.وائل الشرفي" },
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -333,7 +355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const COLL_CAT: Record<string, string> = {
     units: "المخازن", groups: "المخازن", warehouses: "المخازن", items: "الأصول",
     suppliers: "المشتريات", customers: "المبيعات", cashboxes: "المالية", costCenters: "المالية",
-    branches: "النظام", departments: "الموارد", users: "النظام", currencies: "المالية", periods: "المالية",
+    branches: "النظام", departments: "الموارد", sections: "الموارد", users: "النظام", currencies: "المالية", periods: "المالية",
     banks: "المالية", payTerms: "المالية", partnerCats: "المبيعات", roles: "النظام",
     analyticals: "المالية", requests: "المشتريات", quotes: "المبيعات",
     sales: "المبيعات", purchases: "المشتريات", returns: "المبيعات", invDocs: "المخازن", journals: "المالية",
@@ -341,7 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const COLL_AR: Record<string, string> = {
     units: "الوحدات", groups: "المجموعات", warehouses: "المخازن", items: "الأصناف",
     suppliers: "الموردين", customers: "العملاء", cashboxes: "الصناديق", costCenters: "مراكز التكلفة",
-    branches: "الفروع", departments: "الأقسام", users: "المستخدمين", currencies: "العملات", periods: "الفترات",
+    branches: "الفروع", departments: "الإدارات", sections: "الأقسام", users: "المستخدمين", currencies: "العملات", periods: "الفترات",
     banks: "البنوك", payTerms: "شروط الدفع", partnerCats: "التصنيفات", roles: "الأدوار",
     analyticals: "الحسابات التحليلية", requests: "طلبات الشراء", quotes: "عروض الأسعار",
     sales: "فواتير المبيعات", purchases: "فواتير المشتريات", returns: "مرتجعات المبيعات", invDocs: "السندات المخزنية", journals: "القيود اليومية",
@@ -461,7 +483,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return it ? Object.values(it.qty as Record<string, number>).reduce((a: number, b: any) => a + (b as number), 0) : 0;
   };
 
-  const addInvDoc = (d: InvDoc) => {
+  /* ── الالتزام الفعلي للسند المخزني: الأثر المخزني + القيد المحاسبي (إدراج أو تحديث) ── */
+  const commitInvDoc = (d: InvDoc) => {
     if (periodLocked(d.date)) { toast(`الفترة ${d.date.slice(0, 7)} مقفلة مالياً — لا يمكن الترحيل إليها`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
     if (!settings.negStock) {
       for (const l of d.lines) {
@@ -541,7 +564,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         else qty[d.warehouse] = (qty[d.warehouse] || 0) + delta;
         return { ...it, qty };
       });
-      return { ...old, items, invDocs: [...old.invDocs, d as any], journals: je ? [...old.journals, je as any] : old.journals };
+      return {
+        ...old, items,
+        invDocs: old.invDocs.some((x: any) => x.id === d.id) ? old.invDocs.map((x: any) => (x.id === d.id ? d : x)) : [...old.invDocs, d as any],
+        journals: je ? [...old.journals, je as any] : old.journals,
+      };
     });
     /* بث لحظي: السند وأثره المخزني لكل الأجهزة */
     const now = Date.now();
@@ -562,9 +589,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true, msg: `رُحّل السند ${d.ref}` };
   };
 
+  /* ═══ سير حالة السند المخزني: مسودة ← مرحّل (إلغاء ترحيل للمدير) ═══ */
+  const addInvDoc = (d: InvDoc) => commitInvDoc({ ...d, status: "مرحّل", postedBy: session?.user || "—" });
+  const patchInvDoc = (id: string, patch: Record<string, any>) => {
+    const cur: any = db.invDocs.find((x: any) => x.id === id);
+    if (!cur) return;
+    const next = { ...cur, ...patch };
+    setDb((old) => ({ ...old, invDocs: old.invDocs.map((x: any) => (x.id === id ? next : x)) }));
+    engine.publishPatches([{ coll: "invDocs", rows: [{ ...next, updatedAt: Date.now() } as any] }]);
+  };
+  const saveDraftInvDoc = (d: InvDoc) => {
+    const doc = { ...d, status: "مسودة" as const };
+    setDb((old) => ({ ...old, invDocs: old.invDocs.some((x: any) => x.id === doc.id) ? old.invDocs.map((x: any) => (x.id === doc.id ? doc : x)) : [...old.invDocs, doc as any] }));
+    engine.publishPatches([{ coll: "invDocs", rows: [{ ...doc, updatedAt: Date.now() } as any] }]);
+    toast(`حُفظ السند ${doc.ref} كمسودة — لا أثر مخزني أو محاسبي قبل الترحيل`, "ok");
+    return { ok: true, msg: "حُفظت المسودة" };
+  };
+  const postInvDoc = (id: string) => {
+    const d: any = db.invDocs.find((x: any) => x.id === id);
+    if (!d) return { ok: false, msg: "السند غير موجود" };
+    if (normStatus(d.status) !== "draft") return { ok: false, msg: "الترحيل متاح للمسودات فقط" };
+    return commitInvDoc({ ...d, status: "مرحّل", postedBy: session?.user || "—" });
+  };
+  const unpostInvDoc = (id: string) => {
+    const doc: any = db.invDocs.find((x: any) => x.id === id);
+    if (!doc) return { ok: false, msg: "السند غير موجود" };
+    if (normStatus(doc.status) !== "posted") return { ok: false, msg: "إلغاء الترحيل متاح للمرحّل فقط" };
+    if (periodLocked(doc.date)) { toast(`الفترة ${doc.date.slice(0, 7)} مقفلة — لا يمكن إلغاء الترحيل`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
+    setDb((old) => {
+      const items = old.items.map((it: AnyR) => {
+        const line = doc.lines.find((l: any) => l.item === it.id);
+        if (!line) return it;
+        const qty = { ...(it.qty as Record<string, number>) };
+        if (doc.type === "تحويل") { qty[doc.warehouse] = (qty[doc.warehouse] || 0) + line.qty; qty[doc.toWarehouse] = (qty[doc.toWarehouse] || 0) - line.qty; }
+        else { const delta = doc.type === "صرف" ? -line.qty : line.qty; qty[doc.warehouse] = (qty[doc.warehouse] || 0) - delta; }
+        return { ...it, qty };
+      });
+      const invDocs = old.invDocs.map((x: any) => (x.id === id ? { ...x, status: "مسودة", postedBy: undefined } : x));
+      const journals = old.journals.map((j: any) => (j.desc && j.desc.startsWith("قيد تلقائي") && j.desc.includes(doc.ref) ? { ...j, status: "ملغي" } : j));
+      return { ...old, items, invDocs, journals };
+    });
+    engine.publishPatches([{ coll: "invDocs", rows: [{ ...doc, status: "مسودة", updatedAt: Date.now() } as any] }]);
+    toast(`أُلغي ترحيل السند ${doc.ref} — أُعيد مسودةً وعُكس أثره المخزني والمحاسبي`, "info");
+    return { ok: true, msg: "أُلغي الترحيل" };
+  };
+  const updateInvDoc = (d: InvDoc) => {
+    const cur: any = db.invDocs.find((x: any) => x.id === d.id);
+    if (cur && normStatus(cur.status) !== "draft") return { ok: false, msg: "التعديل متاح للمسودات فقط — ألغِ الترحيل أولاً" };
+    saveDraftInvDoc(d);
+    return { ok: true, msg: "حُدّثت المسودة" };
+  };
+  const deleteInvDoc = (id: string) => {
+    const cur: any = db.invDocs.find((x: any) => x.id === id);
+    if (!cur) return { ok: false, msg: "السند غير موجود" };
+    if (normStatus(cur.status) !== "draft") { toast("الحذف النهائي للمسودات فقط — المرحّل يُلغى ترحيله أولاً", "err"); return { ok: false, msg: "محمي" }; }
+    setDb((old) => ({ ...old, invDocs: old.invDocs.filter((x: any) => x.id !== id) }));
+    engine.publishTombstone("invDocs", id);
+    toast(`حُذف السند ${cur.ref} نهائياً من السجل ونُشر شاهد الحذف لكل الأجهزة`, "err");
+    return { ok: true, msg: "حُذف نهائياً" };
+  };
+
   const voidInvDoc = (id: string) => {
     const doc: any = db.invDocs.find((d: any) => d.id === id);
     if (!doc || doc.status === "ملغي") return;
+    if (normStatus(doc.status) !== "posted") { toast("الإلغاء بأثر عكسي متاح فقط للسندات المرحّلة", "err"); return; }
     setDb((old) => {
       const items = old.items.map((it: AnyR) => {
         const line = doc.lines.find((l: any) => l.item === it.id);
@@ -589,7 +677,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const partnerOf = (kind: string, code: string) => (kind === "purchases" ? db.suppliers : db.customers).find((p) => p.id === code);
 
-  const addInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+  /* ── الالتزام الفعلي للفاتورة: الأثر المخزني + قيد المجموعات + الذمم (إدراج أو تحديث) ── */
+  const commitInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
     if (periodLocked(inv.date)) return { ok: false, msg: `الفترة ${inv.date.slice(0, 7)} مقفلة مالياً — رُفض الترحيل` };
     const total = invoiceTotal(inv);
     const coll: CollKey = kind;
@@ -660,7 +749,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const pList = old[partners as CollKey].map((p: AnyR) =>
         p.id === inv.partner && inv.payType === "آجل" ? { ...p, balance: p.balance + total } : p
       );
-      return { ...old, items, [coll]: [...old[coll], inv as any], [partners]: pList, journals: [...old.journals, je] };
+      return {
+        ...old, items, [partners]: pList, journals: [...old.journals, je],
+        [coll]: old[coll].some((x: any) => x.id === inv.id) ? old[coll].map((x: any) => (x.id === inv.id ? inv : x)) : [...old[coll], inv as any],
+      };
     });
     /* بث لحظي: الفاتورة وقيدها المحاسبي وأثرها المخزني تصل للمدير والمحاسب خلال ثوانٍ */
     const now = Date.now();
@@ -683,9 +775,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true, msg: `رُحّلت الفاتورة ${inv.no}` };
   };
 
+  /* ═══ سير حالة الفاتورة: مسودة ← مرحّلة (إلغاء ترحيل للمدير) ═══ */
+  const addInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => commitInvoice(kind, { ...inv, status: "مرحّلة", postedBy: session?.user || "—" });
+  const saveDraftInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+    const doc = { ...inv, status: "مسودة" as const };
+    setDb((old) => ({ ...old, [kind]: old[kind].some((x: any) => x.id === doc.id) ? old[kind].map((x: any) => (x.id === doc.id ? doc : x)) : [...old[kind], doc as any] }));
+    engine.publishPatches([{ coll: kind, rows: [{ ...doc, updatedAt: Date.now() } as any] }]);
+    toast(`حُفظت الفاتورة ${doc.no} كمسودة — بلا أثر مخزني أو محاسبي قبل الترحيل`, "ok");
+    return { ok: true, msg: "حُفظت المسودة" };
+  };
+  const postInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
+    const inv: any = db[kind].find((x: any) => x.id === id);
+    if (!inv) return { ok: false, msg: "الفاتورة غير موجودة" };
+    if (normStatus(inv.status) !== "draft") return { ok: false, msg: "الترحيل متاح للمسودات فقط" };
+    return commitInvoice(kind, { ...inv, status: "مرحّلة", postedBy: session?.user || "—" });
+  };
+  const unpostInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
+    const inv: any = db[kind].find((x: any) => x.id === id);
+    if (!inv) return { ok: false, msg: "الفاتورة غير موجودة" };
+    if (normStatus(inv.status) !== "posted") return { ok: false, msg: "إلغاء الترحيل متاح للمرحّلة فقط" };
+    if ((inv.paid || 0) > 0) { toast("لا يمكن إلغاء ترحيل فاتورة سُددت منها دفعات — راجع سجل السداد", "err"); return { ok: false, msg: "مدفوعة جزئياً" }; }
+    if (periodLocked(inv.date)) { toast(`الفترة ${inv.date.slice(0, 7)} مقفلة — لا يمكن إلغاء الترحيل`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
+    const total = invoiceTotal(inv);
+    setDb((old) => {
+      const items = old.items.map((it: AnyR) => {
+        const l = inv.lines.find((x: any) => x.item === it.id);
+        if (!l) return it;
+        const qty = { ...(it.qty as Record<string, number>), "WH-01": ((it.qty as Record<string, number>)["WH-01"] || 0) + (kind === "sales" ? l.qty : -l.qty) };
+        return { ...it, qty };
+      });
+      const partners = kind === "purchases" ? "suppliers" : "customers";
+      const pList = old[partners as CollKey].map((p: AnyR) =>
+        p.id === inv.partner && inv.payType === "آجل" ? { ...p, balance: Math.max(0, p.balance - total) } : p
+      );
+      const list = old[kind].map((x: any) => (x.id === id ? { ...x, status: "مسودة", postedBy: undefined } : x));
+      const journals = old.journals.map((j: any) => (j.desc && j.desc.startsWith("قيد تلقائي") && j.desc.includes(inv.no) ? { ...j, status: "ملغي" } : j));
+      return { ...old, items, [partners]: pList, [kind]: list, journals };
+    });
+    engine.publishPatches([{ coll: kind, rows: [{ ...inv, status: "مسودة", updatedAt: Date.now() } as any] }]);
+    toast(`أُلغي ترحيل الفاتورة ${inv.no} — أُعيدت مسودةً وعُكس أثرها المخزني والمحاسبي والذمم`, "info");
+    return { ok: true, msg: "أُلغي الترحيل" };
+  };
+  const updateInvoice = (kind: "sales" | "purchases" | "returns", inv: Invoice) => {
+    const cur: any = db[kind].find((x: any) => x.id === inv.id);
+    if (cur && normStatus(cur.status) !== "draft") return { ok: false, msg: "التعديل متاح للمسودات فقط — ألغِ الترحيل أولاً" };
+    saveDraftInvoice(kind, inv);
+    return { ok: true, msg: "حُدّثت المسودة" };
+  };
+  const deleteInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
+    const cur: any = db[kind].find((x: any) => x.id === id);
+    if (!cur) return { ok: false, msg: "الفاتورة غير موجودة" };
+    if (normStatus(cur.status) !== "draft") { toast("الحذف النهائي للمسودات فقط — المرحّلة يُلغى ترحيلها أولاً", "err"); return { ok: false, msg: "محمية" }; }
+    setDb((old) => ({ ...old, [kind]: old[kind].filter((x: any) => x.id !== id) }));
+    engine.publishTombstone(kind, id);
+    toast(`حُذفت الفاتورة ${cur.no} نهائياً من السجل ونُشر شاهد الحذف لكل الأجهزة`, "err");
+    return { ok: true, msg: "حُذفت نهائياً" };
+  };
+
   const voidInvoice = (kind: "sales" | "purchases" | "returns", id: string) => {
     const inv: any = db[kind].find((i: any) => i.id === id);
     if (!inv || inv.status === "ملغاة") return;
+    if (normStatus(inv.status) !== "posted") { toast("الإلغاء بأثر عكسي متاح فقط للفواتير المرحّلة", "err"); return; }
     const total = invoiceTotal(inv);
     setDb((old) => {
       const list = old[kind].map((i: any) => (i.id === id ? { ...i, status: "ملغاة" } : i));
@@ -735,13 +885,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast(`رُحّل القيد ${j.no} — متوازن (${Math.round(dr).toLocaleString("en-US")})`);
     return { ok: true, msg: `رُحّل القيد ${j.no}` };
   };
+  /* ═══ سير حالة القيد: مسودة ← مرحّل (إلغاء ترحيل للمدير) ═══ */
+  const saveDraftJournal = (j: Journal) => {
+    const doc = { ...j, status: "مسودة" as const };
+    setDb((old) => ({ ...old, journals: old.journals.some((x: any) => x.id === doc.id) ? old.journals.map((x: any) => (x.id === doc.id ? doc : x)) : [...old.journals, doc as any] }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...doc, updatedAt: Date.now() } as any] }]);
+    toast(`حُفظ القيد ${doc.no} كمسودة — لا أثر على الأرصدة قبل الترحيل`, "ok");
+    return { ok: true, msg: "حُفظت المسودة" };
+  };
+  const postJournal = (id: string) => {
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return { ok: false, msg: "القيد غير موجود" };
+    if (normStatus(j.status) !== "draft") return { ok: false, msg: "الترحيل متاح للمسودات فقط" };
+    if (periodLocked(j.date)) { toast(`الفترة ${j.date.slice(0, 7)} مقفلة — لا يمكن الترحيل`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
+    const dr = j.lines.reduce((a: number, l: any) => a + l.debit, 0), cr = j.lines.reduce((a: number, l: any) => a + l.credit, 0);
+    if (Math.abs(dr - cr) > 0.01) { toast("القيد غير متوازن — رُفض الترحيل", "err"); return { ok: false, msg: "غير متوازن" }; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "مرحّل" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "مرحّل", updatedAt: Date.now() } as any] }]);
+    toast(`رُحّل القيد ${j.no} إلى دفتر الأستاذ — متوازن (${Math.round(dr).toLocaleString("en-US")})`, "ok");
+    return { ok: true, msg: `رُحّل القيد ${j.no}` };
+  };
+  const unpostJournal = (id: string) => {
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return { ok: false, msg: "القيد غير موجود" };
+    if (normStatus(j.status) !== "posted") return { ok: false, msg: "إلغاء الترحيل متاح للمرحّل فقط" };
+    if (j.desc && j.desc.startsWith("قيد تلقائي")) { toast("القيود التلقائية تُدار من مستنداتها الأصلية — ألغِ ترحيل المستند نفسه", "err"); return { ok: false, msg: "قيد تلقائي" }; }
+    if (periodLocked(j.date)) { toast(`الفترة ${j.date.slice(0, 7)} مقفلة — لا يمكن إلغاء الترحيل`, "err"); return { ok: false, msg: "فترة مقفلة" }; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "مسودة" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "مسودة", updatedAt: Date.now() } as any] }]);
+    toast(`أُلغي ترحيل القيد ${j.no} — أُعيد مسودةً وأُبعد عن الأرصدة`, "info");
+    return { ok: true, msg: "أُلغي الترحيل" };
+  };
   const voidJournal = (id: string) => {
-    setDb((old) => ({ ...old, journals: old.journals.map((j: any) => (j.id === id ? { ...j, status: "ملغي" } : j)) }));
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return;
+    if (j.status !== "مرحّل") { toast("إلغاء القيود متاح للمرحّلة فقط — المسودة تُحذف مباشرة", "err"); return; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "ملغي" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "ملغي", updatedAt: Date.now() } as any] }]);
     toast("أُلغي القيد وأُبعد عن الأرصدة والتقارير", "ok");
   };
   const approveJournal = (id: string) => {
-    setDb((old) => ({ ...old, journals: old.journals.map((j: any) => (j.id === id ? { ...j, status: "مرحّل" } : j)) }));
-    toast("اعتُمد الطلب ورُحّل القيد إلى دفتر الأستاذ");
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return;
+    if (periodLocked(j.date)) { toast(`الفترة ${j.date.slice(0, 7)} مقفلة — لا يمكن الاعتماد`, "err"); return; }
+    setDb((old) => ({ ...old, journals: old.journals.map((x: any) => (x.id === id ? { ...x, status: "مرحّل" } : x)) }));
+    engine.publishPatches([{ coll: "journals", rows: [{ ...j, status: "مرحّل", updatedAt: Date.now() } as any] }]);
+    toast("اعتُمد القيد ورُحّل إلى دفتر الأستاذ", "ok");
+  };
+  const deleteJournal = (id: string) => {
+    const j: any = db.journals.find((x: any) => x.id === id);
+    if (!j) return { ok: false, msg: "القيد غير موجود" };
+    if (normStatus(j.status) !== "draft") { toast("الحذف النهائي للمسودات فقط — المرحّل يُلغى ترحيله أولاً", "err"); return { ok: false, msg: "محمي" }; }
+    setDb((old) => ({ ...old, journals: old.journals.filter((x: any) => x.id !== id) }));
+    engine.publishTombstone("journals", id);
+    toast(`حُذف القيد ${j.no} نهائياً من السجل`, "err");
+    return { ok: true, msg: "حُذف" };
   };
   const lockPeriod = (id: string) => {
     setDb((old) => ({ ...old, periods: old.periods.map((p: any) => (p.id === id ? { ...p, locked: true, closedAt: "2026-03-29" } : p)) }));
@@ -756,6 +954,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDb((old) => ({ ...old, requests: old.requests.map((r: AnyR) => (r.id === id ? { ...r, status } : r)) }));
     toast(`حُدّث طلب الشراء إلى «${status}»`);
   };
+  /* ═══ حذف نهائي من السجل: يختفي المستند تماماً وينتشر شاهد الحذف ═══ */
+  const eraseDoc = (coll: CollKey, id: string, label: string) => {
+    setDb((old) => ({ ...old, [coll]: old[coll].filter((x: AnyR) => x.id !== id) }));
+    engine.publishTombstone(coll, id);
+    logLocal(COLL_CAT[coll] || "النظام", `حذف نهائي — «${label}» أُزيل من السجل تماماً`, "delete");
+    toast(`حُذف «${label}» نهائياً من السجل`, "err");
+  };
+  const deleteRequest = (id: string) => eraseDoc("requests", id, `طلب الشراء ${id}`);
+  const deleteQuote = (id: string) => eraseDoc("quotes", id, `عرض السعر ${id}`);
 
   /* ── محرك الصلاحيات الرباعي (نظام / شاشات / تقارير / أزرار) ── */
   const emptyPerm = (): PermRole => ({ modules: {}, screens: {}, reports: {}, buttons: {} });
@@ -1265,8 +1472,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       db, trash, seq, settings, setSettings, prefs, setPrefs, session, route, toasts, notifs,
       toast, pushNotif, markNotifs, nav, login, logout, nextNo,
       save, remove, restore, purge, emptyTrash, importRows,
-      addInvDoc, voidInvDoc, addInvoice, voidInvoice, payInvoice,
-      addJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus,
+      addInvDoc, saveDraftInvDoc, postInvDoc, unpostInvDoc, updateInvDoc, deleteInvDoc, voidInvDoc,
+      addInvoice, saveDraftInvoice, postInvoice, unpostInvoice, updateInvoice, deleteInvoice, voidInvoice, payInvoice,
+      addJournal, saveDraftJournal, postJournal, unpostJournal, deleteJournal, voidJournal, approveJournal, lockPeriod, setQuoteStatus, setRequestStatus, deleteRequest, deleteQuote,
       fmtN, fmtMoney, fmtDate, invoiceTotal, itemQty, exportCsv, can, togglePerm, perms,
       matrix, setModulePerm, setScreenPerm, setAllScreens, setReportAction, setButtonPerm, setAllButtons,
       grantAll, revokeAll, permCounts, downloadSnapshot, restoreSnapshot, resetFactory, clearTombstones,

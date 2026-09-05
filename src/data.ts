@@ -18,10 +18,11 @@ export const SYSTEM = {
 export type AnyR = Record<string, any> & { id: string };
 
 export interface Account { code: string; name: string; en: string; level: number; parent: string; type: "أصول" | "خصوم" | "إيرادات" | "مصروفات"; posting: boolean; analytical?: boolean }
-export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string; subType?: string; partyKind?: "supplier" | "customer" | "cashbox"; party?: string; extRef?: string; clearAccount?: string }
-export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number }
+/* سير حالة المستند: مسودة ← معتمد ← مرحّل ← ملغي */
+export interface InvDoc { id: string; type: string; date: string; ref: string; warehouse: string; toWarehouse?: string; user: string; status: "مسودة" | "معتمد" | "مرحّل" | "ملغي"; lines: { item: string; qty: number; cost: number }[]; note?: string; subType?: string; partyKind?: "supplier" | "customer" | "cashbox"; party?: string; extRef?: string; clearAccount?: string; approvedBy?: string; postedBy?: string }
+export interface Invoice { id: string; no: string; date: string; partner: string; payType: "نقدي" | "آجل"; currency: string; rate: number; costCenter: string; status: "مسودة" | "معتمدة" | "مرحّلة" | "ملغاة"; lines: { item: string; qty: number; price: number; disc: number }[]; vat: number; note?: string; paid?: number; approvedBy?: string; postedBy?: string }
 export interface JournalLine { account: string; debit: number; credit: number; currency: string; rate: number; analytical?: string; costCenter?: string }
-export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة"; source?: string }
+export interface Journal { id: string; no: string; date: string; desc: string; kind: "افتتاحي" | "يومية" | "قبض" | "صرف" | "طلب"; lines: JournalLine[]; user: string; status: "مرحّل" | "ملغي" | "بانتظار الموافقة" | "مسودة"; source?: string }
 
 /* ── دليل الحسابات: 5 مستويات (نمط يمين سوفت التجاري) ──
    1-الأصول  2-الخصوم (تشمل حقوق الملكية)  3-المصروفات  4-الإيرادات */
@@ -196,12 +197,23 @@ export const BRANCHES: AnyR[] = [
   { id: "BR-03", code: "BR-03", name: "فرع ذمار", manager: "عبدالقادر الكحلاني", phone: "06-662-774", main: false },
 ];
 
+/* الإدارات — كيانات إدارية عليا في الهيكل التنظيمي (تُدار من الموارد البشرية) */
 export const DEPARTMENTS: AnyR[] = [
-  { id: "DP-01", code: "DP-01", name: "الإدارة المالية", branch: "BR-01", head: "سمير الحداد" },
-  { id: "DP-02", code: "DP-02", name: "إدارة المشتريات", branch: "BR-01", head: "هدى العامري" },
-  { id: "DP-03", code: "DP-03", name: "إدارة المبيعات", branch: "BR-01", head: "طارق الوزير" },
-  { id: "DP-04", code: "DP-04", name: "إدارة المخازن", branch: "BR-01", head: "عادل الحميري" },
-  { id: "DP-05", code: "DP-05", name: "قسم الصيدلية — صنعاء", branch: "BR-01", head: "د. لمى العطاس" },
+  { id: "DP-01", code: "DP-01", name: "الإدارة المالية", head: "سمير الحداد" },
+  { id: "DP-02", code: "DP-02", name: "إدارة المشتريات", head: "هدى العامري" },
+  { id: "DP-03", code: "DP-03", name: "إدارة المبيعات", head: "طارق الوزير" },
+  { id: "DP-04", code: "DP-04", name: "إدارة المخازن", head: "عادل الحميري" },
+  { id: "DP-05", code: "DP-05", name: "إدارة الموارد البشرية", head: "أ. أمل الشرعبي" },
+];
+
+/* الأقسام — وحدات فرعية مرتبطة بالإدارات (تُدار من الموارد البشرية) */
+export const SECTIONS: AnyR[] = [
+  { id: "SC-01", code: "SC-01", name: "قسم الحسابات العامة", dept: "DP-01", head: "نجوى الكمالي" },
+  { id: "SC-02", code: "SC-02", name: "قسم الخزينة والصناديق", dept: "DP-01", head: "عمر صالح" },
+  { id: "SC-03", code: "SC-03", name: "قسم التوريدات", dept: "DP-02", head: "فهد باشراحيل" },
+  { id: "SC-04", code: "SC-04", name: "قسم المبيعات المحلية", dept: "DP-03", head: "لمى العطاس" },
+  { id: "SC-05", code: "SC-05", name: "قسم المخزن الرئيسي", dept: "DP-04", head: "عادل الحميري" },
+  { id: "SC-06", code: "SC-06", name: "قسم شؤون الموظفين", dept: "DP-05", head: "أمل الشرعبي" },
 ];
 
 /* مستخدم واحد فقط — مدير النظام، لبدء إدخال البيانات الحقيقية */
@@ -307,9 +319,9 @@ export const MODULE_SCREENS: Record<string, { label: string; screens: { id: stri
   sal: { label: "المبيعات والعملاء", screens: [{ id: "base", label: "إدارة العملاء والتصنيفات" }, { id: "quote", label: "عروض الأسعار" }, { id: "inv", label: "فواتير المبيعات" }, { id: "ret", label: "مرتجعات المبيعات" }] },
   pos: { label: "نقاط البيع", screens: [{ id: "retail", label: "نمط متاجر التجزئة (باركود وسلة)" }, { id: "rest", label: "نمط المطاعم (الطاولات)" }, { id: "shifts", label: "ورديات الكاشير" }] },
   gl: { label: "الحسابات العامة", screens: [{ id: "base", label: "الأدلة والفترات والعملات (10 شاشات)" }, { id: "docs", label: "القيود والسندات المالية (5 أنواع)" }, { id: "rep", label: "التقارير المالية (4 تقارير)" }] },
-  hr: { label: "الموارد البشرية", screens: [{ id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
+  hr: { label: "الموارد البشرية", screens: [{ id: "org", label: "الهيكل الإداري والتنظيمي" }, { id: "emp", label: "ملفات الموظفين" }, { id: "att", label: "الحضور والانصراف" }, { id: "rw", label: "المكافآت والإنذارات" }, { id: "leave", label: "الإجازات والأذونات" }, { id: "pay", label: "كشوف الرواتب المرحّلة" }] },
   ast: { label: "الأصول الثابتة", screens: [{ id: "reg", label: "سجل الأصول" }, { id: "dep", label: "الإهلاك بالقسط الثابت" }, { id: "rep", label: "تقارير الأصول" }] },
-  adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "prefs", label: "التفضيلات" }] },
+  adm: { label: "إدارة النظام", screens: [{ id: "users", label: "المستخدمون والصلاحيات" }, { id: "appr", label: "الاعتمادات وسير حالة المستندات" }, { id: "act", label: "تفعيل الأنظمة والأنشطة (مالك)" }, { id: "mon", label: "مراقبة النشاط والأجهزة" }, { id: "set", label: "الإعدادات العامة وقاعدة البيانات" }, { id: "co", label: "الشركات والفروع" }, { id: "prefs", label: "التفضيلات" }] },
   help: { label: "المساعدة", screens: [{ id: "guide", label: "دليل المستخدم ووثائق المطورين" }] },
 };
 
@@ -338,7 +350,8 @@ export const REPORTS: { id: string; name: string; module: string }[] = [
   { id: "rep-ast-dep", name: "جدول الإهلاك السنوي", module: "ast" },
 ];
 export const REPORT_ACTIONS = ["عرض", "Excel", "PDF", "طباعة"];
-export const BUTTON_ACTIONS = ["إضافة", "تعديل", "حذف", "ترحيل", "اعتماد", "إلغاء/تراجع", "طباعة", "تصدير", "استيراد", "إقفال"];
+/* الصلاحيات الرسمية الثمانية على مستوى الأزرار + إلغاء بأثر عكسي */
+export const BUTTON_ACTIONS = ["إضافة", "تعديل", "بحث", "حذف", "استعراض", "طباعة", "اعتماد", "ترحيل", "إلغاء ترحيل", "إلغاء"];
 
 export const SIDEBAR_BGS = [
   { id: "ocean", name: "أعماق المحيط", style: "linear-gradient(168deg,#05263d,#0a5c8f)" },
@@ -360,7 +373,8 @@ export const IMPORT_SAMPLES: Record<string, { headers: string[]; rows: string[][
   cashboxes: { headers: ["الاسم", "العملة", "رصيد افتتاحي", "الأمين", "الحساب"], rows: [["صندوق المقصف", "YER", "15000", "محاسب الفرع", "11111"]] },
   costCenters: { headers: ["الاسم", "مركز أب", "المسؤول"], rows: [["قسم المحاسبة", "CC-01", "سمير الحداد"]] },
   branches: { headers: ["الاسم", "المدير", "الهاتف"], rows: [["فرع تعز", "أ. صلاح الحمادي", "04-556-120"]] },
-  departments: { headers: ["الاسم", "الفرع", "الرئيس"], rows: [["قسم الموارد البشرية", "BR-01", "أ. أمل الشرعبي"]] },
+  departments: { headers: ["الاسم", "الرئيس"], rows: [["إدارة تقنية المعلومات", "م. خالد باصهيب"]] },
+  sections: { headers: ["الاسم", "الإدارة", "الرئيس"], rows: [["قسم الدعم الفني", "DP-06", "م. سالم بامؤمن"]] },
   users: { headers: ["الاسم", "اسم المستخدم", "الدور", "الفرع"], rows: [["نجوى الكمالي", "n.kamali", "محاسب رئيسي", "BR-03"]] },
   analyticals: { headers: ["الاسم", "الهاتف", "القسم / الغرفة"], rows: [["عمر صالح بامؤمن", "771-209-455", "قسم الباطنية — غرفة 209"]] },
   banks: { headers: ["الاسم", "الفرع", "الآيبان", "سويفت", "العملة", "الحساب", "الرصيد"], rows: [["بنك الأمل", "فرع كريتر", "YE78 AMAL 0001 1111 2222", "AMALYESA", "YER", "11121", "500000"]] },

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Empty, Reveal, FormSection } from "../ui";
+import { DocActions, StatusChip } from "../flow";
 import { Directory, type DirConf } from "../crud";
 import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
 import type { Journal, JournalLine, Account } from "../data";
@@ -137,7 +138,7 @@ function PeriodsScreen({ close }: { close: boolean }) {
           <thead><tr><th>الفترة</th><th>المعرف</th><th>الحالة</th><th>تاريخ الإقفال</th><th>القيود المرحّلة</th><th>{close ? "قرار الإقفال" : "حماية الكتابة"}</th></tr></thead>
           <tbody>
             {periods.map((p: any) => {
-              const cnt = (app.db.journals as any as Journal[]).filter((j) => j.date.startsWith(p.id) && j.status !== "ملغي").length;
+              const cnt = (app.db.journals as any as Journal[]).filter((j) => j.date.startsWith(p.id) && j.status === "مرحّل").length;
               return (
                 <tr key={p.id}>
                   <td className="font-bold">{p.label}</td>
@@ -278,7 +279,7 @@ function CoaScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const balances = useMemo(() => {
     const map: Record<string, { dr: number; cr: number }> = {};
-    (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").forEach((j) =>
+    (app.db.journals as any as Journal[]).filter((j) => j.status === "مرحّل").forEach((j) =>
       j.lines.forEach((l) => { map[l.account] = map[l.account] || { dr: 0, cr: 0 }; map[l.account].dr += l.debit * l.rate; map[l.account].cr += l.credit * l.rate; })
     );
     return map;
@@ -565,6 +566,8 @@ function JEScreen({ kind }: { kind: string }) {
   const [show, setShow] = useState(false);
   const kindMap: Record<string, string> = { open: "افتتاحي", req: "طلب", je: "يومية", pv: "صرف", rv: "قبض" };
   const list = (app.db.journals as any as Journal[]).filter((j) => j.kind === kindMap[kind]).reverse();
+  const [editJe, setEditJe] = useState<any>(null);
+  const isReq = kind === "req";
   return (
     <div className="anim-fadein">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -599,13 +602,24 @@ function JEScreen({ kind }: { kind: string }) {
                   <div className="text-[0.66rem] font-bold text-mute">قيمة القيد</div>
                   <div className="font-num font-bold text-lg text-[var(--brand)]">{app.fmtN(dr)} <span className="text-[0.66rem] text-mute">ر.ي</span></div>
                 </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <button className="btn btn-ghost !p-1.5" title="طباعة السند" onClick={() => printJournal(app, j)}><I n="print" size={15} /></button>
-                  {j.status === "بانتظار الموافقة" && <>
-                    <button className="btn btn-brand !py-1.5 !text-[0.72rem]" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /> اعتماد وترحيل</button>
-                    <button className="btn btn-danger !py-1.5 !text-[0.72rem]" onClick={() => app.voidJournal(j.id)}>رفض</button>
-                  </>}
-                  {j.status === "مرحّل" && j.kind !== "افتتاحي" && <button className="btn btn-danger !py-1.5" title="إلغاء القيد" onClick={() => app.voidJournal(j.id)}><I n="undo" size={14} /></button>}
+                <div className="flex gap-1.5 shrink-0 items-center">
+                  {isReq ? (
+                    <>
+                      <button className="btn btn-ghost !p-1.5" title="طباعة" onClick={() => printJournal(app, j)}><I n="print" size={15} /></button>
+                      {j.status === "بانتظار الموافقة" && <>
+                        <button className="btn btn-brand !py-1.5 !text-[0.72rem]" onClick={() => app.approveJournal(j.id)}><I n="check" size={14} /> اعتماد وترحيل</button>
+                        <button className="btn btn-danger !py-1.5 !text-[0.72rem]" onClick={() => app.voidJournal(j.id)}>رفض</button>
+                      </>}
+                    </>
+                  ) : (
+                    <DocActions app={app} module="gl" status={j.status}
+                      onView={() => printJournal(app, j)}
+                      onEdit={j.status === "مسودة" ? () => setEditJe(j) : undefined}
+                      onDelete={j.status === "مسودة" ? () => app.deleteJournal(j.id) : undefined}
+                      onPost={() => app.postJournal(j.id)}
+                      onUnpost={j.kind !== "افتتاحي" ? () => app.unpostJournal(j.id) : undefined}
+                      onPrint={() => printJournal(app, j)} />
+                  )}
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-line/70 grid gap-1.5">
@@ -626,6 +640,9 @@ function JEScreen({ kind }: { kind: string }) {
         {list.length === 0 && <div className="card"><Empty msg="لا توجد قيود من هذا النوع بعد" /></div>}
       </div>
       {show && (kind === "rv" || kind === "pv" ? <VoucherBuilder kind={kind} onClose={() => setShow(false)} /> : <JEBuilder kind={kind} onClose={() => setShow(false)} />)}
+      {editJe && (kind === "rv" || kind === "pv"
+        ? <VoucherBuilder key={editJe.id} kind={kind} edit={editJe} onClose={() => setEditJe(null)} />
+        : <JEBuilder key={editJe.id} kind={kind} edit={editJe} onClose={() => setEditJe(null)} />)}
     </div>
   );
 }
@@ -673,23 +690,26 @@ function printJournal(app: ReturnType<typeof useApp>, j: Journal) {
 
 /* ═══════════ باني سندات القبض والصرف — حقول رأس وبنود احترافية ═══════════ */
 interface VLine { account: string; amount: string; currency: string; desc: string; cc: string }
-function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => void }) {
+function VoucherBuilder({ kind, onClose, edit }: { kind: "rv" | "pv"; onClose: () => void; edit?: any }) {
   const app = useApp();
   const isRV = kind === "rv";
   const boxes = app.db.cashboxes as any[];
   const posting = app.accounts.filter((a) => a.posting);
-  const [date, setDate] = useState("2026-03-29");
-  const [box, setBox] = useState(boxes[0]?.id || "");
-  const [payMethod, setPayMethod] = useState("نقداً");
-  const [payRef, setPayRef] = useState("");
-  const [party, setParty] = useState("");
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("YER");
-  const [cc, setCc] = useState("CC-01");
-  const [desc, setDesc] = useState("");
-  const [lines, setLines] = useState<VLine[]>([
-    { account: isRV ? app.settings.suspense.customers : app.settings.suspense.suppliers, amount: "", currency: "YER", desc: "", cc: "CC-01" },
-  ]);
+  const ev = edit?._voucher || {};
+  const [date, setDate] = useState(edit?.date || "2026-03-29");
+  const [box, setBox] = useState(ev.box || boxes[0]?.id || "");
+  const [payMethod, setPayMethod] = useState(ev.payMethod || "نقداً");
+  const [payRef, setPayRef] = useState(ev.payRef || "");
+  const [party, setParty] = useState(ev.party || "");
+  const [amount, setAmount] = useState(ev.amount ?? "");
+  const [currency, setCurrency] = useState(ev.currency || "YER");
+  const [cc, setCc] = useState(ev.cc || "CC-01");
+  const [desc, setDesc] = useState(ev.desc || "");
+  const [lines, setLines] = useState<VLine[]>(
+    ev.lines?.length ? ev.lines : [
+      { account: isRV ? app.settings.suspense.customers : app.settings.suspense.suppliers, amount: "", currency: "YER", desc: "", cc: "CC-01" },
+    ]
+  );
   const rate = (app.db.currencies.find((c: any) => c.id === currency) as any)?.rate || 1;
   const boxAcc: string = (boxes.find((b) => b.id === box) as any)?.account || app.settings.suspense.cash;
   const boxAccName = app.accounts.find((a) => a.code === boxAcc)?.name || "—";
@@ -698,50 +718,69 @@ function VoucherBuilder({ kind, onClose }: { kind: "rv" | "pv"; onClose: () => v
   const matched = Math.abs(linesSum - headerVal) < 0.01 && headerVal > 0;
   /* رقم السند يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
   const vPrefix = isRV ? app.settings.prefixes.RC : app.settings.prefixes.PV;
-  const [no, setNo] = useState<string | null>(null);
+  const [no, setNo] = useState<string | null>(edit?.no || null);
+  const vNo = no || app.nextNo(vPrefix);
+  /* حمولة حقول السند — تُحفظ مع القيد لتُعاد تعبئتها عند التعديل */
+  const voucherPayload = { box, payMethod, payRef, party, amount, currency, cc, desc, lines };
 
   const setL = (i: number, p: Partial<VLine>) => setLines((old) => old.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
-  const save = () => {
-    if (!desc.trim()) { app.toast("حقل «البيان» إلزامي", "err"); return; }
-    if (!party.trim()) { app.toast(isRV ? "حقل «استلمنا من» إلزامي" : "حقل «صُرف إلى» إلزامي", "err"); return; }
-    if (!(+amount > 0)) { app.toast("أدخل المبلغ رقماً — يجب أن يكون أكبر من صفر", "err"); return; }
-    if (!matched) { app.toast(`إجمالي البنود (${app.fmtN(linesSum)}) لا يطابق مبلغ السند (${app.fmtN(headerVal)})`, "err"); return; }
-    const n = no || app.nextNo(vPrefix);
-    const je: Journal = {
-      id: n, no: n, date, user: app.session?.user || "—", status: "مرحّل",
-      desc: `${isRV ? "سند قبض" : "سند صرف"} — ${isRV ? "استلمنا من" : "صُرف إلى"} ${party} — ${desc}`,
-      kind: isRV ? "قبض" : "صرف", source: isRV ? "سند قبض" : "سند صرف",
-      lines: [
-        ...(isRV
-          ? [{ account: boxAcc, debit: headerVal, credit: 0, currency, rate, costCenter: cc }]
-          : lines.filter((l) => +l.amount > 0).map((l) => ({ account: l.account, debit: (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), credit: 0, currency: l.currency, rate: (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1, costCenter: l.cc || cc }))),
-        ...(isRV
-          ? lines.filter((l) => +l.amount > 0).map((l) => ({ account: l.account, debit: 0, credit: (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), currency: l.currency, rate: (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1, costCenter: l.cc || cc }))
-          : [{ account: boxAcc, debit: 0, credit: headerVal, currency, rate, costCenter: cc }]),
-      ],
-    } as unknown as Journal;
-    const res = app.addJournal(je);
+  const buildJe = (status: string): Journal => ({
+    id: vNo, no: vNo, date, user: app.session?.user || "—", status,
+    desc: `${isRV ? "سند قبض" : "سند صرف"} — ${isRV ? "استلمنا من" : "صُرف إلى"} ${party} — ${desc}`,
+    kind: isRV ? "قبض" : "صرف", source: isRV ? "سند قبض" : "سند صرف",
+    lines: [
+      ...(isRV
+        ? [{ account: boxAcc, debit: headerVal, credit: 0, currency, rate, costCenter: cc }]
+        : lines.filter((l) => +l.amount > 0).map((l) => ({ account: l.account, debit: (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), credit: 0, currency: l.currency, rate: (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1, costCenter: l.cc || cc }))),
+      ...(isRV
+        ? lines.filter((l) => +l.amount > 0).map((l) => ({ account: l.account, debit: 0, credit: (+l.amount || 0) * ((app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1), currency: l.currency, rate: (app.db.currencies.find((c: any) => c.id === l.currency) as any)?.rate || 1, costCenter: l.cc || cc }))
+        : [{ account: boxAcc, debit: 0, credit: headerVal, currency, rate, costCenter: cc }]),
+    ],
+    _voucher: voucherPayload,
+  } as unknown as Journal);
+
+  const validate = () => {
+    if (!desc.trim()) { app.toast("حقل «البيان» إلزامي", "err"); return false; }
+    if (!party.trim()) { app.toast(isRV ? "حقل «استلمنا من» إلزامي" : "حقل «صُرف إلى» إلزامي", "err"); return false; }
+    if (!(+amount > 0)) { app.toast("أدخل المبلغ رقماً — يجب أن يكون أكبر من صفر", "err"); return false; }
+    if (!matched) { app.toast(`إجمالي البنود (${app.fmtN(linesSum)}) لا يطابق مبلغ السند (${app.fmtN(headerVal)})`, "err"); return false; }
+    return true;
+  };
+
+  /* حفظ كمسودة: بلا أثر على الأرصدة حتى الترحيل */
+  const saveDraft = () => {
+    if (!validate()) return;
+    setNo(vNo);
+    const res = app.saveDraftJournal(buildJe("مسودة"));
     app.toast(res.msg, res.ok ? "ok" : "err");
-    if (res.ok) { printVoucher(app, { no: n, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
+    if (res.ok) onClose();
+  };
+  /* حفظ وترحيل: يُرحَّل قيداً متوازناً فوراً */
+  const save = () => {
+    if (!validate()) return;
+    setNo(vNo);
+    const res = app.addJournal(buildJe("مرحّل"));
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) { printVoucher(app, { no: vNo, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" }); onClose(); }
   };
 
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته المرحّلة) وليس نسخة مسودة */
   const printFinal = () => {
     if (!(+amount > 0)) { app.toast("أدخل المبلغ أولاً قبل الطباعة", "err"); return; }
     if (!matched) { app.toast("طابق إجمالي البنود مع مبلغ السند أولاً", "err"); return; }
-    const n = no || app.nextNo(vPrefix);
-    setNo(n);
-    printVoucher(app, { no: n, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" });
+    setNo(vNo);
+    printVoucher(app, { no: vNo, date, box: boxes.find((b) => b.id === box)?.name, boxAcc, boxAccName, party, amount: headerVal, currency, rate, payMethod, payRef, cc, desc, lines, isRV, status: "مرحّل" });
   };
 
   return (
     <Modal open onClose={onClose} wide icon={isRV ? "down" : "wallet"}
-      title={`${isRV ? "سند قبض" : "سند صرف"} جديد — رقم يُولّد تلقائياً`}
+      title={`${edit ? "تعديل " : ""}${isRV ? "سند قبض" : "سند صرف"}${edit ? ` — ${edit.no}` : " جديد — رقم يُولّد تلقائياً"}`}
       subtitle={isRV ? "تحصيل نقدي أو بنكي — يُرحَّل قيداً متوازناً: من ح/ الصندوق إلى الحسابات الدائنة" : "صرف نقدي أو بنكي — يُرحَّل قيداً متوازناً: من الحسابات المدينة إلى ح/ الصندوق"}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        <button className="btn btn-ghost !text-[var(--accent)] !border-[color-mix(in_srgb,var(--accent)_40%,transparent)]" onClick={saveDraft} disabled={!matched}><I n="save" size={15} /> حفظ كمسودة</button>
         <button className="btn btn-brand" onClick={save} disabled={!matched}><I n="check" size={15} /> حفظ وترحيل السند</button>
       </>}>
       {/* ── أولاً: رأس المستند ── */}
@@ -905,15 +944,17 @@ function printVoucher(app: ReturnType<typeof useApp>, v: {
   );
 }
 
-function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
+function JEBuilder({ kind, onClose, edit }: { kind: string; onClose: () => void; edit?: any }) {
   const app = useApp();
   const isReq = kind === "req";
-  const [desc, setDesc] = useState(kind === "rv" ? "سند قبض — تحصيل دفعة من عميل" : kind === "pv" ? "سند صرف — سداد مستحقات" : "");
-  const [date, setDate] = useState("2026-03-29");
-  const [cc, setCc] = useState("CC-01");
+  const [desc, setDesc] = useState(edit?.desc || (kind === "rv" ? "سند قبض — تحصيل دفعة من عميل" : kind === "pv" ? "سند صرف — سداد مستحقات" : ""));
+  const [date, setDate] = useState(edit?.date || "2026-03-29");
+  const [cc, setCc] = useState(edit?.lines?.[0]?.costCenter || "CC-01");
   const defAcc = kind === "rv" ? ["11111", "11211"] : kind === "pv" ? [app.settings.suspense.suppliers, app.settings.suspense.bank] : ["11111", "41111"];
   const [rows, setRows] = useState<{ account: string; debit: string; credit: string; currency: string; rate: number; analytical: string }[]>(
-    defAcc.map((a) => ({ account: a, debit: "", credit: "", currency: "YER", rate: 1, analytical: "" }))
+    edit?.lines?.length
+      ? edit.lines.map((l: any) => ({ account: l.account, debit: l.debit ? String(l.debit) : "", credit: l.credit ? String(l.credit) : "", currency: l.currency || "YER", rate: l.rate || 1, analytical: l.analytical || "" }))
+      : defAcc.map((a) => ({ account: a, debit: "", credit: "", currency: "YER", rate: 1, analytical: "" }))
   );
   const posting = app.accounts.filter((a) => a.posting);
   const dr = rows.reduce((a, r) => a + (+r.debit || 0) * r.rate, 0);
@@ -922,15 +963,27 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   const setRow = (i: number, patch: Partial<typeof rows[0]>) => setRows((old) => old.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   /* رقم القيد يُحجز عند أول معاينة ويُعاد استخدامه عند الحفظ فيتطابق المطبوع مع المحفوظ */
   const jePrefix = kind === "rv" ? app.settings.prefixes.RC : kind === "pv" ? app.settings.prefixes.PV : kind === "open" ? "FYE" : app.settings.prefixes.JE;
-  const [no, setNo] = useState<string | null>(null);
+  const [no, setNo] = useState<string | null>(edit?.no || null);
   const jeStatus = isReq ? "بانتظار الموافقة" : "مرحّل";
   const buildLines = (): JournalLine[] => rows.filter((r) => +r.debit || +r.credit).map((r) => ({ account: r.account, debit: (+r.debit || 0) * r.rate, credit: (+r.credit || 0) * r.rate, currency: r.currency, rate: r.rate, analytical: r.analytical || undefined, costCenter: cc }));
+  const jeNo = no || app.nextNo(jePrefix);
+  const jeKind = isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية";
 
+  /* حفظ كمسودة: بلا أثر على الأرصدة حتى الترحيل */
+  const saveDraft = () => {
+    if (!desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
+    if (!balanced) { app.toast(`القيد غير متوازن: مدين ${app.fmtN(dr)} مقابل دائن ${app.fmtN(cr)}`, "err"); return; }
+    setNo(jeNo);
+    const res = app.saveDraftJournal({ id: jeNo, no: jeNo, date, desc, kind: jeKind, lines: buildLines(), user: app.session?.user || "—", status: "مسودة", source: JE_META[kind].title } as Journal);
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) onClose();
+  };
+  /* حفظ وترحيل: يُرحّل القيد إلى دفتر الأستاذ فوراً */
   const save = () => {
     if (!desc.trim()) { app.toast("البيان مطلوب", "err"); return; }
     if (!balanced) { app.toast(`القيد غير متوازن: مدين ${app.fmtN(dr)} مقابل دائن ${app.fmtN(cr)}`, "err"); return; }
-    const n = no || app.nextNo(jePrefix);
-    const res = app.addJournal({ id: n, no: n, date, desc, kind: isReq ? "طلب" : kind === "open" ? "افتتاحي" : "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as Journal);
+    setNo(jeNo);
+    const res = app.addJournal({ id: jeNo, no: jeNo, date, desc, kind: jeKind, lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as Journal);
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -938,13 +991,12 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   /* معاينة الطباعة تُخرج المستند النهائي (برقمه وحالته) وليس نسخة مسودة */
   const printFinal = () => {
     if (!balanced) { app.toast("وازن القيد أولاً قبل الطباعة", "err"); return; }
-    const n = no || app.nextNo(jePrefix);
-    setNo(n);
-    printJournal(app, { id: n, no: n, date, desc, kind: "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as unknown as Journal);
+    setNo(jeNo);
+    printJournal(app, { id: jeNo, no: jeNo, date, desc, kind: "يومية", lines: buildLines(), user: app.session?.user || "—", status: jeStatus, source: JE_META[kind].title } as unknown as Journal);
   };
 
   return (
-    <Modal open onClose={onClose} wide icon="book" title={JE_META[kind].newLabel + " جديد — رقم يُولّد تلقائياً"} subtitle="قيد مزدوج متعدد العملات — يُرفض الترحيل إذا لم يتوازن المدين والدائن">
+    <Modal open onClose={onClose} wide icon="book" title={(edit ? "تعديل " : "") + JE_META[kind].newLabel + (edit ? ` — ${edit.no}` : " جديد — رقم يُولّد تلقائياً")} subtitle="قيد مزدوج متعدد العملات — يُرفض الترحيل إذا لم يتوازن المدين والدائن">
       <FormSection n="أولاً" icon="file" title="رأس القيد" hint="البيان والتاريخ ومركز التكلفة">
       {/* حقل البيان — كبير وكامل العرض */}
       <label className="block mb-3">
@@ -1004,9 +1056,10 @@ function JEBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         </div>
       </div>
       </FormSection>
-      <div className="flex justify-end gap-2 mt-5">
+      <div className="flex flex-wrap justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        {!isReq && <button className="btn btn-ghost !text-[var(--accent)] !border-[color-mix(in_srgb,var(--accent)_40%,transparent)]" disabled={!balanced} onClick={saveDraft}><I n="save" size={15} /> حفظ كمسودة</button>}
         <button className="btn btn-brand" disabled={!balanced} onClick={save}>
           <I n="check" size={16} /> حفظ و{isReq ? "إرسال الطلب" : "ترحيل القيد"}
         </button>
@@ -1027,7 +1080,7 @@ function GLReport({ kind }: { kind: string }) {
   const [gTo, setGTo] = useState("");
   const balances = useMemo(() => {
     const map: Record<string, { dr: number; cr: number }> = {};
-    (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").forEach((j) =>
+    (app.db.journals as any as Journal[]).filter((j) => j.status === "مرحّل").forEach((j) =>
       j.lines.forEach((l) => { map[l.account] = map[l.account] || { dr: 0, cr: 0 }; map[l.account].dr += l.debit * l.rate; map[l.account].cr += l.credit * l.rate; })
     );
     return map;
@@ -1036,7 +1089,7 @@ function GLReport({ kind }: { kind: string }) {
   const sumType = (t: string) => posting.filter((a) => a.type === t).reduce((s, a) => s + bal(a.code), 0);
   const totalDr = Object.values(balances).reduce((a, b) => a + b.dr, 0);
   const totalCr = Object.values(balances).reduce((a, b) => a + b.cr, 0);
-  const stmtLines = (app.db.journals as any as Journal[]).filter((j) => j.status !== "ملغي").flatMap((j) => j.lines.filter((l) => l.account === stmtAcc).map((l) => ({ ...l, no: j.no, date: j.date, desc: j.desc })));
+  const stmtLines = (app.db.journals as any as Journal[]).filter((j) => j.status === "مرحّل").flatMap((j) => j.lines.filter((l) => l.account === stmtAcc).map((l) => ({ ...l, no: j.no, date: j.date, desc: j.desc })));
 
   const titles: Record<string, [string, string, string]> = {
     stmt: ["تقرير كشف حساب", "كشف تفصيلي بحركات ورصيد أي حساب ترحيلي", "receipt"],

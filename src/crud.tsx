@@ -400,11 +400,10 @@ export function Directory({ conf }: { conf: DirConf }) {
 }
 
 /* ═══════ شاشة حركات عامة (سندات) — بأزرار عرض/طباعة/ترحيل/اعتماد/حذف محكومة بالصلاحيات ═══════ */
-export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView, onPrint, module, onPost, postLabel, onApprove, approveLabel, canVoid }: {
+export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView, onPrint, module, renderActions }: {
   docs: AnyR[]; title: string; desc: string; icon: string; cols: ColDef[];
   onNew?: () => void; newLabel?: string; onView?: (d: AnyR) => void; onPrint?: (d: AnyR) => void;
-  module?: string; onPost?: (d: AnyR) => void; postLabel?: string;
-  onApprove?: (d: AnyR) => void; approveLabel?: string; canVoid?: boolean;
+  module?: string; renderActions?: (d: AnyR) => ReactNode;
 }) {
   const app = useApp();
   const allowed = (perm: string) => !module || app.can(module, perm);
@@ -435,7 +434,9 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
       </div>
       <div className="relative w-80 max-w-full mb-3.5">
         <I n="search" size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-mute" />
-        <input className="input !ps-9" placeholder="بحث برقم السند أو البيان…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input !ps-9" disabled={module ? !app.can(module, "بحث") : false}
+          title={module && !app.can(module, "بحث") ? "صلاحية «بحث» غير مخوّلة لدورك" : undefined}
+          placeholder="بحث برقم السند أو البيان…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="card overflow-hidden">
         {filtered.length === 0 ? <Empty msg="لا توجد سندات — أنشئ سنداً جديداً برقم يُولّد تلقائياً" /> : (
@@ -449,13 +450,13 @@ export function DocList({ docs, title, desc, icon, cols, onNew, newLabel, onView
                     <tr key={d.id}>
                       {cols.map((c) => <td key={c.k} className={c.num ? "font-num" : ""}>{c.render ? c.render(d, app) : String(d[c.k] ?? "—")}</td>)}
                       <td>
-                        <div className="flex flex-wrap gap-1 justify-start max-w-[280px]">
-                          {onView && <ActionBtn k="view" allowed={allowed("عرض")} onClick={() => onView(d)} />}
-                          {onPrint && <ActionBtn k="print" allowed={allowed("طباعة")} onClick={() => onPrint(d)} title="طباعة السند (A4)" />}
-                          {onPost && !dead && <ActionBtn k="post" allowed={allowed("ترحيل")} onClick={() => onPost(d)} title={postLabel || "ترحيل السند"} />}
-                          {onApprove && (d.status === "مسودة" || d.status === "بانتظار الموافقة" || d.status === "ساري") && <ActionBtn k="approve" allowed={allowed("اعتماد")} onClick={() => onApprove(d)} title={approveLabel || "اعتماد"} />}
-                          {canVoid !== false && !dead && <ActionBtn k="del" allowed={allowed("حذف")} onClick={() => voidDoc(d)} title="إلغاء السند وعكس أثره" />}
-                        </div>
+                        {renderActions ? renderActions(d) : (
+                          <div className="flex flex-wrap gap-1 justify-start max-w-[280px]">
+                            {onView && <ActionBtn k="view" allowed={allowed("عرض")} onClick={() => onView(d)} />}
+                            {onPrint && <ActionBtn k="print" allowed={allowed("طباعة")} onClick={() => onPrint(d)} title="طباعة السند (A4)" />}
+                            {!dead && <ActionBtn k="del" allowed={allowed("حذف")} onClick={() => voidDoc(d)} title="إلغاء السند وعكس أثره" />}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

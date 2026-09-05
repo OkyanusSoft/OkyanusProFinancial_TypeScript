@@ -3,6 +3,7 @@ import { useApp, type AnyR } from "../store";
 import { I, Modal, Chip, Barcode, Reveal, Empty, BarChart, FormSection } from "../ui";
 import { Directory, DocList, type DirConf, type ColDef } from "../crud";
 import { openPrint, DocSheet, PTable, ReportSheet, tafqit, setReportCfg } from "../print";
+import { DocActions, StatusSteps } from "../flow";
 import type { InvDoc } from "../data";
 
 export default function Inventory() {
@@ -196,6 +197,7 @@ function MoveScreen({ kind }: { kind: string }) {
   const meta = DOC_META[kind];
   const [show, setShow] = useState(false);
   const [view, setView] = useState<AnyR | null>(null);
+  const [edit, setEdit] = useState<AnyR | null>(null);
   const docs = (app.db.invDocs as any as AnyR[]).filter((d) => d.type === meta.label).reverse();
 
   const whName = (id: string) => app.db.warehouses.find((w) => w.id === id)?.name || id;
@@ -227,9 +229,19 @@ function MoveScreen({ kind }: { kind: string }) {
   return (
     <>
       <DocList docs={docs} title={meta.full} desc={meta.desc} icon={meta.icon} cols={cols} module="inv"
-        onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} onPrint={(d) => printInvDoc(app, d, meta.full)} />
+        onNew={() => setShow(true)} newLabel={`${meta.verb} جديد`} onView={(d) => setView(d)} onPrint={(d) => printInvDoc(app, d, meta.full)}
+        renderActions={(d) => (
+          <DocActions app={app} module="inv" status={d.status}
+            onView={() => setView(d)}
+            onEdit={() => setEdit(d)}
+            onDelete={() => app.deleteInvDoc(d.id)}
+            onPost={() => app.postInvDoc(d.id)}
+            onUnpost={() => app.unpostInvDoc(d.id)}
+            onPrint={() => printInvDoc(app, d, meta.full)} />
+        )} />
 
       {show && <DocBuilder kind={kind} onClose={() => setShow(false)} />}
+      {edit && <DocBuilder key={edit.id} kind={kind} edit={edit} onClose={() => setEdit(null)} />}
 
       <Modal open={!!view} onClose={() => setView(null)} wide icon={meta.icon} title={`تفاصيل السند ${view?.ref || ""}`} subtitle={`${meta.full} — عرض كامل البنود مع الطباعة والتراجع`}>
         {view && (
@@ -297,19 +309,23 @@ const SUBTYPES: Record<string, { id: string; l: string; party?: "supplier" | "cu
 };
 const PARTY_LABEL: Record<string, string> = { supplier: "المورد", customer: "العميل", cashbox: "الصندوق / البنك" };
 
-function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
+function DocBuilder({ kind, onClose, edit }: { kind: string; onClose: () => void; edit?: AnyR }) {
   const app = useApp();
   const meta = DOC_META[kind];
   const subs = SUBTYPES[kind] || [];
-  const [date, setDate] = useState("2026-03-29");
-  const [wh, setWh] = useState(app.db.warehouses[0]?.id || "WH-01");
-  const [toWh, setToWh] = useState(app.db.warehouses[1]?.id || "WH-02");
-  const [sub, setSub] = useState(subs[0]?.id || "");
-  const [party, setParty] = useState("");
-  const [clearAcc, setClearAcc] = useState("22111"); /* القيد الافتتاحي: رأس المال افتراضياً */
-  const [extRef, setExtRef] = useState("");
-  const [note, setNote] = useState("");
-  const [lines, setLines] = useState<{ item: string; qty: string; cost: string; counted?: string }[]>([{ item: app.db.items[0]?.id || "", qty: "10", cost: String(app.db.items[0]?.cost || 0) }]);
+  const [date, setDate] = useState(edit?.date || "2026-03-29");
+  const [wh, setWh] = useState(edit?.warehouse || app.db.warehouses[0]?.id || "WH-01");
+  const [toWh, setToWh] = useState(edit?.toWarehouse || app.db.warehouses[1]?.id || "WH-02");
+  const [sub, setSub] = useState(edit?.subType || subs[0]?.id || "");
+  const [party, setParty] = useState(edit?.party || "");
+  const [clearAcc, setClearAcc] = useState(edit?.clearAccount || "22111"); /* القيد الافتتاحي: رأس المال افتراضياً */
+  const [extRef, setExtRef] = useState(edit?.extRef || "");
+  const [note, setNote] = useState(edit?.note || "");
+  const [lines, setLines] = useState<{ item: string; qty: string; cost: string; counted?: string }[]>(
+    edit?.lines?.length
+      ? edit.lines.map((l: any) => ({ item: l.item, qty: String(l.qty), cost: String(l.cost) }))
+      : [{ item: app.db.items[0]?.id || "", qty: "10", cost: String(app.db.items[0]?.cost || 0) }]
+  );
 
   const setLine = (i: number, patch: Partial<typeof lines[0]>) => setLines((old) => old.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const totalQty = lines.reduce((a, l) => a + (+l.qty || 0), 0);
@@ -356,16 +372,29 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
     return { item: l.item, qty, cost: +l.cost || it?.cost || 0 };
   });
 
-  const save = () => {
-    if (!note.trim()) { app.toast("حقل «البيان» إلزامي — اذكر تفاصيل الحركة وسببها", "err"); return; }
+  const validate = (): boolean => {
+    if (!note.trim()) { app.toast("حقل «البيان» إلزامي — اذكر تفاصيل الحركة وسببها", "err"); return false; }
     const valid = lines.filter((l) => l.item && (+l.qty || 0) !== 0);
-    if (valid.length === 0) { app.toast("أضف سطراً واحداً على الأقل بكمية غير صفرية", "err"); return; }
-    if (kind === "tr" && wh === toWh) { app.toast("مخزنا المصدر والوجهة متطابقان — اختر مخزنين مختلفين", "err"); return; }
-    if (partyKind && !party) { app.toast(`اختر ${PARTY_LABEL[partyKind]} — مطلوب لنوع الحركة «${sub}’`, "err"); return; }
-    const ref = no || app.nextNo(invPrefix);
-    const finalLines = buildLines();
-    if (kind === "count" && finalLines.every((l) => l.qty === 0)) { app.toast("لا توجد فروقات جرد — الكميات المعدودة مطابقة للنظام ✓", "ok"); onClose(); return; }
-    const res = app.addInvDoc({ id: ref, type: meta.label, date, ref, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined, user: app.session?.user || "—", status: "مرحّل", lines: finalLines, note, subType: sub || undefined, partyKind, party: party || undefined, extRef: extRef || undefined, clearAccount: kind === "open" ? clearAcc : undefined } as InvDoc);
+    if (valid.length === 0) { app.toast("أضف سطراً واحداً على الأقل بكمية غير صفرية", "err"); return false; }
+    if (kind === "tr" && wh === toWh) { app.toast("مخزنا المصدر والوجهة متطابقان — اختر مخزنين مختلفين", "err"); return false; }
+    if (partyKind && !party) { app.toast(`اختر ${PARTY_LABEL[partyKind]} — مطلوب لنوع الحركة «${sub}»`, "err"); return false; }
+    return true;
+  };
+  const buildDoc = (status: InvDoc["status"]): InvDoc => {
+    const ref = no || edit?.ref || app.nextNo(invPrefix);
+    return { id: ref, type: meta.label, date, ref, warehouse: wh, toWarehouse: kind === "tr" ? toWh : undefined, user: app.session?.user || "—", status, lines: buildLines(), note, subType: sub || undefined, partyKind, party: party || undefined, extRef: extRef || undefined, clearAccount: kind === "open" ? clearAcc : undefined } as InvDoc;
+  };
+  const save = () => {
+    if (!validate()) return;
+    if (kind === "count" && buildLines().every((l) => l.qty === 0)) { app.toast("لا توجد فروقات جرد — الكميات المعدودة مطابقة للنظام ✓", "ok"); onClose(); return; }
+    const res = app.addInvDoc(buildDoc("مرحّل"));
+    app.toast(res.msg, res.ok ? "ok" : "err");
+    if (res.ok) onClose();
+  };
+  /* حفظ كمسودة: بلا أثر مخزني أو محاسبي — يمر عبر الاعتماد ثم الترحيل */
+  const saveDraft = () => {
+    if (!validate()) return;
+    const res = edit ? app.updateInvDoc(buildDoc("مسودة")) : app.saveDraftInvDoc(buildDoc("مسودة"));
     app.toast(res.msg, res.ok ? "ok" : "err");
     if (res.ok) onClose();
   };
@@ -386,7 +415,10 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} wide icon={meta.icon} title={`إنشاء ${meta.full} — رقم يُولّد تلقائياً`} subtitle="سند مخزني — يُرحّل الكميات فوراً ويولّد قيداً محاسبياً متوازناً في دفتر الأستاذ">
+    <Modal open onClose={onClose} wide icon={meta.icon}
+      title={edit ? `تعديل ${meta.full} — ${edit.ref}` : `إنشاء ${meta.full} — رقم يُولّد تلقائياً`}
+      subtitle={edit ? "تعديل المسودة — لا أثر على الأرصدة حتى الترحيل" : "سند مخزني — الحفظ كمسودة لا يؤثر على الأرصدة حتى الترحيل"}>
+      {edit && <div className="mb-4 flex items-center gap-2"><StatusSteps status={edit.status} /><span className="text-[0.68rem] font-bold text-mute">— عدّل ثم رحّل من القائمة</span></div>}
       <FormSection n="أولاً" icon="file" title="رأس المستند" hint="البيانات العامة للسند">
       <div className="grid md:grid-cols-4 gap-3 mb-3">
         <label className="block"><span className="text-[0.74rem] font-bold text-soft">التاريخ</span>
@@ -517,9 +549,12 @@ function DocBuilder({ kind, onClose }: { kind: string; onClose: () => void }) {
         <span className="font-num font-bold text-lg text-[var(--brand)]">{app.fmtN(totalVal)} <span className="text-[0.7rem] text-mute">ر.ي (بالتكلفة)</span></span>
       </div>
       </FormSection>
-      <div className="flex justify-end gap-2 mt-5">
+      <div className="flex flex-wrap justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-soft" onClick={printFinal}><I n="print" size={15} /> معاينة الطباعة</button>
+        {edit
+          ? <button className="btn btn-ghost !text-[var(--accent)] !border-[color-mix(in_srgb,var(--accent)_40%,transparent)]" onClick={saveDraft}><I n="save" size={15} /> حفظ التعديلات (مسودة)</button>
+          : <button className="btn btn-ghost !text-[var(--warn)] !border-[color-mix(in_srgb,var(--warn)_40%,transparent)]" onClick={saveDraft}><I n="save" size={15} /> حفظ كمسودة</button>}
         <button className="btn btn-brand" onClick={save}><I n="check" size={16} /> حفظ وترحيل السند</button>
       </div>
     </Modal>
