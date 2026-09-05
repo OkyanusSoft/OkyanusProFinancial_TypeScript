@@ -2,15 +2,16 @@ import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { I, Empty, Chip, Modal, BarChart } from "../ui";
 import { openPrint, ReportSheet, PTable } from "../print";
+import { Directory, type DirConf } from "../crud";
 
 const TABS = [
-  ["emp", "الموظفون", "users"], ["att", "الحضور والانصراف", "clock"], ["rw", "المكافآت", "coins"],
+  ["org", "الهيكل الإداري", "bld"], ["emp", "الموظفون", "users"], ["att", "الحضور والانصراف", "clock"], ["rw", "المكافآت", "coins"],
   ["wn", "الإنذارات", "alert"], ["lv", "الأذونات والإجازات", "cal"], ["pay", "كشوف الرواتب", "receipt"], ["rep", "التقارير", "chart"],
 ] as const;
 
 export default function HR() {
   const app = useApp();
-  const [tab, setTab] = useState<string>("emp");
+  const [tab, setTab] = useState<string>("org");
   const empName = (id: string) => app.hr.employees.find((e) => e.id === id)?.name || id;
   const [form, setForm] = useState<any>(null);
   const [isNew, setIsNew] = useState(false);
@@ -49,6 +50,42 @@ export default function HR() {
           </button>
         ))}
       </div>
+
+      {tab === "org" && (
+        <div className="grid lg:grid-cols-2 gap-5 items-start">
+          <Directory conf={{
+            coll: "departments", title: "الإدارات", icon: "bld", prefix: "DP", importKey: "departments",
+            desc: "الكيانات الإدارية العليا في الهيكل التنظيمي — ترتبط بها الأقسام",
+            fields: [
+              { k: "code", label: "الكود", req: true, uniq: true },
+              { k: "name", label: "اسم الإدارة", req: true, uniq: true },
+              { k: "head", label: "مدير الإدارة", req: true },
+            ],
+            cols: [
+              { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+              { k: "name", label: "الإدارة", render: (r) => <b>{r.name}</b> },
+              { k: "head", label: "المدير" },
+              { k: "secs", label: "الأقسام", num: true, render: (r, a) => <span className="font-num">{a.db.sections.filter((s: any) => s.dept === r.id).length}</span> },
+            ],
+          }} />
+          <Directory conf={{
+            coll: "sections", title: "الأقسام", icon: "layers", prefix: "SC", importKey: "sections",
+            desc: "وحدات فرعية مرتبطة بالإدارات — تُسند إليها المهام والموظفون",
+            fields: [
+              { k: "code", label: "الكود", req: true, uniq: true },
+              { k: "name", label: "اسم القسم", req: true },
+              { k: "dept", label: "الإدارة التابعة", type: "select", req: true, opts: app.db.departments.map((d: any) => ({ v: d.id, l: d.name })) },
+              { k: "head", label: "رئيس القسم", req: true },
+            ],
+            cols: [
+              { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+              { k: "name", label: "القسم", render: (r) => <b>{r.name}</b> },
+              { k: "dept", label: "الإدارة", render: (r) => app.db.departments.find((d: any) => d.id === r.dept)?.name || "—" },
+              { k: "head", label: "الرئيس" },
+            ],
+          }} />
+        </div>
+      )}
 
       {tab === "emp" && (
         <SimpleTable title="سجل الموظفين" icon="users" cols={["الكود", "الاسم", "الوظيفة", "القسم", "الراتب", "تاريخ التعيين", "الحالة"]}

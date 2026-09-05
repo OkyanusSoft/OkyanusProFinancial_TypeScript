@@ -220,7 +220,7 @@ function UsersScreen() {
   return (
     <div className="anim-fadein">
       <div className="flex items-center gap-1 overflow-x-auto border-b border-line mb-5 px-1">
-        {[["list", "المستخدمون", "users"], ["matrix", "مصفوفة الصلاحيات الرباعية", "shield"], ["org", "الهيكل الإداري والتنظيمي", "bld"], ["audit", "سجل الأمان", "lock"]].map(([id, l, ic]) => (
+        {[["list", "المستخدمون", "users"], ["matrix", "مصفوفة الصلاحيات الرباعية", "shield"], ["audit", "سجل الأمان", "lock"]].map(([id, l, ic]) => (
           <button key={id} onClick={() => setTab(id)} className={`tabline flex items-center gap-1.5 px-3.5 py-2.5 text-[0.82rem] font-bold whitespace-nowrap transition-colors ${tab === id ? "on text-[var(--brand)]" : "text-mute hover:text-ink"}`}>
             <I n={ic} size={15} /> {l}
           </button>
@@ -472,42 +472,6 @@ function UsersScreen() {
               ))}
             </div>
           </div>
-        </div>
-      )}
-      {tab === "org" && (
-        <div className="grid lg:grid-cols-2 gap-5">
-          <Directory conf={{
-            coll: "branches", title: "الفروع", icon: "bld", prefix: "BR", importKey: "branches",
-            desc: "الهيكل التنظيمي — فروع الشركة وقياداتها",
-            fields: [
-              { k: "code", label: "الكود", req: true, uniq: true },
-              { k: "name", label: "اسم الفرع", req: true, uniq: true },
-              { k: "manager", label: "مدير الفرع", req: true },
-              { k: "phone", label: "الهاتف" },
-            ],
-            cols: [
-              { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
-              { k: "name", label: "الفرع", render: (r) => <b>{r.name}{r.main === true && <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] ms-2">رئيسي</span>}</b> },
-              { k: "manager", label: "المدير" },
-              { k: "depts", label: "الأقسام", num: true, render: (r, a) => <span className="font-num">{a.db.departments.filter((d: any) => d.branch === r.id).length}</span> },
-            ],
-          }} />
-          <Directory conf={{
-            coll: "departments", title: "الأقسام", icon: "layers", prefix: "DP", importKey: "departments",
-            desc: "أقسام كل فرع ومسؤولوها",
-            fields: [
-              { k: "code", label: "الكود", req: true, uniq: true },
-              { k: "name", label: "اسم القسم", req: true },
-              { k: "branch", label: "الفرع", type: "select", req: true, opts: app.db.branches.map((b: any) => ({ v: b.id, l: b.name })) },
-              { k: "head", label: "رئيس القسم", req: true },
-            ],
-            cols: [
-              { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
-              { k: "name", label: "القسم", render: (r) => <b>{r.name}</b> },
-              { k: "branch", label: "الفرع", render: (r) => app.db.branches.find((b: any) => b.id === r.branch)?.name || "—" },
-              { k: "head", label: "الرئيس" },
-            ],
-          }} />
         </div>
       )}
     </div>
@@ -973,7 +937,7 @@ function AgentScreen() {
 /* ═══════════ الإعدادات العامة ═══════════ */
 function SettingsScreen() {
   const app = useApp();
-  const [tab, setTab] = useState("fin");
+  const [tab, setTab] = useState("co");
   const s = app.settings;
 
   const Toggle = ({ v, on, label, hint }: { v: boolean; on: () => void; label: string; hint: string }) => (
@@ -1001,12 +965,14 @@ function SettingsScreen() {
         </div>
       </div>
       <div className="flex items-center gap-1 overflow-x-auto border-b border-line mb-5 px-1">
-        {[["fin", "الإعدادات المالية", "coins"], ["num", "الترقيم والفواتير", "receipt"], ["rep", "إعدادات التقارير", "chart"], ["db", "قاعدة البيانات", "db"], ["bak", "النسخ الاحتياطي", "server"]].map(([id, l, ic]) => (
+        {[["co", "الشركات والفروع", "bld"], ["fin", "الإعدادات المالية", "coins"], ["num", "الترقيم والفواتير", "receipt"], ["rep", "إعدادات التقارير", "chart"], ["db", "قاعدة البيانات", "db"], ["bak", "النسخ الاحتياطي", "server"]].map(([id, l, ic]) => (
           <button key={id} onClick={() => setTab(id)} className={`tabline flex items-center gap-1.5 px-3.5 py-2.5 text-[0.82rem] font-bold whitespace-nowrap transition-colors ${tab === id ? "on text-[var(--brand)]" : "text-mute hover:text-ink"}`}>
             <I n={ic} size={15} /> {l}
           </button>
         ))}
       </div>
+
+      {tab === "co" && <CompanyBranchesSection />}
 
       {tab === "fin" && (
         <div className="grid lg:grid-cols-2 gap-5">
@@ -1233,6 +1199,64 @@ function ReportSettingsSection() {
   );
 }
 
+/* ═══════════ قسم الشركات والفروع — الإعدادات العامة ═══════════ */
+function CompanyBranchesSection() {
+  const app = useApp();
+  const co = app.settings.company;
+  const setCo = (patch: Partial<typeof co>) => app.setSettings({ ...app.settings, company: { ...co, ...patch } });
+  const fld = (k: keyof typeof co, label: string, ltr?: boolean) => (
+    <label className="block">
+      <span className="text-[0.74rem] font-bold text-soft">{label}</span>
+      <input className={`input mt-1 ${ltr ? "font-num" : ""}`} dir={ltr ? "ltr" : undefined} value={co[k]} onChange={(e) => setCo({ [k]: e.target.value } as any)} />
+    </label>
+  );
+  return (
+    <div className="space-y-5">
+      {/* بيانات الشركة */}
+      <div className="card p-5 relative overflow-hidden">
+        <span className="absolute top-0 inset-x-0 h-[3px]" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand))" }} />
+        <div className="flex items-center gap-3 mb-4">
+          <span className="w-10 h-10 rounded-xl grid place-items-center text-[var(--brandink)]" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="bld" size={19} /></span>
+          <div>
+            <h3 className="font-display font-bold text-base leading-tight">بيانات الشركة</h3>
+            <p className="text-[0.7rem] font-medium text-mute mt-0.5">تُطبع في ترويسة كل المستندات والتقارير الرسمية</p>
+          </div>
+        </div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {fld("name", "اسم الشركة (عربي)")}
+          {fld("en", "الاسم اللاتيني", true)}
+          {fld("phone", "الهاتف", true)}
+          {fld("cr", "السجل التجاري", true)}
+          {fld("tax", "الرقم الضريبي", true)}
+          {fld("manager", "المدير العام")}
+          <label className="block md:col-span-2 lg:col-span-3">
+            <span className="text-[0.74rem] font-bold text-soft">العنوان</span>
+            <input className="input mt-1" value={co.address} onChange={(e) => setCo({ address: e.target.value })} />
+          </label>
+        </div>
+      </div>
+
+      {/* الفروع */}
+      <Directory conf={{
+        coll: "branches", title: "الفروع", icon: "bld", prefix: "BR", importKey: "branches",
+        desc: "فروع الشركة وقياداتها — تُربط بها المخازن والمستخدمون ومراكز التكلفة",
+        fields: [
+          { k: "code", label: "الكود", req: true, uniq: true },
+          { k: "name", label: "اسم الفرع", req: true, uniq: true },
+          { k: "manager", label: "مدير الفرع", req: true },
+          { k: "phone", label: "الهاتف" },
+        ],
+        cols: [
+          { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+          { k: "name", label: "الفرع", render: (r) => <b>{r.name}{r.main === true && <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] ms-2">رئيسي</span>}</b> },
+          { k: "manager", label: "المدير" },
+          { k: "phone", label: "الهاتف", num: true },
+        ],
+      }} />
+    </div>
+  );
+}
+
 const MIGRATIONS = [
   { f: "0000_helpers.sql", d: "الإجراءات المساعدة الشرطية (إضافة/تعديل/فهارس) — تجعل كل الهجرات قابلة للتكرار بأمان", t: "4 إجراءات" },
   { f: "0001_core_schema.sql", d: "الأنظمة الأساسية: تنظيم، مستخدمون، دليل الحسابات، مخزون، فواتير + محفزات", t: "47 جدولاً" },
@@ -1244,7 +1268,7 @@ const MIGRATIONS = [
 ];
 
 /* ═══ أدوات التهيئة والبناء والاختبار الاحترافية ═══ */
-const EXPECTED_TABLES = ["accounts", "users", "roles", "branches", "departments", "currencies", "periods", "cost_centers", "units", "item_groups", "warehouses", "items", "item_stock", "partners", "invoices", "invoice_lines", "inventory_docs", "inventory_doc_lines", "journals", "journal_lines", "activity_modules", "activity_entities", "activity_records", "sync_records", "sync_ops", "tombstones", "generations", "devices", "activity_log", "hr_employees", "hr_payroll", "fixed_assets", "schema_migrations"];
+const EXPECTED_TABLES = ["accounts", "users", "roles", "branches", "departments", "sections", "currencies", "periods", "cost_centers", "units", "item_groups", "warehouses", "items", "item_stock", "partners", "invoices", "invoice_lines", "inventory_docs", "inventory_doc_lines", "journals", "journal_lines", "activity_modules", "activity_entities", "activity_records", "sync_records", "sync_ops", "tombstones", "generations", "devices", "activity_log", "hr_employees", "hr_payroll", "fixed_assets", "schema_migrations"];
 
 function SetupTools({ app, cfg }: { app: ReturnType<typeof useApp>; cfg: { host: string; port: number; name: string; user: string } }) {
   const [tableCheck, setTableCheck] = useState<null | { found: number; missing: string[] }>(null);

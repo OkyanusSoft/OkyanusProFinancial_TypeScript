@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
 import {
   ACCOUNTS, ANALYTICALS, UNITS, GROUPS, WAREHOUSES, ITEMS, SUPPLIERS, CUSTOMERS, CASHBOXES,
-  COST_CENTERS, BRANCHES, DEPARTMENTS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
+  COST_CENTERS, BRANCHES, DEPARTMENTS, SECTIONS, USERS, CURRENCIES, PERIODS, INV_DOCS, PURCHASES, SALES,
   RETURNS, QUOTES, REQUESTS, JOURNALS, PERM_MODULES, PERM_ACTIONS, SIDEBAR_BGS, IMPORT_SAMPLES,
   SYSTEM, BANKS, PAYTERMS, PARTNER_CATS, ROLES_DIR, DEVICES, ACTIVITY_SEED,
   MODULE_SCREENS, REPORTS, REPORT_ACTIONS, BUTTON_ACTIONS,
@@ -57,7 +57,7 @@ export type Toast = { id: number; msg: string; kind: "ok" | "err" | "info" };
 export interface Notif { id: number; title: string; body: string; time: string; kind: "info" | "warn" | "bad" }
 
 export type CollKey = "units" | "groups" | "warehouses" | "items" | "suppliers" | "customers" | "cashboxes" |
-  "costCenters" | "branches" | "departments" | "users" | "currencies" | "periods" | "analyticals" |
+  "costCenters" | "branches" | "departments" | "sections" | "users" | "currencies" | "periods" | "analyticals" |
   "requests" | "quotes" | "sales" | "purchases" | "returns" | "invDocs" | "journals" |
   "banks" | "payTerms" | "partnerCats" | "roles";
 
@@ -189,7 +189,7 @@ export const useApp = () => useContext(Ctx)!;
 const initDb: Record<CollKey, AnyR[]> = {
   units: UNITS, groups: GROUPS, warehouses: WAREHOUSES, items: ITEMS, suppliers: SUPPLIERS,
   customers: CUSTOMERS, cashboxes: CASHBOXES, costCenters: COST_CENTERS, branches: BRANCHES,
-  departments: DEPARTMENTS, users: USERS, currencies: CURRENCIES, periods: PERIODS,
+  departments: DEPARTMENTS, sections: SECTIONS, users: USERS, currencies: CURRENCIES, periods: PERIODS,
   banks: BANKS, payTerms: PAYTERMS, partnerCats: PARTNER_CATS, roles: ROLES_DIR,
   analyticals: ANALYTICALS, requests: REQUESTS, quotes: QUOTES,
   sales: SALES as any, purchases: PURCHASES as any, returns: RETURNS as any,
@@ -355,7 +355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const COLL_CAT: Record<string, string> = {
     units: "المخازن", groups: "المخازن", warehouses: "المخازن", items: "الأصول",
     suppliers: "المشتريات", customers: "المبيعات", cashboxes: "المالية", costCenters: "المالية",
-    branches: "النظام", departments: "الموارد", users: "النظام", currencies: "المالية", periods: "المالية",
+    branches: "النظام", departments: "الموارد", sections: "الموارد", users: "النظام", currencies: "المالية", periods: "المالية",
     banks: "المالية", payTerms: "المالية", partnerCats: "المبيعات", roles: "النظام",
     analyticals: "المالية", requests: "المشتريات", quotes: "المبيعات",
     sales: "المبيعات", purchases: "المشتريات", returns: "المبيعات", invDocs: "المخازن", journals: "المالية",
@@ -363,7 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const COLL_AR: Record<string, string> = {
     units: "الوحدات", groups: "المجموعات", warehouses: "المخازن", items: "الأصناف",
     suppliers: "الموردين", customers: "العملاء", cashboxes: "الصناديق", costCenters: "مراكز التكلفة",
-    branches: "الفروع", departments: "الأقسام", users: "المستخدمين", currencies: "العملات", periods: "الفترات",
+    branches: "الفروع", departments: "الإدارات", sections: "الأقسام", users: "المستخدمين", currencies: "العملات", periods: "الفترات",
     banks: "البنوك", payTerms: "شروط الدفع", partnerCats: "التصنيفات", roles: "الأدوار",
     analyticals: "الحسابات التحليلية", requests: "طلبات الشراء", quotes: "عروض الأسعار",
     sales: "فواتير المبيعات", purchases: "فواتير المشتريات", returns: "مرتجعات المبيعات", invDocs: "السندات المخزنية", journals: "القيود اليومية",
