@@ -11,14 +11,19 @@ export const LOGIN_BGS = [
   { id: "emerald", name: "الزمردي", style: "linear-gradient(165deg,#02170f,#06402d 55%,#0e6e52)" },
 ];
 
-const COMPANIES = ["شركة أوكيانوس للتجارة والاستثمار", "مستشفى أوكيانوس التخصصي", "مجموعة المحيط الطبية"];
-const BRANCHES = ["المركز الرئيسي — صنعاء", "فرع عمران", "فرع ذمار"];
 const YEARS = ["2026", "2025", "2024"];
 
 export default function Login() {
-  const { login, toast, prefs } = useApp();
+  const app = useApp();
+  const { login, toast, prefs } = app;
   const bgStyle = LOGIN_BGS.find((b) => b.id === prefs.loginBg)?.style;
-  const [f, setF] = useState({ company: COMPANIES[0], branch: BRANCHES[0], user: "admin", pass: "", year: "2026" });
+  /* قائمة الشركات النشطة من سجل الشركات (الإعدادات ← الشركات والفروع) — إضافة/حذف تنعكس فوراً */
+  const companies = (app.db.companies || []).filter((c) => String(c.active) === "true").map((c) => c.name);
+  const companyList = companies.length ? companies : [app.settings.company?.name || "شركتي"];
+  /* قائمة الفروع من سجل الفروع */
+  const branches = (app.db.branches || []).map((b) => b.name);
+  const branchList = branches.length ? branches : ["المركز الرئيسي"];
+  const [f, setF] = useState({ company: companyList[0], branch: branchList[0], user: "admin", pass: "", year: "2026" });
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -167,14 +172,14 @@ export default function Login() {
             <div>
               <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="bld" size={14} /> الشركة</label>
               <select className="select !bg-white/[0.08] !border-white/15 !text-white [&>option]:text-black" value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })}>
-                {COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {companyList.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[0.74rem] font-bold text-white/75 flex items-center gap-1.5 mb-1.5"><I n="globe" size={14} /> الفرع</label>
                 <select className="select !bg-white/[0.08] !border-white/15 !text-white [&>option]:text-black" value={f.branch} onChange={(e) => setF({ ...f, branch: e.target.value })}>
-                  {BRANCHES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {branchList.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>

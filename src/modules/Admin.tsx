@@ -1212,14 +1212,32 @@ function CompanyBranchesSection() {
   );
   return (
     <div className="space-y-5">
-      {/* بيانات الشركة */}
+      {/* سجل الشركات — قائمة شركات شاشة تسجيل الدخول */}
+      <Directory conf={{
+        coll: "companies", title: "سجل الشركات", icon: "bld", prefix: "CO", importKey: "companies",
+        desc: "الشركات المتاحة في حقل «الشركة» بشاشة تسجيل الدخول — إضافة/تعديل/حذف تنعكس فوراً على شاشة الدخول",
+        fields: [
+          { k: "code", label: "الكود", req: true, uniq: true },
+          { k: "name", label: "اسم الشركة (عربي)", req: true, uniq: true },
+          { k: "en", label: "الاسم اللاتيني" },
+          { k: "active", label: "الحالة", type: "select", req: true, opts: [{ v: "true", l: "نشطة — تظهر في شاشة الدخول" }, { v: "false", l: "موقوفة — مخفية" }] },
+        ],
+        cols: [
+          { k: "code", label: "الكود", render: (r) => <span className="font-num font-bold" dir="ltr">{r.code}</span> },
+          { k: "name", label: "الشركة", render: (r) => <b>{r.name}</b> },
+          { k: "en", label: "اللاتيني", render: (r) => <span className="font-num text-[0.74rem] text-mute" dir="ltr">{r.en || "—"}</span> },
+          { k: "active", label: "الحالة", render: (r) => (String(r.active) === "true" ? <Chip s="ساري" /> : <Chip s="منتهي" />) },
+        ],
+      }} />
+
+      {/* بيانات الشركة الافتراضية (الطباعة) */}
       <div className="card p-5 relative overflow-hidden">
         <span className="absolute top-0 inset-x-0 h-[3px]" style={{ background: "linear-gradient(90deg, var(--brand), var(--accent), var(--brand))" }} />
         <div className="flex items-center gap-3 mb-4">
           <span className="w-10 h-10 rounded-xl grid place-items-center text-[var(--brandink)]" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand2))" }}><I n="bld" size={19} /></span>
           <div>
-            <h3 className="font-display font-bold text-base leading-tight">بيانات الشركة</h3>
-            <p className="text-[0.7rem] font-medium text-mute mt-0.5">تُطبع في ترويسة كل المستندات والتقارير الرسمية</p>
+            <h3 className="font-display font-bold text-base leading-tight">بيانات الشركة الافتراضية</h3>
+            <p className="text-[0.7rem] font-medium text-mute mt-0.5">هوية الطباعة — تُطبع في ترويسة كل المستندات والتقارير الرسمية</p>
           </div>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
