@@ -9,6 +9,12 @@ export const LOGIN_BGS = [
   { id: "royal", name: "النيلي الملكي", style: "linear-gradient(165deg,#0d0f33,#232a75 55%,#3d35b4)" },
   { id: "dusk", name: "الغروب الذهبي", style: "linear-gradient(165deg,#1c1204,#4a3310 50%,#8a6420 90%)" },
   { id: "emerald", name: "الزمردي", style: "linear-gradient(165deg,#02170f,#06402d 55%,#0e6e52)" },
+  /* ── الأنماط الفاخرة ── */
+  { id: "midnight", name: "الياقوتي الليلي", style: "linear-gradient(165deg,#050d20 0%,#0d2547 42%,#1c4a7a 76%,#2e6da3 100%)" },
+  { id: "malachite", name: "الزبرجد الملكي", style: "linear-gradient(165deg,#01160f 0%,#053d30 45%,#0c6b52 80%,#148f6d 100%)" },
+  { id: "burgundy", name: "البورغندي الأرستقراطي", style: "linear-gradient(165deg,#12040c 0%,#3c0e24 45%,#6d1c40 80%,#93295a 100%)" },
+  { id: "violet", name: "البنفسجي العميق", style: "linear-gradient(165deg,#0d0620 0%,#2a1257 45%,#47228a 80%,#6138bd 100%)" },
+  { id: "bronze", name: "الليلة البرونزية", style: "linear-gradient(165deg,#080604 0%,#241a0e 45%,#42301a 80%,#6b4e28 100%)" },
 ];
 
 const YEARS = ["2026", "2025", "2024"];

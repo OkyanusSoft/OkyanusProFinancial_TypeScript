@@ -1825,25 +1825,37 @@ function PrefsScreen() {
               );
             })}
           </div>
-          <h4 className="font-display font-bold text-sm mt-5 mb-2.5">خلفية الشريط الجانبي</h4>
+          <h4 className="font-display font-bold text-sm mt-5 mb-2.5 flex items-center gap-2">خلفية الشريط الجانبي
+            <span className="chip bg-[color-mix(in_srgb,var(--brand)_10%,transparent)] text-[var(--brand)] !text-[0.58rem] !py-0">{SIDEBAR_BGS.length} نمطاً</span></h4>
           <div className="grid grid-cols-3 gap-2.5">
-            {SIDEBAR_BGS.map((b) => (
-              <button key={b.id} onClick={() => app.setPrefs({ sidebarBg: b.id })}
-                className={`h-14 rounded-lg border-2 transition-all relative overflow-hidden ${pr.sidebarBg === b.id ? "border-[var(--brand)] scale-[1.03]" : "border-transparent hover:scale-[1.02]"}`}
-                style={{ background: b.style }} title={b.name} aria-label={b.name}>
-                {pr.sidebarBg === b.id && <span className="absolute inset-0 grid place-items-center bg-black/25 text-white"><I n="check" size={18} /></span>}
-              </button>
-            ))}
+            {SIDEBAR_BGS.map((b) => {
+              const on = pr.sidebarBg === b.id;
+              return (
+                <button key={b.id} onClick={() => { app.setPrefs({ sidebarBg: b.id }); app.toast(`طُبّق نمط «${b.name}» على الشريط الجانبي`, "ok"); }}
+                  className={`group h-[4.2rem] rounded-xl border-2 transition-all duration-200 relative overflow-hidden text-start ${on ? "border-[var(--brand)] -translate-y-0.5" : "border-[color-mix(in_srgb,var(--line)_70%,transparent)] hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--brand)_45%,transparent)]"}`}
+                  style={{ background: b.style, boxShadow: on ? "0 8px 20px -8px color-mix(in srgb, var(--brand) 55%, transparent)" : undefined }}
+                  aria-label={b.name} aria-pressed={on}>
+                  <span className="absolute inset-x-0 bottom-0 px-2 py-1 text-[0.6rem] font-bold text-white/95" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.55), transparent)" }}>{b.name}</span>
+                  {on && <span className="absolute top-1.5 end-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--good)] text-white shadow-lg anim-pop"><I n="check" size={11} /></span>}
+                </button>
+              );
+            })}
           </div>
-          <h4 className="font-display font-bold text-sm mt-5 mb-2.5">خلفية شاشة تسجيل الدخول</h4>
+          <h4 className="font-display font-bold text-sm mt-5 mb-2.5 flex items-center gap-2">خلفية شاشة تسجيل الدخول
+            <span className="chip bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] !text-[0.58rem] !py-0">{LOGIN_BGS.length} مشاهد</span></h4>
           <div className="grid grid-cols-3 gap-2.5">
-            {LOGIN_BGS.map((b) => (
-              <button key={b.id} onClick={() => app.setPrefs({ loginBg: b.id })}
-                className={`h-14 rounded-lg border-2 transition-all relative overflow-hidden ${pr.loginBg === b.id ? "border-[var(--brand)] scale-[1.03]" : "border-transparent hover:scale-[1.02]"}`}
-                style={{ background: b.style }} title={b.name} aria-label={b.name}>
-                {pr.loginBg === b.id && <span className="absolute inset-0 grid place-items-center bg-black/25 text-white"><I n="check" size={18} /></span>}
-              </button>
-            ))}
+            {LOGIN_BGS.map((b) => {
+              const on = pr.loginBg === b.id;
+              return (
+                <button key={b.id} onClick={() => { app.setPrefs({ loginBg: b.id }); app.toast(`طُبّق مشهد «${b.name}» — ستظهر شاشة الدخول به`, "ok"); }}
+                  className={`group h-[4.2rem] rounded-xl border-2 transition-all duration-200 relative overflow-hidden text-start ${on ? "border-[var(--accent)] -translate-y-0.5" : "border-[color-mix(in_srgb,var(--line)_70%,transparent)] hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--accent)_50%,transparent)]"}`}
+                  style={{ background: b.style, boxShadow: on ? "0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent)" : undefined }}
+                  aria-label={b.name} aria-pressed={on}>
+                  <span className="absolute inset-x-0 bottom-0 px-2 py-1 text-[0.6rem] font-bold text-white/95" style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.55), transparent)" }}>{b.name}</span>
+                  {on && <span className="absolute top-1.5 end-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--good)] text-white shadow-lg anim-pop"><I n="check" size={11} /></span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 

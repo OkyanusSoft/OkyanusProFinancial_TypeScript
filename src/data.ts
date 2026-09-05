@@ -365,6 +365,12 @@ export const SIDEBAR_BGS = [
   { id: "dune", name: "الرمال الذهبية", style: "linear-gradient(168deg,#241a08,#7a5a17)" },
   { id: "emerald", name: "الزمردي", style: "linear-gradient(168deg,#04281f,#0e6e52)" },
   { id: "crimson", name: "القرمزي", style: "linear-gradient(168deg,#2b0a12,#8a2340)" },
+  /* ── الأنماط الفاخرة ── */
+  { id: "sapphire", name: "الياقوتي الليلي", style: "linear-gradient(172deg,#0a1128 0%,#16305c 52%,#27618f 100%)" },
+  { id: "malachite", name: "الزبرجد الملكي", style: "linear-gradient(172deg,#02201a 0%,#0a4a3c 55%,#12805f 100%)" },
+  { id: "burgundy", name: "البورغندي الأرستقراطي", style: "linear-gradient(172deg,#1c0812 0%,#4e1330 55%,#82264c 100%)" },
+  { id: "violet", name: "البنفسجي العميق", style: "linear-gradient(172deg,#140a2b 0%,#391a6e 55%,#5c33a8 100%)" },
+  { id: "bronze", name: "البرونزي الفحمي", style: "linear-gradient(172deg,#0d0b09 0%,#292019 55%,#5a4526 100%)" },
 ];
 
 /* قوالب الاستيراد (عينة CSV لكل دليل) */
