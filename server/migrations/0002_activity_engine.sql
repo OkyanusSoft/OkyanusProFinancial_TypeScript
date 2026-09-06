@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS activity_records (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- فهرس نصي سريع للبحث الفوري داخل الحقول المرنة
-CREATE INDEX idx_rec_name ON activity_records(name);
+-- فهرس عبر الإجراء الشرطي (قابل للتكرار بأمان)
+CALL sp_add_index_if_missing('activity_records', 'idx_rec_name', 'name');
 
 -- تفضيلات النشاط: نمط نقاط البيع والمصطلحات تتكيف تلقائياً حسب النشاط الأساسي
 CREATE TABLE IF NOT EXISTS activity_prefs (
